@@ -15,33 +15,38 @@ func (d *DB) UpsertMovie(ctx context.Context, m *model.Movie) (int64, error) {
 	if m.CollectionID != 0 {
 		collectionID = m.CollectionID
 	}
-	_, err := d.ExecContext(ctx, `
-		INSERT INTO movies (tmdb_id, title, year, overview, runtime, original_lang,
-			collection_id, poster_path, backdrop_path, file_id,
-			vote_average, vote_count, popularity, revenue, country)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(tmdb_id) DO UPDATE SET
-			title=excluded.title, year=excluded.year, overview=excluded.overview,
-			runtime=excluded.runtime, original_lang=excluded.original_lang,
-			collection_id=excluded.collection_id, poster_path=excluded.poster_path,
-			backdrop_path=excluded.backdrop_path, file_id=excluded.file_id,
-			vote_average=excluded.vote_average, vote_count=excluded.vote_count,
-			popularity=excluded.popularity, revenue=excluded.revenue, country=excluded.country`,
-		m.TMDBID, m.Title, m.Year, m.Overview, m.Runtime, m.OriginalLang,
-		collectionID, m.PosterPath, m.BackdropPath, fileIDOrNil(m.File),
-		m.Rating, m.Votes, m.Popularity, m.Revenue, m.Country)
-	if err != nil {
-		return 0, err
-	}
+	// One transaction for the movie row plus its genre and credit writes. This
+	// turns the ~40 per-title statements into a single WAL commit, which cuts
+	// fsync churn dramatically on a slow disk and shortens the window the scan
+	// holds the writer, so browsing stays responsive during a scan.
 	var id int64
-	if err := d.QueryRowContext(ctx, `SELECT id FROM movies WHERE tmdb_id = ?`, m.TMDBID).Scan(&id); err != nil {
-		return 0, err
-	}
-
-	if err := d.setGenres(ctx, "movie_genres", "movie_id", id, m.Genres); err != nil {
-		return 0, err
-	}
-	if err := d.setCredits(ctx, model.KindMovie, id, m.Cast, m.Crew); err != nil {
+	err := d.WithTx(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO movies (tmdb_id, title, year, overview, runtime, original_lang,
+				collection_id, poster_path, backdrop_path, file_id,
+				vote_average, vote_count, popularity, revenue, country)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(tmdb_id) DO UPDATE SET
+				title=excluded.title, year=excluded.year, overview=excluded.overview,
+				runtime=excluded.runtime, original_lang=excluded.original_lang,
+				collection_id=excluded.collection_id, poster_path=excluded.poster_path,
+				backdrop_path=excluded.backdrop_path, file_id=excluded.file_id,
+				vote_average=excluded.vote_average, vote_count=excluded.vote_count,
+				popularity=excluded.popularity, revenue=excluded.revenue, country=excluded.country`,
+			m.TMDBID, m.Title, m.Year, m.Overview, m.Runtime, m.OriginalLang,
+			collectionID, m.PosterPath, m.BackdropPath, fileIDOrNil(m.File),
+			m.Rating, m.Votes, m.Popularity, m.Revenue, m.Country); err != nil {
+			return err
+		}
+		if err := tx.QueryRowContext(ctx, `SELECT id FROM movies WHERE tmdb_id = ?`, m.TMDBID).Scan(&id); err != nil {
+			return err
+		}
+		if err := setGenres(ctx, tx, "movie_genres", "movie_id", id, m.Genres); err != nil {
+			return err
+		}
+		return setCredits(ctx, tx, model.KindMovie, id, m.Cast, m.Crew)
+	})
+	if err != nil {
 		return 0, err
 	}
 	return id, nil
@@ -56,12 +61,20 @@ func (d *DB) UpsertCollection(ctx context.Context, id int64, name, poster, backd
 	return err
 }
 
-// ListMovies returns all movies (summary fields), most recently added first.
-func (d *DB) ListMovies(ctx context.Context) ([]model.Movie, error) {
-	rows, err := d.QueryContext(ctx, `
+// ListMovies returns movies (summary fields), most recently added first. A
+// limit <= 0 returns the whole library (backward-compatible default); a
+// positive limit pages the result with the given offset.
+func (d *DB) ListMovies(ctx context.Context, limit, offset int) ([]model.Movie, error) {
+	query := `
 		SELECT id, tmdb_id, title, year, overview, runtime, original_lang,
 			COALESCE(collection_id,0), poster_path, backdrop_path, COALESCE(file_id,0), added_at
-		FROM movies ORDER BY added_at DESC`)
+		FROM movies ORDER BY added_at DESC`
+	var args []any
+	if limit > 0 {
+		query += ` LIMIT ? OFFSET ?`
+		args = append(args, limit, offset)
+	}
+	rows, err := d.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

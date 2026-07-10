@@ -5,6 +5,7 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -19,6 +20,10 @@ import (
 	"github.com/rhymeswithlimo/northrou/backend/internal/model"
 	"github.com/rhymeswithlimo/northrou/backend/internal/transcode/hwaccel"
 )
+
+// errAtCapacity signals the box is already running its maximum number of
+// transcodes; the request should be retried, not queued.
+var errAtCapacity = errors.New("transcode capacity reached")
 
 // Streamer serves media using the decision cascade and manages transcode
 // sessions.
@@ -88,6 +93,14 @@ func (s *Streamer) ServeStream(w http.ResponseWriter, r *http.Request, mf *model
 		defer s.sessions.Remove(sessionID)
 		s.serveDirect(w, r, mf)
 	case ModeRemux, ModeAudioTranscode:
+		// Remux is a stream copy (cost 0, always admitted); an audio transcode
+		// consumes a light budget slot released when the request ends.
+		release, ok := s.sessions.TryAcquire(dec.Mode)
+		if !ok {
+			writeBusy(w)
+			return
+		}
+		defer release()
 		s.sessions.Add(sess)
 		defer s.sessions.Remove(sessionID)
 		s.serveProgressive(w, r, dec, mf)
@@ -95,6 +108,14 @@ func (s *Streamer) ServeStream(w http.ResponseWriter, r *http.Request, mf *model
 		// HLS sessions live beyond this request; register and hand back a URL.
 		s.serveHLSEntry(w, r, dec, mf, sess)
 	}
+}
+
+// writeBusy rejects a stream the box has no capacity for. A short Retry-After
+// tells the client to try again once a slot frees, rather than queueing a
+// request that would hold a goroutine and the viewer's patience.
+func writeBusy(w http.ResponseWriter) {
+	w.Header().Set("Retry-After", "5")
+	http.Error(w, "server at transcode capacity; retry shortly", http.StatusServiceUnavailable)
 }
 
 // serveDirect streams the raw file with HTTP range support (zero processing).
@@ -129,13 +150,22 @@ func (s *Streamer) serveProgressive(w http.ResponseWriter, r *http.Request, dec 
 	}
 	w.Header().Set("Content-Type", "video/mp4")
 	w.WriteHeader(http.StatusOK)
-	_, _ = io.Copy(w, stdout)
+	// Relay ffmpeg's fragmented-MP4 output through a bounded read-ahead buffer so
+	// a briefly-slow client doesn't block ffmpeg and underrun playback. The path
+	// is forward-only, so there are no seek/range concerns.
+	ra := newReadAhead(stdout, readAheadChunkBytes, readAheadChunks)
+	defer ra.Close()
+	_, _ = io.Copy(w, ra)
 	_ = cmd.Wait()
 }
 
 // serveHLSEntry ensures an HLS session exists and returns the playlist URL.
 func (s *Streamer) serveHLSEntry(w http.ResponseWriter, r *http.Request, dec Decision, mf *model.MediaFile, sess *StreamSession) {
 	if _, err := s.ensureHLS(context.Background(), dec, mf.Path, sess); err != nil {
+		if errors.Is(err, errAtCapacity) {
+			writeBusy(w)
+			return
+		}
 		slog.Error("hls start failed", "err", err)
 		http.Error(w, "transcode failed", http.StatusInternalServerError)
 		return
@@ -149,6 +179,8 @@ func (s *Streamer) serveHLSEntry(w http.ResponseWriter, r *http.Request, dec Dec
 }
 
 // ensureHLS returns the running HLS session for this key, creating it if needed.
+// A new transcode consumes an admission slot; joining an existing session (the
+// dedup path) does not, so a second viewer of the same file is free.
 func (s *Streamer) ensureHLS(ctx context.Context, dec Decision, inputPath string, sess *StreamSession) (*hlsSession, error) {
 	s.mu.Lock()
 	if h, ok := s.hlsSess[sess.ID]; ok {
@@ -158,11 +190,26 @@ func (s *Streamer) ensureHLS(ctx context.Context, dec Decision, inputPath string
 	}
 	s.mu.Unlock()
 
+	release, ok := s.sessions.TryAcquire(dec.Mode)
+	if !ok {
+		return nil, errAtCapacity
+	}
+
 	h, err := s.startHLS(ctx, dec, inputPath, sess.ID)
 	if err != nil {
+		release()
 		return nil, err
 	}
+	h.release = release
 	s.mu.Lock()
+	if existing, raced := s.hlsSess[sess.ID]; raced {
+		// Another request created this session while we were starting ffmpeg.
+		// Discard ours (frees its slot and scratch dir) and use the winner.
+		s.mu.Unlock()
+		h.stop()
+		existing.touch()
+		return existing, nil
+	}
 	s.hlsSess[sess.ID] = h
 	s.mu.Unlock()
 	s.sessions.Add(sess)

@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/rhymeswithlimo/northrou/backend/internal/db"
 	"github.com/rhymeswithlimo/northrou/backend/internal/model"
@@ -29,7 +30,13 @@ type Extractor struct {
 	jobs    chan ocrJob
 	startMu sync.Mutex
 	started bool
+
+	playback func() int // active stream count; nil until wired. Guarded by startMu.
 }
+
+// ocrYieldInterval is how long an OCR worker parks between checks while playback
+// is active.
+const ocrYieldInterval = 500 * time.Millisecond
 
 type ocrJob struct {
 	trackID     int64
@@ -47,6 +54,32 @@ func New(database *db.DB, ffmpegPath, tesseractPath, dataDir string) *Extractor 
 		tesseract:  tesseractPath,
 		dir:        filepath.Join(dataDir, "subtitles"),
 		jobs:       make(chan ocrJob, 256),
+	}
+}
+
+// SetPlaybackGate wires a function reporting the number of active streams. While
+// it returns > 0, OCR workers park so per-cue Tesseract runs (CPU-heavy) do not
+// starve a live stream on a weak box.
+func (e *Extractor) SetPlaybackGate(activeStreams func() int) {
+	e.startMu.Lock()
+	e.playback = activeStreams
+	e.startMu.Unlock()
+}
+
+// waitWhilePlaying blocks until no streams are active or ctx is cancelled.
+func (e *Extractor) waitWhilePlaying(ctx context.Context) {
+	e.startMu.Lock()
+	gate := e.playback
+	e.startMu.Unlock()
+	if gate == nil {
+		return
+	}
+	for gate() > 0 {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(ocrYieldInterval):
+		}
 	}
 }
 

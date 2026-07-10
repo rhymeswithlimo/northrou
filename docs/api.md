@@ -29,12 +29,21 @@ Only usable while no accounts exist.
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/api/movies` | List movies (summaries) |
+| GET | `/api/movies` | List movies (summaries). Optional `?limit=&offset=` pagination |
 | GET | `/api/movies/{id}` | Movie detail incl. media info |
-| GET | `/api/shows` | List shows |
+| GET | `/api/shows` | List shows. Optional `?limit=&offset=` pagination |
 | GET | `/api/shows/{id}` | Show detail incl. seasons & episodes |
 | GET | `/api/unmatched` | Files needing manual correction |
-| GET | `/api/images/{path}` | Cached poster/backdrop images |
+| GET | `/api/images/{path}` | Cached poster/backdrop images (served `immutable`, long `max-age`) |
+
+`/api/movies` and `/api/shows` accept optional `limit` and `offset` query
+parameters (both integers). A missing or non-positive `limit` returns the entire
+library (the historical behavior), so existing clients are unaffected; pass a
+positive `limit` to page. Results are ordered most-recently-added first.
+
+JSON responses are gzip-compressed when the client sends `Accept-Encoding: gzip`.
+Media, HLS segments, images, and WebVTT are never compressed (already-compressed
+or binary).
 
 ## Streaming
 
@@ -51,6 +60,13 @@ Only usable while no accounts exist.
 ```
 
 Absent parameters fall back to a conservative default (H.264 + AAC in MP4, 1080p).
+
+When the server is already running its maximum number of concurrent transcodes
+(derived from the detected hardware: encoder count for GPUs, CPU cores for
+software), a transcode request is rejected with `503 Service Unavailable` and a
+`Retry-After` header rather than being queued. Direct-play and remux requests are
+stream copies and are never rejected. Clients should retry after the indicated
+delay.
 
 ## Subtitles
 

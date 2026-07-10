@@ -194,6 +194,11 @@ func (a *App) ensureFFmpeg(ctx context.Context) {
 		a.Cfg.Transcode.Tonemap, a.Cfg.Transcode.AllowSoftware4K, a.Cfg.Transcode.MaxBitrateKbps)
 	a.API.SetStreamer(streamer)
 
+	// Playback is the priority on weak hardware: pause background scan and
+	// subtitle OCR work while any stream is active (they resume when idle).
+	a.Scanner.SetPlaybackGate(sm.Count)
+	ex.SetPlaybackGate(sm.Count)
+
 	if v, err := a.FFmpeg.Version(ctx); err == nil {
 		slog.Info("ffmpeg ready", "version", v)
 	}

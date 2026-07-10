@@ -12,12 +12,22 @@ import (
 	"time"
 )
 
+// hlsSegmentSeconds is the target HLS segment length. Short segments cut
+// startup latency: playback can begin after the first segment is encoded, and
+// on a weak CPU a shorter first segment means a shorter wait. We also force a
+// keyframe at each boundary (see hlsArgs) so segments are actually this length
+// instead of being dictated by the encoder's default ~10s GOP, which would make
+// the first segment (and startup) take a full GOP to appear. Fine-grained
+// segments also give smoother seeking within the already-encoded range.
+const hlsSegmentSeconds = 2
+
 // hlsSession is a running ffmpeg HLS transcode writing segments to a work dir.
 type hlsSession struct {
 	id         string
 	dir        string
 	cmd        *exec.Cmd
 	cancel     context.CancelFunc
+	release    func() // frees the admission budget slot; set by ensureHLS
 	lastAccess time.Time
 	mu         sync.Mutex
 }
@@ -38,6 +48,9 @@ func (h *hlsSession) idle() time.Duration {
 func (h *hlsSession) stop() {
 	if h.cancel != nil {
 		h.cancel()
+	}
+	if h.release != nil {
+		h.release()
 	}
 	_ = os.RemoveAll(h.dir)
 }
@@ -94,6 +107,11 @@ func (s *Streamer) hlsArgs(dec Decision, inputPath, dir string, rung Rung) []str
 	if dec.HWBackend == "software" || dec.HWBackend == "" {
 		args = append(args, "-preset", "veryfast")
 	}
+	// Force a keyframe at each segment boundary so segments are actually
+	// hlsSegmentSeconds long (and independently seekable) rather than following
+	// the encoder's default GOP, which would delay the first segment.
+	args = append(args, "-force_key_frames",
+		fmt.Sprintf("expr:gte(t,n_forced*%d)", hlsSegmentSeconds))
 
 	// Audio.
 	if dec.TranscodeAudio {
@@ -105,7 +123,7 @@ func (s *Streamer) hlsArgs(dec Decision, inputPath, dir string, rung Rung) []str
 	// HLS output (VOD-style, keep all segments so the client can seek).
 	args = append(args,
 		"-f", "hls",
-		"-hls_time", "6",
+		"-hls_time", strconv.Itoa(hlsSegmentSeconds),
 		"-hls_playlist_type", "event",
 		"-hls_list_size", "0",
 		"-hls_flags", "independent_segments",
@@ -136,7 +154,7 @@ func sourceHeightHint(dec Decision) int {
 // waitForFile polls until path exists or the timeout elapses.
 func waitForFile(ctx context.Context, path string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
-	t := time.NewTicker(200 * time.Millisecond)
+	t := time.NewTicker(100 * time.Millisecond)
 	defer t.Stop()
 	for {
 		if _, err := os.Stat(path); err == nil {

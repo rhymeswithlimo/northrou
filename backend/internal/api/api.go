@@ -57,6 +57,11 @@ func (a *API) getStreamer() *transcode.Streamer {
 // Mount registers all API routes on r under /api.
 func (a *API) Mount(r chi.Router) {
 	r.Route("/api", func(r chi.Router) {
+		// Gzip JSON responses only. Media, HLS segments, images, and WebVTT are
+		// already-compressed or binary; gzipping them wastes CPU on a weak box,
+		// so the content-type gate deliberately excludes them.
+		r.Use(middleware.Compress(5, "application/json"))
+
 		r.Get("/health", a.handleHealth)
 
 		// First-run setup (only usable while no users exist).
@@ -114,7 +119,3 @@ func (a *API) Mount(r chi.Router) {
 		})
 	})
 }
-
-// requestID / recoverer / logging middleware wired at the server layer; the
-// chi middleware package is imported here so route groups can add more later.
-var _ = middleware.RequestID

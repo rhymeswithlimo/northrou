@@ -33,10 +33,18 @@ func Open(path string) (*DB, error) {
 	}
 
 	// Pragmas via DSN so every pooled connection gets them.
+	//   cache_size(-8000): 8 MiB page cache (default is 2 MiB), so hot pages stay
+	//     in memory instead of hitting a slow disk repeatedly. Modest so it does
+	//     not pressure a low-RAM box.
+	//   mmap_size: memory-map up to 128 MiB of the DB so reads skip a syscall/copy;
+	//     mapped pages are demand-loaded and reclaimable, so it is virtual, not
+	//     resident, RAM.
 	dsn := path + "?_pragma=busy_timeout(5000)" +
 		"&_pragma=journal_mode(WAL)" +
 		"&_pragma=foreign_keys(ON)" +
-		"&_pragma=synchronous(NORMAL)"
+		"&_pragma=synchronous(NORMAL)" +
+		"&_pragma=cache_size(-8000)" +
+		"&_pragma=mmap_size(134217728)"
 
 	sqldb, err := sql.Open("sqlite", dsn)
 	if err != nil {
@@ -78,6 +86,14 @@ func (d *DB) Version() (int64, error) {
 
 // Path returns the on-disk database path.
 func (d *DB) Path() string { return d.path }
+
+// execer is the subset of *sql.DB / *sql.Tx used by the write helpers, so they
+// can run either directly (auto-commit) or inside a transaction. Both *DB (via
+// the embedded *sql.DB) and *sql.Tx satisfy it.
+type execer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
 
 // WithTx runs fn inside a transaction, committing on success and rolling back
 // on error or panic.

@@ -73,7 +73,8 @@ func (a *API) imageURL(rel string) string {
 }
 
 func (a *API) handleListMovies(w http.ResponseWriter, r *http.Request) {
-	movies, err := a.DB.ListMovies(r.Context())
+	limit, offset := parsePaging(r)
+	movies, err := a.DB.ListMovies(r.Context(), limit, offset)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "list movies failed")
 		return
@@ -132,7 +133,8 @@ func mediaInfoToDTO(mf *model.MediaFile) *mediaInfoDTO {
 }
 
 func (a *API) handleListShows(w http.ResponseWriter, r *http.Request) {
-	shows, err := a.DB.ListShows(r.Context())
+	limit, offset := parsePaging(r)
+	shows, err := a.DB.ListShows(r.Context(), limit, offset)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "list shows failed")
 		return
@@ -202,6 +204,10 @@ func (a *API) handleStartScan(w http.ResponseWriter, r *http.Request) {
 	}
 	go func() {
 		_ = a.Scanner.Scan(context.Background(), a.Cfg.Media.MovieDirs, a.Cfg.Media.ShowDirs)
+		// The catalog may have changed; drop cached home screens for everyone.
+		if a.Recommend != nil {
+			a.Recommend.InvalidateAll()
+		}
 	}()
 	writeJSON(w, http.StatusAccepted, map[string]string{"status": "scan started"})
 }
@@ -214,13 +220,61 @@ func (a *API) handleScanStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, a.Scanner.Progress())
 }
 
-// imageHandler serves cached metadata images from the images directory.
+// imageHandler serves cached metadata images from the images directory. Images
+// are content-addressed (TMDB file path + size), so their bytes never change;
+// a long immutable Cache-Control lets clients skip re-fetching posters entirely.
+// The header is applied only to successful (200) responses so a missing image
+// (e.g. a download that failed on a flaky scan) is not cached as permanently
+// absent.
 func (a *API) imageHandler() http.Handler {
 	fs := http.FileServer(http.Dir(a.ImagesDir))
-	return http.StripPrefix("/api/images/", fs)
+	stripped := http.StripPrefix("/api/images/", fs)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		stripped.ServeHTTP(&cacheOnOK{ResponseWriter: w}, r)
+	})
+}
+
+// cacheOnOK adds an immutable Cache-Control header only when the response is a
+// full 200 (implicit or explicit), never on 404/304/etc.
+type cacheOnOK struct {
+	http.ResponseWriter
+	wrote bool
+}
+
+const immutableImageCacheControl = "public, max-age=2592000, immutable" // 30 days
+
+func (c *cacheOnOK) WriteHeader(status int) {
+	if !c.wrote {
+		c.wrote = true
+		if status == http.StatusOK {
+			c.Header().Set("Cache-Control", immutableImageCacheControl)
+		}
+	}
+	c.ResponseWriter.WriteHeader(status)
+}
+
+func (c *cacheOnOK) Write(b []byte) (int, error) {
+	if !c.wrote {
+		c.wrote = true
+		c.Header().Set("Cache-Control", immutableImageCacheControl) // implicit 200
+	}
+	return c.ResponseWriter.Write(b)
 }
 
 // --- helpers ---
+
+// parsePaging reads optional ?limit and ?offset query params. A missing or
+// non-positive limit means "no limit" (the full list), so existing clients that
+// send neither keep getting the whole library.
+func parsePaging(r *http.Request) (limit, offset int) {
+	if v, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && v > 0 {
+		limit = v
+	}
+	if v, err := strconv.Atoi(r.URL.Query().Get("offset")); err == nil && v > 0 {
+		offset = v
+	}
+	return limit, offset
+}
 
 func pathID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)

@@ -8,8 +8,8 @@ import (
 // setGenres replaces the genre links for a movie/show. Genres are stored by
 // name (upserted) so the recommendation engine can compute genre affinity.
 // linkTable is "movie_genres" or "show_genres"; idCol is "movie_id"/"show_id".
-func (d *DB) setGenres(ctx context.Context, linkTable, idCol string, mediaID int64, names []string) error {
-	if _, err := d.ExecContext(ctx,
+func setGenres(ctx context.Context, q execer, linkTable, idCol string, mediaID int64, names []string) error {
+	if _, err := q.ExecContext(ctx,
 		fmt.Sprintf(`DELETE FROM %s WHERE %s = ?`, linkTable, idCol), mediaID); err != nil {
 		return err
 	}
@@ -17,15 +17,15 @@ func (d *DB) setGenres(ctx context.Context, linkTable, idCol string, mediaID int
 		if name == "" {
 			continue
 		}
-		if _, err := d.ExecContext(ctx,
+		if _, err := q.ExecContext(ctx,
 			`INSERT INTO genres (name) VALUES (?) ON CONFLICT(name) DO NOTHING`, name); err != nil {
 			return err
 		}
 		var gid int64
-		if err := d.QueryRowContext(ctx, `SELECT id FROM genres WHERE name = ?`, name).Scan(&gid); err != nil {
+		if err := q.QueryRowContext(ctx, `SELECT id FROM genres WHERE name = ?`, name).Scan(&gid); err != nil {
 			return err
 		}
-		if _, err := d.ExecContext(ctx,
+		if _, err := q.ExecContext(ctx,
 			fmt.Sprintf(`INSERT OR IGNORE INTO %s (%s, genre_id) VALUES (?, ?)`, linkTable, idCol),
 			mediaID, gid); err != nil {
 			return err

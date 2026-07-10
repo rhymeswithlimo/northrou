@@ -52,13 +52,22 @@ Per request, the server picks the cheapest viable path (`transcode.Decide`):
 Atmos is preserved as far down the ladder as the client allows (passthrough →
 E-AC3 JOC → AC-3 → AAC). Active streams are tracked for the admin dashboard.
 
+Concurrent transcodes are capped to what the hardware can sustain (encoder count
+for GPUs, CPU cores for software, floor of one); beyond the cap a transcode
+request gets `503` + `Retry-After`, while direct play and remux (stream copies)
+are never rejected. HLS transcodes emit short keyframe-aligned segments so
+playback starts without waiting a full GOP, and progressive output is relayed
+through a bounded read-ahead buffer to absorb disk jitter.
+
 ### The recommendation engine
 
 Fully local, single-household, no collaborative filtering. Each watch event
 updates a time-decayed, completion-weighted taste profile across genre, decade,
 director, actor, language, runtime, and time-of-day dimensions. Row generators
 query the profile against the unwatched library and the home screen rotates the
-highest-confidence rows over time.
+highest-confidence rows over time. Computed rows are cached briefly and
+invalidated on a watch or a library scan, so the full-library feature load runs
+once per burst rather than on every request.
 
 Before any history exists, a **cold-start** path organizes the library the user
 already owns into browsable category rows by decade + box office

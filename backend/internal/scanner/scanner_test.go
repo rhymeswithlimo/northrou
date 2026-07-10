@@ -85,7 +85,7 @@ func TestScanMatchesMovieViaTMDB(t *testing.T) {
 		t.Fatalf("scan: %v", err)
 	}
 
-	movies, err := database.ListMovies(context.Background())
+	movies, err := database.ListMovies(context.Background(), 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestScanMatchesEpisode(t *testing.T) {
 		t.Fatalf("scan: %v", err)
 	}
 
-	shows, err := database.ListShows(context.Background())
+	shows, err := database.ListShows(context.Background(), 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

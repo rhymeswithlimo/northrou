@@ -30,8 +30,13 @@ type Row struct {
 // maxItemsPerRow caps how many titles a row carries.
 const maxItemsPerRow = 24
 
-// Home builds the ranked, rotated set of home-screen rows for a user.
+// Home builds the ranked, rotated set of home-screen rows for a user. Results
+// are cached briefly (see homeCacheTTL) because building them loads the whole
+// library into memory.
 func (e *Engine) Home(ctx context.Context, userID int64) ([]Row, error) {
+	if rows, ok := e.cachedRows(userID); ok {
+		return rows, nil
+	}
 	profile, err := e.LoadProfile(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -89,6 +94,7 @@ func (e *Engine) Home(ctx context.Context, userID int64) ([]Row, error) {
 		keys = append(keys, r.Key)
 	}
 	_ = e.db.MarkRowsShown(ctx, userID, keys)
+	e.storeRows(userID, rows)
 	return rows, nil
 }
 

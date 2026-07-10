@@ -11,28 +11,32 @@ import (
 // UpsertShow inserts or updates a show (keyed by TMDB id) with genres/credits
 // and returns the local show id.
 func (d *DB) UpsertShow(ctx context.Context, s *model.Show) (int64, error) {
-	_, err := d.ExecContext(ctx, `
-		INSERT INTO shows (tmdb_id, title, year, overview, original_lang, poster_path, backdrop_path,
-			vote_average, popularity, country)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(tmdb_id) DO UPDATE SET
-			title=excluded.title, year=excluded.year, overview=excluded.overview,
-			original_lang=excluded.original_lang, poster_path=excluded.poster_path,
-			backdrop_path=excluded.backdrop_path, vote_average=excluded.vote_average,
-			popularity=excluded.popularity, country=excluded.country`,
-		s.TMDBID, s.Title, s.Year, s.Overview, s.OriginalLang, s.PosterPath, s.BackdropPath,
-		s.Rating, s.Popularity, s.Country)
-	if err != nil {
-		return 0, err
-	}
+	// One transaction for the show row plus its genre and credit writes (see
+	// UpsertMovie for why).
 	var id int64
-	if err := d.QueryRowContext(ctx, `SELECT id FROM shows WHERE tmdb_id = ?`, s.TMDBID).Scan(&id); err != nil {
-		return 0, err
-	}
-	if err := d.setGenres(ctx, "show_genres", "show_id", id, s.Genres); err != nil {
-		return 0, err
-	}
-	if err := d.setCredits(ctx, model.KindShow, id, s.Cast, s.Crew); err != nil {
+	err := d.WithTx(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO shows (tmdb_id, title, year, overview, original_lang, poster_path, backdrop_path,
+				vote_average, popularity, country)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(tmdb_id) DO UPDATE SET
+				title=excluded.title, year=excluded.year, overview=excluded.overview,
+				original_lang=excluded.original_lang, poster_path=excluded.poster_path,
+				backdrop_path=excluded.backdrop_path, vote_average=excluded.vote_average,
+				popularity=excluded.popularity, country=excluded.country`,
+			s.TMDBID, s.Title, s.Year, s.Overview, s.OriginalLang, s.PosterPath, s.BackdropPath,
+			s.Rating, s.Popularity, s.Country); err != nil {
+			return err
+		}
+		if err := tx.QueryRowContext(ctx, `SELECT id FROM shows WHERE tmdb_id = ?`, s.TMDBID).Scan(&id); err != nil {
+			return err
+		}
+		if err := setGenres(ctx, tx, "show_genres", "show_id", id, s.Genres); err != nil {
+			return err
+		}
+		return setCredits(ctx, tx, model.KindShow, id, s.Cast, s.Crew)
+	})
+	if err != nil {
 		return 0, err
 	}
 	return id, nil
@@ -79,11 +83,19 @@ func (d *DB) FindShowByTMDB(ctx context.Context, tmdbID int64) (int64, error) {
 	return id, err
 }
 
-// ListShows returns all shows (summary), most recently added first.
-func (d *DB) ListShows(ctx context.Context) ([]model.Show, error) {
-	rows, err := d.QueryContext(ctx, `
+// ListShows returns shows (summary), most recently added first. A limit <= 0
+// returns all shows (backward-compatible default); a positive limit pages the
+// result with the given offset.
+func (d *DB) ListShows(ctx context.Context, limit, offset int) ([]model.Show, error) {
+	query := `
 		SELECT id, tmdb_id, title, year, overview, original_lang, poster_path, backdrop_path, added_at
-		FROM shows ORDER BY added_at DESC`)
+		FROM shows ORDER BY added_at DESC`
+	var args []any
+	if limit > 0 {
+		query += ` LIMIT ? OFFSET ?`
+		args = append(args, limit, offset)
+	}
+	rows, err := d.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

@@ -21,6 +21,7 @@ func (e *Extractor) ocrWorker(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case j := <-e.jobs:
+			e.waitWhilePlaying(ctx) // yield to active playback before OCR
 			e.processOCR(ctx, j)
 		}
 	}

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -27,6 +28,7 @@ type Client struct {
 	baseURL  string
 	http     *http.Client
 	limiter  *limiter
+	cache    *respCache
 }
 
 // Option configures a Client.
@@ -50,6 +52,7 @@ func NewClient(apiKey, language string, opts ...Option) *Client {
 		baseURL:  defaultBaseURL,
 		http:     &http.Client{Timeout: 15 * time.Second},
 		limiter:  newLimiter(20 * time.Millisecond), // ~50 req/s cap
+		cache:    newRespCache(),
 	}
 	for _, o := range opts {
 		o(c)
@@ -225,36 +228,141 @@ func (c *Client) EpisodeDetails(ctx context.Context, showID int64, season, episo
 	return &out, nil
 }
 
-// get performs a rate-limited GET and decodes JSON into out.
+// tmdbRetries is how many times a rate-limited (429) or transient request is
+// retried before giving up and letting the file go unmatched.
+const tmdbRetries = 4
+
+// get performs a rate-limited, cached GET and decodes JSON into out. Identical
+// requests within a scan are served from the response cache (no network, no
+// rate-limit slot).
 func (c *Client) get(ctx context.Context, path string, q url.Values, out any) error {
 	if !c.Enabled() {
 		return ErrNoAPIKey
 	}
-	if err := c.limiter.wait(ctx); err != nil {
-		return err
-	}
 	if q == nil {
 		q = url.Values{}
 	}
-	q.Set("api_key", c.apiKey)
 	q.Set("language", c.language)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path+"?"+q.Encode(), nil)
+	// Cache key excludes the API key (same request, any key => same data).
+	key := path + "?" + q.Encode()
+	if body, ok := c.cache.get(key); ok {
+		return json.Unmarshal(body, out)
+	}
+
+	q.Set("api_key", c.apiKey)
+	body, err := c.doGet(ctx, path, q)
 	if err != nil {
 		return err
 	}
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return err
+	c.cache.set(key, body)
+	return json.Unmarshal(body, out)
+}
+
+// doGet issues the HTTP request with rate limiting, retrying on 429 (honoring
+// Retry-After) and on transient network errors with exponential backoff.
+func (c *Client) doGet(ctx context.Context, path string, q url.Values) ([]byte, error) {
+	var lastErr error
+	for attempt := 0; attempt < tmdbRetries; attempt++ {
+		if err := c.limiter.wait(ctx); err != nil {
+			return nil, err
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path+"?"+q.Encode(), nil)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := c.http.Do(req)
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			lastErr = err // transient network error: back off and retry
+			if werr := sleepCtx(ctx, backoff(attempt)); werr != nil {
+				return nil, werr
+			}
+			continue
+		}
+		if resp.StatusCode == http.StatusTooManyRequests {
+			wait := retryAfter(resp, backoff(attempt))
+			resp.Body.Close()
+			lastErr = fmt.Errorf("tmdb rate limited")
+			if werr := sleepCtx(ctx, wait); werr != nil {
+				return nil, werr
+			}
+			continue
+		}
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			return nil, fmt.Errorf("tmdb %s: HTTP %d", path, resp.StatusCode)
+		}
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			return nil, err
+		}
+		return body, nil
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusTooManyRequests {
-		return fmt.Errorf("tmdb rate limited")
+	return nil, lastErr
+}
+
+// backoff returns an exponential delay for the given retry attempt (0-based):
+// 500ms, 1s, 2s, ...
+func backoff(attempt int) time.Duration {
+	return 500 * time.Millisecond * time.Duration(1<<attempt)
+}
+
+// retryAfter reads the Retry-After header (seconds) if present, else falls back
+// to the given backoff.
+func retryAfter(resp *http.Response, fallback time.Duration) time.Duration {
+	if v := resp.Header.Get("Retry-After"); v != "" {
+		if secs, err := strconv.Atoi(v); err == nil && secs > 0 {
+			return time.Duration(secs) * time.Second
+		}
 	}
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("tmdb %s: HTTP %d", path, resp.StatusCode)
+	return fallback
+}
+
+// sleepCtx sleeps for d unless ctx is cancelled first.
+func sleepCtx(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
 	}
-	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+// ResetCache clears the response cache. The scanner calls this at the start of a
+// scan so cached data is scoped to a single run (bounded memory, fresh data).
+func (c *Client) ResetCache() { c.cache.reset() }
+
+// respCache is a simple concurrency-safe map of request key -> raw JSON body.
+type respCache struct {
+	mu sync.RWMutex
+	m  map[string][]byte
+}
+
+func newRespCache() *respCache { return &respCache{m: map[string][]byte{}} }
+
+func (r *respCache) get(key string) ([]byte, bool) {
+	r.mu.RLock()
+	b, ok := r.m[key]
+	r.mu.RUnlock()
+	return b, ok
+}
+
+func (r *respCache) set(key string, body []byte) {
+	r.mu.Lock()
+	r.m[key] = body
+	r.mu.Unlock()
+}
+
+func (r *respCache) reset() {
+	r.mu.Lock()
+	clear(r.m)
+	r.mu.Unlock()
 }
 
 // ReleaseYear parses a "YYYY-MM-DD" date into a year, 0 on failure.

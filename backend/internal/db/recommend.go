@@ -2,6 +2,8 @@ package db
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"time"
 )
 
@@ -130,6 +132,67 @@ func (d *DB) LoadMovieFeatures(ctx context.Context) ([]MovieFeature, error) {
 		out = append(out, *byID[id])
 	}
 	return out, nil
+}
+
+// LoadMovieFeature loads one movie's scoring features (genres, directors,
+// actors). Returns false if no such movie exists. Used on the watch-recording
+// path so a single watch does not load the entire library.
+func (d *DB) LoadMovieFeature(ctx context.Context, id int64) (MovieFeature, bool, error) {
+	var m MovieFeature
+	err := d.QueryRowContext(ctx, `
+		SELECT id, title, year, COALESCE(runtime,0), COALESCE(original_lang,''),
+			COALESCE(poster_path,''), COALESCE(collection_id,0),
+			vote_average, vote_count, popularity, revenue, COALESCE(country,''),
+			file_id IS NOT NULL
+		FROM movies WHERE id = ?`, id).Scan(&m.ID, &m.Title, &m.Year, &m.Runtime,
+		&m.Language, &m.PosterPath, &m.CollectionID, &m.Rating, &m.Votes, &m.Popularity,
+		&m.Revenue, &m.Country, &m.Playable)
+	if errors.Is(err, sql.ErrNoRows) {
+		return MovieFeature{}, false, nil
+	}
+	if err != nil {
+		return MovieFeature{}, false, err
+	}
+
+	gr, err := d.QueryContext(ctx, `
+		SELECT g.name FROM movie_genres mg JOIN genres g ON g.id = mg.genre_id
+		WHERE mg.movie_id = ?`, id)
+	if err != nil {
+		return MovieFeature{}, false, err
+	}
+	for gr.Next() {
+		var name string
+		if err := gr.Scan(&name); err != nil {
+			gr.Close()
+			return MovieFeature{}, false, err
+		}
+		m.Genres = append(m.Genres, name)
+	}
+	gr.Close()
+
+	cr, err := d.QueryContext(ctx, `
+		SELECT c.department, c.role, c.person_id, p.name
+		FROM credits c JOIN people p ON p.id = c.person_id
+		WHERE c.media_kind = 'movie' AND c.media_id = ? ORDER BY c.ord`, id)
+	if err != nil {
+		return MovieFeature{}, false, err
+	}
+	for cr.Next() {
+		var pid int64
+		var dept, role, name string
+		if err := cr.Scan(&dept, &role, &pid, &name); err != nil {
+			cr.Close()
+			return MovieFeature{}, false, err
+		}
+		switch {
+		case dept == "cast":
+			m.Actors = append(m.Actors, Person{ID: pid, Name: name})
+		case role == "Director":
+			m.Directors = append(m.Directors, Person{ID: pid, Name: name})
+		}
+	}
+	cr.Close()
+	return m, true, nil
 }
 
 // LoadShowFeatures loads every TV show with its genres. A show is "playable"

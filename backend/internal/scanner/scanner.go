@@ -51,8 +51,13 @@ type Scanner struct {
 
 	mu       sync.Mutex
 	progress Progress
-	showLock sync.Mutex // serializes show resolution to dedupe TMDB searches
+	showLock sync.Mutex   // serializes show resolution to dedupe TMDB searches
+	playback func() int   // reports active stream count; nil until wired
 }
+
+// scanYieldInterval is how long a scan worker parks between checks while
+// playback is active.
+const scanYieldInterval = 500 * time.Millisecond
 
 // SubtitleExtractor is implemented by the subtitle pipeline (P3). The scanner
 // invokes it per media file after a successful probe. Kept as an interface to
@@ -84,6 +89,34 @@ func (s *Scanner) SetProber(p *mediainfo.Prober) {
 	s.mu.Unlock()
 }
 
+// SetPlaybackGate wires a function reporting the number of active streams. While
+// it returns > 0, scan workers park (see waitWhilePlaying) so a background scan
+// (ffprobe + subtitle work) does not starve a live stream on a weak CPU/disk.
+func (s *Scanner) SetPlaybackGate(activeStreams func() int) {
+	s.mu.Lock()
+	s.playback = activeStreams
+	s.mu.Unlock()
+}
+
+// waitWhilePlaying blocks until no streams are active or ctx is cancelled.
+// Playback is the priority; a paused scan resumes automatically once viewers
+// stop.
+func (s *Scanner) waitWhilePlaying(ctx context.Context) {
+	s.mu.Lock()
+	gate := s.playback
+	s.mu.Unlock()
+	if gate == nil {
+		return
+	}
+	for gate() > 0 {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(scanYieldInterval):
+		}
+	}
+}
+
 // Progress returns a snapshot of scan status.
 func (s *Scanner) Progress() Progress {
 	s.mu.Lock()
@@ -101,6 +134,11 @@ func (s *Scanner) Scan(ctx context.Context, movieDirs, showDirs []string) error 
 	}
 	s.progress = Progress{Running: true, StartedAt: time.Now()}
 	s.mu.Unlock()
+
+	// Scope the TMDB response cache to this run (bounded memory, fresh data).
+	if s.tmdb != nil {
+		s.tmdb.ResetCache()
+	}
 
 	defer func() {
 		s.mu.Lock()
@@ -150,6 +188,8 @@ func (s *Scanner) Scan(ctx context.Context, movieDirs, showDirs []string) error 
 
 // processFile handles a single media file end to end.
 func (s *Scanner) processFile(ctx context.Context, path string, kind model.MediaKind) {
+	// Yield to any active playback before doing CPU/disk-heavy probe+match work.
+	s.waitWhilePlaying(ctx)
 	defer s.bump(&s.progress.Processed, path)
 
 	info, err := os.Stat(path)
