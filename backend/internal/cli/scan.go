@@ -16,11 +16,17 @@ import (
 )
 
 func newScanCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "scan",
-		Short: "Scan configured media folders now and exit",
-		Long: "Run a one-off library scan against the configured movie and TV " +
-			"folders, then print a summary. Best run while the daemon is stopped.",
+	var asTV bool
+	cmd := &cobra.Command{
+		Use:   "scan [path...]",
+		Short: "Scan a folder or drive now and exit",
+		Long: "Run a one-off library scan and print a summary. Point it at one or " +
+			"more folders or drives to scan those, e.g. `northrou scan /media/movies` " +
+			"or `northrou scan D:\\media`. Movies and TV episodes are told apart by " +
+			"filename; pass --tv to force everything under the given paths to be " +
+			"treated as TV episodes (useful for shows with messy names). With no " +
+			"path, the movie_dirs and show_dirs from config are scanned instead. " +
+			"Best run while the daemon is stopped.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			a, err := app.New(flagConfigPath)
 			if err != nil {
@@ -31,6 +37,30 @@ func newScanCmd() *cobra.Command {
 			ctx, stop := signal.NotifyContext(context.Background(),
 				os.Interrupt, syscall.SIGTERM)
 			defer stop()
+
+			// Decide what to scan: explicit paths win over configured dirs.
+			var movieDirs, showDirs []string
+			if len(args) > 0 {
+				for _, p := range args {
+					if _, err := os.Stat(p); err != nil {
+						return fmt.Errorf("cannot scan %q: %w", p, err)
+					}
+				}
+				if asTV {
+					showDirs = args
+				} else {
+					movieDirs = args
+				}
+			} else {
+				if asTV {
+					return fmt.Errorf("--tv has no effect without a path; give a folder or drive to scan")
+				}
+				movieDirs = a.Cfg.Media.MovieDirs
+				showDirs = a.Cfg.Media.ShowDirs
+				if len(movieDirs) == 0 && len(showDirs) == 0 {
+					return fmt.Errorf("nothing to scan: pass a folder or drive, or set movie_dirs/show_dirs in config")
+				}
+			}
 
 			// Ensure ffprobe is available so technical metadata is captured,
 			// and wire the subtitle pipeline for extraction/OCR.
@@ -49,7 +79,7 @@ func newScanCmd() *cobra.Command {
 			}
 
 			fmt.Println("Scanning…")
-			if err := a.Scanner.Scan(ctx, a.Cfg.Media.MovieDirs, a.Cfg.Media.ShowDirs); err != nil {
+			if err := a.Scanner.Scan(ctx, movieDirs, showDirs); err != nil {
 				return err
 			}
 			p := a.Scanner.Progress()
@@ -57,4 +87,7 @@ func newScanCmd() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&asTV, "tv", false,
+		"treat the given paths as TV episodes (default: detect movies vs episodes by filename)")
+	return cmd
 }

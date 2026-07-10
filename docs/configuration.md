@@ -53,8 +53,16 @@ language = "en-US"
   transcode scratch space.
 
 ### `[media]`
-- **movie_dirs** / **show_dirs** - folders to scan. TV shows should follow a
+- **movie_dirs** / **show_dirs** - folders the daemon scans automatically and
+  that `northrou scan` uses when you give it no path. TV shows should follow a
   `Show Name/Season 01/Show.S01E01…` layout.
+
+You do not have to configure these to scan on demand: point `northrou scan` at
+any folder or drive directly, e.g. `northrou scan /media/movies` or
+`northrou scan D:\media`. You can pass more than one path. Movies and TV
+episodes are told apart by filename; add `--tv` to force everything under the
+given paths to be treated as TV episodes, which helps for shows with messy
+names that don't parse as episodes on their own.
 
 ### `[remote]`
 - **enabled** - turn peer-to-peer remote access on/off. Local-network access
