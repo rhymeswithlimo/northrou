@@ -1,0 +1,86 @@
+# GoReleaser configuration for Northrou.
+# Builds the server binary for all six supported targets plus the coordination
+# server, produces checksummed archives, and cuts a GitHub release.
+#
+# Usage:
+#   goreleaser release --snapshot --clean   # local dry run
+#   goreleaser release --clean              # real release (needs a git tag)
+#
+# The monorepo has two Go modules (backend/ and coordination/), so each build
+# sets its own working directory via `dir`.
+version: 2
+
+project_name: northrou
+
+before:
+  hooks:
+    - sh -c "cd backend && go mod tidy"
+    - sh -c "cd coordination && go mod tidy"
+
+builds:
+  - id: northrou
+    dir: backend
+    main: ./cmd/northrou
+    binary: northrou
+    env:
+      - CGO_ENABLED=0 # pure-Go SQLite => trivial cross-compilation
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64, arm]
+    goarm: ["7"]
+    ignore:
+      - { goos: darwin, goarch: arm }
+      - { goos: windows, goarch: arm }
+      - { goos: windows, goarch: arm64 }
+    ldflags:
+      - -s -w
+      - -X github.com/rhymeswithlimo/northrou/backend/internal/buildinfo.Version={{ .Version }}
+      - -X github.com/rhymeswithlimo/northrou/backend/internal/buildinfo.Commit={{ .ShortCommit }}
+      - -X github.com/rhymeswithlimo/northrou/backend/internal/buildinfo.Date={{ .Date }}
+
+  - id: coordinator
+    dir: coordination
+    main: ./cmd/coordinator
+    binary: coordinator
+    env:
+      - CGO_ENABLED=0
+    goos: [linux]
+    goarch: [amd64, arm64]
+
+archives:
+  - id: northrou
+    ids: [northrou]
+    # Produces e.g. northrou_1.2.0_linux_amd64.tar.gz / northrou_1.2.0_linux_armv7.tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - LICENSE*
+      - NOTICE
+      - README.md
+
+  - id: coordinator
+    ids: [coordinator]
+    name_template: "coordinator_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+
+# Single checksums.txt covering every archive, consumed by `northrou update`.
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot"
+
+changelog:
+  sort: asc
+  filters:
+    exclude: ["^docs:", "^test:", "^chore:"]
+
+release:
+  github:
+    owner: rhymeswithlimo
+    name: northrou
+  draft: false
+  prerelease: auto

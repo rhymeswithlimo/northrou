@@ -1,0 +1,44 @@
+# Northrou for homelab / NAS users.
+#
+#   docker compose up -d
+#   # then open http://localhost:8674 to run setup
+#
+# Point the volume mounts below at your own media folders (read-only), then set
+# those paths in the setup wizard (inside the container they appear under /media).
+services:
+  northrou:
+    build: .
+    # Or use a published image once releases are cut:
+    # image: ghcr.io/rhymeswithlimo/northrou:latest
+    container_name: northrou
+    restart: unless-stopped
+    ports:
+      - "8674:8674"
+    volumes:
+      - ./config:/config
+      - ./data:/data
+      # Mount your libraries read-only; reference them as /media/... in setup.
+      - /path/to/Movies:/media/Movies:ro
+      - /path/to/TV:/media/TV:ro
+    # For GPU transcoding (NVIDIA), uncomment and install the NVIDIA container toolkit:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    # For Intel Quick Sync / VA-API, expose the render node:
+    # devices:
+    #   - /dev/dri:/dev/dri
+
+  # Optional: self-host the remote-access coordination server. Most users rely
+  # on the public coordinator instead and can leave this commented out.
+  # coordinator:
+  #   build:
+  #     context: .
+  #     dockerfile: coordination/Dockerfile
+  #   container_name: northrou-coordinator
+  #   restart: unless-stopped
+  #   ports:
+  #     - "9000:9000"

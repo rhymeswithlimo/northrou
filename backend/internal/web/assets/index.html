@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Northrou Setup</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 15px/1.5 system-ui, sans-serif; max-width: 560px; margin: 6vh auto; padding: 0 1rem; }
+  h1 { font-size: 1.6rem; margin-bottom: .25rem; }
+  .sub { opacity: .7; margin-top: 0; }
+  label { display: block; margin: 1rem 0 .25rem; font-weight: 600; }
+  input { width: 100%; padding: .55rem .6rem; border-radius: 8px; border: 1px solid #8888; background: transparent; color: inherit; }
+  button { margin-top: 1.5rem; padding: .6rem 1.1rem; border: 0; border-radius: 8px; background: #4f46e5; color: #fff; font-weight: 600; cursor: pointer; }
+  .hint { font-size: .85rem; opacity: .6; margin-top: .2rem; }
+  .ok { padding: 1rem; border-radius: 10px; background: #16a34a22; border: 1px solid #16a34a55; }
+  .err { color: #dc2626; margin-top: 1rem; min-height: 1.2em; }
+  code { background: #8882; padding: .1rem .3rem; border-radius: 4px; }
+</style>
+</head>
+<body>
+  <h1>Welcome to Northrou</h1>
+  <p class="sub">Let's set up your media server. This runs entirely on your machine.</p>
+
+  <div id="form">
+    <label>Admin username</label>
+    <input id="username" autocomplete="username" />
+    <label>Password</label>
+    <input id="password" type="password" autocomplete="new-password" />
+    <p class="hint">At least 8 characters.</p>
+
+    <label>Movie folders</label>
+    <input id="movies" placeholder="/media/Movies" />
+    <p class="hint">Comma-separate multiple folders.</p>
+
+    <label>TV show folders</label>
+    <input id="shows" placeholder="/media/TV" />
+
+    <label>TMDB API key</label>
+    <input id="tmdb" placeholder="Optional, needed to fetch posters & metadata" />
+
+    <button id="go">Create account &amp; finish</button>
+    <div class="err" id="err"></div>
+  </div>
+
+  <div id="done" class="ok" style="display:none">
+    <h2>All set! 🎬</h2>
+    <p>Your remote connection code is <code id="code"></code>.</p>
+    <p>Share it with your devices to stream from anywhere.</p>
+  </div>
+
+<script>
+const $ = id => document.getElementById(id);
+const list = v => v.split(',').map(s => s.trim()).filter(Boolean);
+
+async function checkStatus() {
+  try {
+    const r = await fetch('/api/setup/status');
+    const j = await r.json();
+    if (!j.needs_setup) {
+      $('form').innerHTML = '<p>Setup is already complete. You can close this page.</p>';
+    }
+  } catch (e) { /* server may still be starting */ }
+}
+
+$('go').onclick = async () => {
+  $('err').textContent = '';
+  const body = {
+    username: $('username').value,
+    password: $('password').value,
+    movie_dirs: list($('movies').value),
+    show_dirs: list($('shows').value),
+    tmdb_api_key: $('tmdb').value.trim(),
+    enable_remote: true,
+  };
+  try {
+    const r = await fetch('/api/setup/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const j = await r.json();
+    if (!r.ok) { $('err').textContent = j.error || 'Setup failed'; return; }
+    $('form').style.display = 'none';
+    $('done').style.display = 'block';
+    $('code').textContent = j.connection_code;
+  } catch (e) {
+    $('err').textContent = 'Could not reach the server.';
+  }
+};
+
+checkStatus();
+</script>
+</body>
+</html>

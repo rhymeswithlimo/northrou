@@ -1,0 +1,39 @@
+Northrou
+Copyright (c) 2026, Kimo Kigen (Northrou)
+
+This product is licensed under the BSD 3-Clause License (see LICENSE).
+
+================================================================================
+Branding
+================================================================================
+The "Northrou" name, logos, wordmarks, and brand assets (including anything
+under branding/) are NOT covered by the BSD 3-Clause grant and may not be used
+to endorse or promote derived or third-party products without specific prior
+written permission (LICENSE, condition 3). You may build, run, fork, and
+redistribute the software; you may not ship a derivative under the Northrou name
+or branding.
+
+================================================================================
+Third-party components
+================================================================================
+Northrou relies on the following components, each under its own license:
+
+- FFmpeg / ffprobe, downloaded to the data directory at runtime (not bundled
+  in this repository). Licensed under the GNU GPL/LGPL and the licenses of its
+  own third-party components. https://ffmpeg.org/legal.html
+
+- Tesfseract OCR, optional; used only for image-based (PGS) subtitle OCR when
+  present on the system. Apache License 2.0.
+  https://github.com/tesseract-ocr/tesseract
+
+- Go modules used by this project are governed by their respective upstream
+  licenses. See the module list and
+  license texts via `go mod download` / `go-licenses`, or the go.mod files in
+  backend/ and coordination/.
+
+================================================================================
+Metadata
+================================================================================
+Movie and TV metadata and images are provided by The Movie Database (TMDB).
+This product uses the TMDB API but is not endorsed or certified by TMDB.
+Users supply their own TMDB API key.

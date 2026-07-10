@@ -1,0 +1,28 @@
+# Temporary:
+README.md
+
+# Build output
+/dist/
+/bin/
+*.exe
+northrou
+coordinator
+
+# Local dev data / config
+*.db
+*.db-shm
+*.db-wal
+/data/
+*.local.toml
+
+# OS cruft
+.DS_Store
+
+# Managed runtime downloads (ffmpeg, tesseract)
+/backend/internal/ffmpeg/testdata/bin/
+
+# Editor
+.idea/
+.vscode/
+
+CLAUDE.md
