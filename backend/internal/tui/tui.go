@@ -22,6 +22,12 @@ const (
 	viewDashboard
 )
 
+// login sub-steps: enter the account email, then the emailed pin.
+const (
+	stepEmail = iota
+	stepPin
+)
+
 var tabs = []string{"Streams", "Hardware", "Library"}
 
 type model struct {
@@ -30,10 +36,10 @@ type model struct {
 	state  view
 
 	// login
-	inputs   []textinput.Model
-	focus    int
-	loginErr string
-	loggingIn bool
+	inputs    []textinput.Model
+	loginStep int
+	loginErr  string
+	busy      bool
 
 	// dashboard
 	tab        int
@@ -44,6 +50,7 @@ type model struct {
 }
 
 // messages
+type pinRequestedMsg struct{ err error }
 type loginResultMsg struct{ err error }
 type dataMsg struct{ data dashboardData }
 type tickMsg time.Time
@@ -57,23 +64,23 @@ func Run(base string) error {
 }
 
 func newModel(base string) model {
-	user := textinput.New()
-	user.Placeholder = "admin username"
-	user.Focus()
-	user.CharLimit = 64
-	user.Prompt = "› "
+	emailIn := textinput.New()
+	emailIn.Placeholder = "you@example.com"
+	emailIn.Focus()
+	emailIn.CharLimit = 254
+	emailIn.Prompt = "› "
 
-	pass := textinput.New()
-	pass.Placeholder = "password"
-	pass.EchoMode = textinput.EchoPassword
-	pass.CharLimit = 128
-	pass.Prompt = "› "
+	pinIn := textinput.New()
+	pinIn.Placeholder = "6-digit code"
+	pinIn.CharLimit = 6
+	pinIn.Prompt = "› "
 
 	return model{
-		client: newClient(base),
-		addr:   base,
-		state:  viewLogin,
-		inputs: []textinput.Model{user, pass},
+		client:    newClient(base),
+		addr:      base,
+		state:     viewLogin,
+		loginStep: stepEmail,
+		inputs:    []textinput.Model{emailIn, pinIn},
 	}
 }
 
@@ -95,8 +102,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m.updateDashboard(msg)
 
+	case pinRequestedMsg:
+		m.busy = false
+		if msg.err != nil {
+			m.loginErr = msg.err.Error()
+			return m, nil
+		}
+		// Advance to the pin entry step.
+		m.loginStep = stepPin
+		m.loginErr = ""
+		m.inputs[stepEmail].Blur()
+		m.inputs[stepPin].Focus()
+		return m, textinput.Blink
+
 	case loginResultMsg:
-		m.loggingIn = false
+		m.busy = false
 		if msg.err != nil {
 			m.loginErr = msg.err.Error()
 			return m, nil
@@ -116,10 +136,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Delegate to focused text input on the login screen.
+	// Delegate to the active login input.
 	if m.state == viewLogin {
 		var cmd tea.Cmd
-		m.inputs[m.focus], cmd = m.inputs[m.focus].Update(msg)
+		m.inputs[m.loginStep], cmd = m.inputs[m.loginStep].Update(msg)
 		return m, cmd
 	}
 	return m, nil
@@ -127,35 +147,32 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) updateLogin(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "tab", "down":
-		m.focus = (m.focus + 1) % len(m.inputs)
-		m.applyFocus()
-		return m, textinput.Blink
-	case "shift+tab", "up":
-		m.focus = (m.focus - 1 + len(m.inputs)) % len(m.inputs)
-		m.applyFocus()
-		return m, textinput.Blink
 	case "enter":
-		if m.loggingIn {
+		if m.busy {
 			return m, nil
 		}
-		m.loggingIn = true
+		m.busy = true
 		m.loginErr = ""
-		return m, m.loginCmd(m.inputs[0].Value(), m.inputs[1].Value())
-	}
-	var cmd tea.Cmd
-	m.inputs[m.focus], cmd = m.inputs[m.focus].Update(msg)
-	return m, cmd
-}
-
-func (m *model) applyFocus() {
-	for i := range m.inputs {
-		if i == m.focus {
-			m.inputs[i].Focus()
-		} else {
-			m.inputs[i].Blur()
+		if m.loginStep == stepEmail {
+			return m, m.requestPinCmd(strings.TrimSpace(m.inputs[stepEmail].Value()))
+		}
+		return m, m.verifyPinCmd(
+			strings.TrimSpace(m.inputs[stepEmail].Value()),
+			strings.TrimSpace(m.inputs[stepPin].Value()))
+	case "esc":
+		// Back to email entry to correct a typo or resend.
+		if m.loginStep == stepPin {
+			m.loginStep = stepEmail
+			m.loginErr = ""
+			m.inputs[stepPin].Blur()
+			m.inputs[stepPin].SetValue("")
+			m.inputs[stepEmail].Focus()
+			return m, textinput.Blink
 		}
 	}
+	var cmd tea.Cmd
+	m.inputs[m.loginStep], cmd = m.inputs[m.loginStep].Update(msg)
+	return m, cmd
 }
 
 func (m model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -174,12 +191,21 @@ func (m model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // commands
 
-func (m model) loginCmd(user, pass string) tea.Cmd {
+func (m model) requestPinCmd(email string) tea.Cmd {
 	c := m.client
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
 		defer cancel()
-		return loginResultMsg{err: c.login(ctx, user, pass)}
+		return pinRequestedMsg{err: c.requestPin(ctx, email)}
+	}
+}
+
+func (m model) verifyPinCmd(email, pin string) tea.Cmd {
+	c := m.client
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+		defer cancel()
+		return loginResultMsg{err: c.verifyPin(ctx, email, pin)}
 	}
 }
 
@@ -221,15 +247,28 @@ func (m model) viewLogin() string {
 	var b strings.Builder
 	b.WriteString(titleStyle.Render("Northrou Admin") + "\n")
 	b.WriteString(subtleStyle.Render("Connecting to "+m.addr) + "\n\n")
-	b.WriteString("Username\n" + m.inputs[0].View() + "\n\n")
-	b.WriteString("Password\n" + m.inputs[1].View() + "\n\n")
-	if m.loggingIn {
-		b.WriteString(subtleStyle.Render("Signing in…") + "\n")
+
+	if m.loginStep == stepEmail {
+		b.WriteString("Email\n" + m.inputs[stepEmail].View() + "\n\n")
+		if m.busy {
+			b.WriteString(subtleStyle.Render("Sending code…") + "\n")
+		}
+	} else {
+		b.WriteString(subtleStyle.Render("Enter the code sent to "+m.inputs[stepEmail].Value()) + "\n\n")
+		b.WriteString("Sign-in code\n" + m.inputs[stepPin].View() + "\n\n")
+		if m.busy {
+			b.WriteString(subtleStyle.Render("Signing in…") + "\n")
+		}
 	}
+
 	if m.loginErr != "" {
 		b.WriteString(lipgloss.NewStyle().Foreground(warn).Render(m.loginErr) + "\n")
 	}
-	b.WriteString(subtleStyle.Render("\ntab: switch field • enter: sign in • ctrl+c: quit"))
+	if m.loginStep == stepEmail {
+		b.WriteString(subtleStyle.Render("\nenter: email me a code • ctrl+c: quit"))
+	} else {
+		b.WriteString(subtleStyle.Render("\nenter: sign in • esc: change email • ctrl+c: quit"))
+	}
 	return boxStyle.Render(b.String())
 }
 

@@ -4,7 +4,7 @@ Northrou is a monorepo with two Go modules plus a separately-developed frontend.
 
 ```
 backend/       server binary  (github.com/rhymeswithlimo/northrou/backend)
-coordination/  signaling relay (github.com/rhymeswithlimo/northrou/coordination)
+coordination/  signaling relay + pin-delivery relay (github.com/rhymeswithlimo/northrou/coordination)
 frontend/      Tauri client (added separately)
 ```
 
@@ -18,7 +18,8 @@ internal/
   config                TOML config, defaults, OS-appropriate paths
   db                    SQLite (pure-Go modernc), goose migrations, query layer
   model                 domain types
-  auth                  JWT access + rotating refresh tokens, bcrypt, middleware
+  auth                  passwordless email pins, JWT access + rotating refresh tokens, middleware
+  email                 SMTP delivery of one-time sign-in pins (net/smtp, pure-Go)
   server                chi router, middleware, graceful shutdown
   api                   HTTP handlers (auth, library, stream, subtitles, home, admin)
   ffmpeg                locate/download managed static ffmpeg + ffprobe
@@ -80,6 +81,24 @@ and TV shows. There is no onboarding quiz.
 A tiny, stateless WebSocket relay. Home servers register by connection code;
 clients request a server by that code; the broker relays only WebRTC signaling
 (SDP + ICE). **It never sees media.**
+
+## Pin relay (`coordination/cmd/relay`)
+
+The only other piece of infrastructure Northrou operates centrally, and a
+separate binary from the coordinator (the coordinator stays stateless; the relay
+holds in-memory rate-limit counters). Home servers keep accounts and pins
+entirely local and call `POST /v1/pin/send` on the relay only to deliver the pin
+email, so a household never has to run its own SMTP. It is on by default
+(`config.email.relay_url`), overridable with a household's own SMTP.
+
+The relay has no account list and cannot distinguish a real address from a
+fabricated one, so it is protected by input validation and rate limiting rather
+than authentication. The **per-recipient limit is the load-bearing control**: it
+stops the relay from being used to spam a third party's inbox with sign-in
+codes. Per-server and global limits protect the operator's cost and sender
+reputation. Mail is readable in transit like any email, so the relay is a
+trusted delivery party by nature; privacy-sensitive households can run their own
+SMTP or their own relay. It **never sees accounts, library, or media.**
 
 ## Remote access data flow
 

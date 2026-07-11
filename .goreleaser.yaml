@@ -1,6 +1,7 @@
 # GoReleaser configuration for Northrou.
 # Builds the server binary for all six supported targets plus the coordination
-# server, produces checksummed archives, and cuts a GitHub release.
+# server and the pin-delivery relay, produces checksummed archives, and cuts a
+# GitHub release.
 #
 # Usage:
 #   goreleaser release --snapshot --clean   # local dry run
@@ -46,6 +47,15 @@ builds:
     goos: [linux]
     goarch: [amd64, arm64]
 
+  - id: relay
+    dir: coordination
+    main: ./cmd/relay
+    binary: relay
+    env:
+      - CGO_ENABLED=0
+    goos: [linux]
+    goarch: [amd64, arm64]
+
 archives:
   - id: northrou
     ids: [northrou]
@@ -63,6 +73,11 @@ archives:
   - id: coordinator
     ids: [coordinator]
     name_template: "coordinator_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+
+  - id: relay
+    ids: [relay]
+    name_template: "relay_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     formats: [tar.gz]
 
 # Single checksums.txt covering every archive, consumed by `northrou update`.

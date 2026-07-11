@@ -18,7 +18,7 @@ func newTestEngine(t *testing.T) (*Engine, *db.DB, int64) {
 		t.Fatalf("open db: %v", err)
 	}
 	t.Cleanup(func() { database.Close() })
-	uid, err := database.CreateUser(context.Background(), "user", "hash", true)
+	uid, err := database.CreateUser(context.Background(), "user@example.com", true)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -18,6 +18,7 @@ import (
 	"github.com/rhymeswithlimo/northrou/backend/internal/buildinfo"
 	"github.com/rhymeswithlimo/northrou/backend/internal/config"
 	"github.com/rhymeswithlimo/northrou/backend/internal/db"
+	"github.com/rhymeswithlimo/northrou/backend/internal/email"
 	"github.com/rhymeswithlimo/northrou/backend/internal/ffmpeg"
 	"github.com/rhymeswithlimo/northrou/backend/internal/mediainfo"
 	"github.com/rhymeswithlimo/northrou/backend/internal/metadata"
@@ -65,7 +66,7 @@ func New(configPath string) (*App, error) {
 		database.Close()
 		return nil, fmt.Errorf("auth secret: %w", err)
 	}
-	authSvc := auth.NewService(database, secret)
+	authSvc := auth.NewService(database, secret, email.New(cfg))
 	ffm := ffmpeg.NewManager(cfg.Server.DataDir, cfg.Transcode.PreferSystemFFmpeg)
 
 	tmdb := metadata.NewClient(cfg.TMDB.APIKey, cfg.TMDB.Language)

@@ -23,11 +23,9 @@
   <p class="sub">Let's set up your media server. This runs entirely on your machine.</p>
 
   <div id="form">
-    <label>Admin username</label>
-    <input id="username" autocomplete="username" />
-    <label>Password</label>
-    <input id="password" type="password" autocomplete="new-password" />
-    <p class="hint">At least 8 characters.</p>
+    <label>Admin email</label>
+    <input id="email" type="email" autocomplete="email" placeholder="you@example.com" />
+    <p class="hint">You sign in with a one-time code sent to this address. No password.</p>
 
     <label>Movie folders</label>
     <input id="movies" placeholder="/media/Movies" />
@@ -38,6 +36,22 @@
 
     <label>TMDB API key</label>
     <input id="tmdb" placeholder="Optional, needed to fetch posters & metadata" />
+
+    <details style="margin-top:1.25rem">
+      <summary style="cursor:pointer;font-weight:600">Email delivery (SMTP) &mdash; optional</summary>
+      <p class="hint">Needed to email your sign-in codes. If you skip this, codes are
+      written to the server log instead (fine for a single machine you control).</p>
+      <label>SMTP host</label>
+      <input id="smtp_host" placeholder="smtp.example.com" />
+      <label>SMTP port</label>
+      <input id="smtp_port" placeholder="587" />
+      <label>SMTP username</label>
+      <input id="smtp_username" autocomplete="off" />
+      <label>SMTP password</label>
+      <input id="smtp_password" type="password" autocomplete="new-password" />
+      <label>From address</label>
+      <input id="from_address" placeholder="Defaults to the SMTP username" />
+    </details>
 
     <button id="go">Create account &amp; finish</button>
     <div class="err" id="err"></div>
@@ -66,12 +80,16 @@ async function checkStatus() {
 $('go').onclick = async () => {
   $('err').textContent = '';
   const body = {
-    username: $('username').value,
-    password: $('password').value,
+    email: $('email').value.trim(),
     movie_dirs: list($('movies').value),
     show_dirs: list($('shows').value),
     tmdb_api_key: $('tmdb').value.trim(),
     enable_remote: true,
+    smtp_host: $('smtp_host').value.trim(),
+    smtp_port: parseInt($('smtp_port').value, 10) || 0,
+    smtp_username: $('smtp_username').value.trim(),
+    smtp_password: $('smtp_password').value,
+    from_address: $('from_address').value.trim(),
   };
   try {
     const r = await fetch('/api/setup/complete', {

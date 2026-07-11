@@ -27,13 +27,13 @@ const (
 )
 
 // User is a household account. The first account created by the setup wizard
-// is the admin.
+// is the admin. Accounts sign in with a one-time pin emailed to Email; there is
+// no password.
 type User struct {
-	ID           int64
-	Username     string
-	PasswordHash string
-	IsAdmin      bool
-	CreatedAt    time.Time
+	ID        int64
+	Email     string
+	IsAdmin   bool
+	CreatedAt time.Time
 }
 
 // Library is a configured root folder of a given kind.

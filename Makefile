@@ -8,15 +8,18 @@ LDFLAGS := -X github.com/rhymeswithlimo/northrou/backend/internal/buildinfo.Vers
            -X github.com/rhymeswithlimo/northrou/backend/internal/buildinfo.Commit=$(COMMIT) \
            -X github.com/rhymeswithlimo/northrou/backend/internal/buildinfo.Date=$(DATE)
 
-.PHONY: build build-backend build-coord test vet tidy clean run
+.PHONY: build build-backend build-coord build-relay test vet tidy clean run
 
-build: build-backend build-coord
+build: build-backend build-coord build-relay
 
 build-backend:
 	cd backend && go build -ldflags "$(LDFLAGS)" -o ../bin/northrou ./cmd/northrou
 
 build-coord:
 	cd coordination && go build -o ../bin/coordinator ./cmd/coordinator
+
+build-relay:
+	cd coordination && go build -o ../bin/relay ./cmd/relay
 
 test:
 	cd backend && go test ./...

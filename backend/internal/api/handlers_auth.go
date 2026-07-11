@@ -2,21 +2,50 @@ package api
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/rhymeswithlimo/northrou/backend/internal/auth"
 	"github.com/rhymeswithlimo/northrou/backend/internal/db"
 )
 
-type loginRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
+type userDTO struct {
+	ID      int64  `json:"id"`
+	Email   string `json:"email"`
+	IsAdmin bool   `json:"is_admin"`
 }
 
-type userDTO struct {
-	ID       int64  `json:"id"`
-	Username string `json:"username"`
-	IsAdmin  bool   `json:"is_admin"`
+type requestPinRequest struct {
+	Email string `json:"email"`
+}
+
+// handleRequestPin emails a one-time sign-in pin to the address if an account
+// exists for it. It always returns 200 with the same body so callers cannot use
+// it to discover which emails are registered.
+func (a *API) handleRequestPin(w http.ResponseWriter, r *http.Request) {
+	var req requestPinRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if strings.TrimSpace(req.Email) == "" {
+		writeError(w, http.StatusBadRequest, "email required")
+		return
+	}
+	if err := a.Auth.RequestPin(r.Context(), req.Email); err != nil {
+		// Log server-side but do not surface: the response is identical whether
+		// or not the address exists.
+		slog.Warn("request pin failed", "err", err)
+	}
+	writeJSON(w, http.StatusOK, map[string]string{
+		"message": "If an account exists for that email, a sign-in code has been sent.",
+	})
+}
+
+type verifyPinRequest struct {
+	Email string `json:"email"`
+	Pin   string `json:"pin"`
 }
 
 type loginResponse struct {
@@ -26,23 +55,24 @@ type loginResponse struct {
 	ExpiresAt    string  `json:"expires_at"`
 }
 
-func (a *API) handleLogin(w http.ResponseWriter, r *http.Request) {
-	var req loginRequest
+// handleVerifyPin exchanges a valid emailed pin for a token pair.
+func (a *API) handleVerifyPin(w http.ResponseWriter, r *http.Request) {
+	var req verifyPinRequest
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	user, pair, err := a.Auth.Authenticate(r.Context(), req.Username, req.Password)
+	user, pair, err := a.Auth.VerifyPin(r.Context(), req.Email, strings.TrimSpace(req.Pin))
 	if err != nil {
 		if errors.Is(err, auth.ErrInvalidCredentials) {
-			writeError(w, http.StatusUnauthorized, "invalid username or password")
+			writeError(w, http.StatusUnauthorized, "invalid or expired code")
 			return
 		}
 		writeError(w, http.StatusInternalServerError, "login failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, loginResponse{
-		User:         userDTO{ID: user.ID, Username: user.Username, IsAdmin: user.IsAdmin},
+		User:         userDTO{ID: user.ID, Email: user.Email, IsAdmin: user.IsAdmin},
 		AccessToken:  pair.AccessToken,
 		RefreshToken: pair.RefreshToken,
 		ExpiresAt:    pair.ExpiresAt.UTC().Format(http.TimeFormat),
@@ -96,5 +126,5 @@ func (a *API) handleMe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "lookup failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, userDTO{ID: user.ID, Username: user.Username, IsAdmin: user.IsAdmin})
+	writeJSON(w, http.StatusOK, userDTO{ID: user.ID, Email: user.Email, IsAdmin: user.IsAdmin})
 }

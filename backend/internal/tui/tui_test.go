@@ -11,7 +11,11 @@ import (
 func mockServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/auth/login", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/auth/request-pin", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"message":"sent"}`))
+	})
+	mux.HandleFunc("/api/auth/verify-pin", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"access_token":"tok","user":{"is_admin":true}}`))
 	})
@@ -42,8 +46,11 @@ func mockServer(t *testing.T) *httptest.Server {
 func TestClientLoginAndFetch(t *testing.T) {
 	srv := mockServer(t)
 	c := newClient(srv.URL)
-	if err := c.login(context.Background(), "admin", "pw"); err != nil {
-		t.Fatalf("login: %v", err)
+	if err := c.requestPin(context.Background(), "admin@example.com"); err != nil {
+		t.Fatalf("request pin: %v", err)
+	}
+	if err := c.verifyPin(context.Background(), "admin@example.com", "123456"); err != nil {
+		t.Fatalf("verify pin: %v", err)
 	}
 	d := c.fetchAll(context.Background())
 	if d.err != nil {
@@ -62,14 +69,14 @@ func TestClientLoginAndFetch(t *testing.T) {
 
 func TestClientRejectsNonAdmin(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/auth/login", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/auth/verify-pin", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"access_token":"tok","user":{"is_admin":false}}`))
 	})
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
 	c := newClient(srv.URL)
-	if err := c.login(context.Background(), "user", "pw"); err == nil {
+	if err := c.verifyPin(context.Background(), "user@example.com", "123456"); err == nil {
 		t.Error("expected non-admin login to be rejected")
 	}
 }
@@ -96,7 +103,7 @@ func TestDashboardRenders(t *testing.T) {
 func TestLoginViewRenders(t *testing.T) {
 	m := newModel("http://localhost:8674")
 	out := m.View()
-	if !strings.Contains(out, "Northrou Admin") || !strings.Contains(out, "Password") {
+	if !strings.Contains(out, "Northrou Admin") || !strings.Contains(out, "Email") {
 		t.Errorf("login view missing expected content:\n%s", out)
 	}
 }

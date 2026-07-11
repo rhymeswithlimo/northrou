@@ -70,9 +70,10 @@ func (a *API) Mount(r chi.Router) {
 			r.Post("/complete", a.handleSetupComplete)
 		})
 
-		// Authentication.
+		// Authentication (passwordless: request a pin, then exchange it).
 		r.Route("/auth", func(r chi.Router) {
-			r.Post("/login", a.handleLogin)
+			r.Post("/request-pin", a.handleRequestPin)
+			r.Post("/verify-pin", a.handleVerifyPin)
 			r.Post("/refresh", a.handleRefresh)
 			r.Post("/logout", a.handleLogout)
 		})

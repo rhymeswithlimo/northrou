@@ -41,6 +41,19 @@ prefer_system_ffmpeg = false
 [tmdb]
 api_key = "…"           # required for posters and metadata
 language = "en-US"
+
+[email]
+# By default, sign-in pins are delivered through the hosted relay, so you do
+# not have to configure anything here. Override with your own SMTP if you want
+# mail to leave your own server.
+relay_url = "https://relay.northrou.app"  # hosted pin delivery (default)
+# relay_disabled = true          # turn the relay off (use SMTP below, or log fallback)
+# smtp_host = "smtp.example.com" # your own mail server; takes precedence over the relay
+smtp_port = 587                  # 587 STARTTLS (default), 465 implicit TLS, 25 plain
+smtp_username = "northrou@example.com"
+smtp_password = "…"
+from_address = "northrou@example.com"  # defaults to smtp_username
+from_name = "Northrou"
 ```
 
 ## Fields
@@ -89,6 +102,34 @@ names that don't parse as episodes on their own.
   Without it, files are scanned and probed but flagged as unmatched (no posters
   or rich metadata).
 - **language** - metadata language, e.g. `en-US`, `de-DE`.
+
+### `[email]`
+Login is passwordless: users receive a one-time pin by email. Delivery picks
+exactly one backend, in this order:
+
+1. **Your own SMTP**, if `smtp_host` is set.
+2. **The hosted relay** at `relay_url` (the default), otherwise.
+3. **The server log** (WARN level), if the relay is disabled and no SMTP is set.
+   Local, single-box use only. Never rely on this on a box others can reach.
+
+Out of the box you configure nothing here and pins go through the hosted relay.
+
+- **relay_url** - hosted pin-delivery service. Defaults to
+  `https://relay.northrou.app`. The relay delivers the email; it never sees or
+  stores your account, library, or media. Email is readable in transit by any
+  mail hop, so the relay operator can technically see codes and recipient
+  addresses. If that matters to you, run your own SMTP (below) or your own relay.
+- **relay_token** - optional bearer token, if your relay requires one.
+- **relay_disabled** - set `true` to never use the relay.
+- **smtp_host** - your own mail server hostname. When set, it takes precedence
+  over the relay and pins leave your server directly.
+- **smtp_port** - `587` for STARTTLS submission (default), `465` for implicit
+  TLS, `25` for plaintext relays.
+- **smtp_username** / **smtp_password** - credentials for the mail server. Leave
+  both empty for an unauthenticated relay.
+- **from_address** - the `From:` address on pin emails. Defaults to
+  `smtp_username`.
+- **from_name** - optional display name on the `From:` header.
 
 ## Environment overrides
 

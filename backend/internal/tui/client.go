@@ -20,10 +20,11 @@ func newClient(base string) *client {
 	return &client{base: base, http: &http.Client{Timeout: 5 * time.Second}}
 }
 
-// login authenticates and stores the access token.
-func (c *client) login(ctx context.Context, user, pass string) error {
-	body, _ := json.Marshal(map[string]string{"username": user, "password": pass})
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/api/auth/login", bytes.NewReader(body))
+// requestPin asks the server to email a one-time sign-in code to the address.
+// The endpoint intentionally returns 200 even for unknown emails.
+func (c *client) requestPin(ctx context.Context, email string) error {
+	body, _ := json.Marshal(map[string]string{"email": email})
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/api/auth/request-pin", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -31,7 +32,23 @@ func (c *client) login(ctx context.Context, user, pass string) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("login failed (HTTP %d)", resp.StatusCode)
+		return fmt.Errorf("could not request a code (HTTP %d)", resp.StatusCode)
+	}
+	return nil
+}
+
+// verifyPin exchanges an emailed pin for an access token and stores it.
+func (c *client) verifyPin(ctx context.Context, email, pin string) error {
+	body, _ := json.Marshal(map[string]string{"email": email, "pin": pin})
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/api/auth/verify-pin", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("invalid or expired code (HTTP %d)", resp.StatusCode)
 	}
 	var out struct {
 		AccessToken string `json:"access_token"`

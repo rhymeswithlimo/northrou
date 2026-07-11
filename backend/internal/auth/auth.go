@@ -1,24 +1,29 @@
-// Package auth provides password hashing, JWT access tokens, rotating refresh
-// tokens (stored hashed and revocable in the database), and HTTP middleware.
+// Package auth provides passwordless authentication: one-time sign-in pins
+// (emailed to the account address, stored hashed and single-use), JWT access
+// tokens, rotating refresh tokens (stored hashed and revocable in the
+// database), and HTTP middleware.
 package auth
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math/big"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/rhymeswithlimo/northrou/backend/internal/db"
 	"github.com/rhymeswithlimo/northrou/backend/internal/model"
-	"golang.org/x/crypto/bcrypt"
 )
 
 var (
-	// ErrInvalidCredentials is returned when a username/password check fails.
+	// ErrInvalidCredentials is returned when a pin check fails (wrong, expired,
+	// exhausted, or no such account).
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	// ErrInvalidToken is returned when an access/refresh token is invalid or
 	// expired.
@@ -28,20 +33,40 @@ var (
 const (
 	defaultAccessTTL  = 15 * time.Minute
 	defaultRefreshTTL = 30 * 24 * time.Hour
+
+	// pinLength is the number of decimal digits in a sign-in pin.
+	pinLength = 6
+	// pinTTL is how long a pin stays valid after issue.
+	pinTTL = 10 * time.Minute
+	// maxPinAttempts caps wrong guesses before a pin is invalidated, bounding
+	// online brute force against the small 6-digit space.
+	maxPinAttempts = 5
+	// pinCooldown throttles repeat pin requests for one address so a caller
+	// cannot flood the inbox.
+	pinCooldown = 60 * time.Second
 )
 
-// Service issues and verifies tokens against the database.
+// Mailer delivers a login pin to an email address.
+type Mailer interface {
+	SendPin(ctx context.Context, email, pin string) error
+}
+
+// Service issues and verifies tokens against the database and sends login pins.
 type Service struct {
 	db         *db.DB
+	mailer     Mailer
 	secret     []byte
 	accessTTL  time.Duration
 	refreshTTL time.Duration
 }
 
-// NewService constructs an auth Service with the given signing secret.
-func NewService(database *db.DB, secret []byte) *Service {
+// NewService constructs an auth Service with the given signing secret and
+// mailer. The secret also keys the HMAC used to hash stored pins, so a
+// database-only leak cannot brute-force them offline.
+func NewService(database *db.DB, secret []byte, mailer Mailer) *Service {
 	return &Service{
 		db:         database,
+		mailer:     mailer,
 		secret:     secret,
 		accessTTL:  defaultAccessTTL,
 		refreshTTL: defaultRefreshTTL,
@@ -62,31 +87,79 @@ type TokenPair struct {
 	ExpiresAt    time.Time `json:"expires_at"`
 }
 
-// HashPassword returns a bcrypt hash of the plaintext password.
-func HashPassword(plain string) (string, error) {
-	b, err := bcrypt.GenerateFromPassword([]byte(plain), bcrypt.DefaultCost)
-	return string(b), err
+// NormalizeEmail lower-cases and trims an address so lookups and storage agree
+// regardless of how the user typed it.
+func NormalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
 }
 
-// Authenticate verifies a username/password and issues a token pair.
-func (s *Service) Authenticate(ctx context.Context, username, password string) (*model.User, *TokenPair, error) {
-	user, err := s.db.GetUserByUsername(ctx, username)
+// RequestPin generates a fresh sign-in pin for the account with the given email
+// and sends it via the mailer. To avoid account enumeration it reports no error
+// when the address is unknown; the caller should respond identically in all
+// cases. A recently-issued pin (within pinCooldown) is left in place rather than
+// re-sent.
+func (s *Service) RequestPin(ctx context.Context, email string) error {
+	email = NormalizeEmail(email)
+	user, err := s.db.GetUserByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
-			// Run a dummy compare to reduce username-enumeration timing signal.
-			_ = bcrypt.CompareHashAndPassword([]byte("$2a$10$invalidinvalidinvalidinvalidinvalidinvalidinvalidinv"), []byte(password))
-			return nil, nil, ErrInvalidCredentials
+			return nil // silent: do not reveal whether the address exists
 		}
-		return nil, nil, err
+		return err
 	}
-	if bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)) != nil {
+
+	if existing, err := s.db.GetLoginPin(ctx, user.ID); err == nil {
+		if time.Since(existing.CreatedAt) < pinCooldown {
+			return nil // throttle: a pin was just sent
+		}
+	}
+
+	pin, err := randomPin()
+	if err != nil {
+		return err
+	}
+	if err := s.db.ReplaceLoginPin(ctx, user.ID, s.hashPin(pin), time.Now().Add(pinTTL)); err != nil {
+		return err
+	}
+	return s.mailer.SendPin(ctx, user.Email, pin)
+}
+
+// VerifyPin validates an emailed pin and, on success, consumes it and issues a
+// token pair. Wrong, expired, or exhausted pins return ErrInvalidCredentials.
+func (s *Service) VerifyPin(ctx context.Context, email, pin string) (*model.User, *TokenPair, error) {
+	email = NormalizeEmail(email)
+	user, err := s.db.GetUserByEmail(ctx, email)
+	if err != nil {
 		return nil, nil, ErrInvalidCredentials
+	}
+	stored, err := s.db.GetLoginPin(ctx, user.ID)
+	if err != nil {
+		return nil, nil, ErrInvalidCredentials
+	}
+	if time.Now().After(stored.ExpiresAt) || stored.Attempts >= maxPinAttempts {
+		_ = s.db.DeleteLoginPin(ctx, stored.ID)
+		return nil, nil, ErrInvalidCredentials
+	}
+	if !hmac.Equal([]byte(stored.Hash), []byte(s.hashPin(pin))) {
+		_ = s.db.IncrementPinAttempts(ctx, stored.ID)
+		return nil, nil, ErrInvalidCredentials
+	}
+	// Correct: consume the pin so it cannot be reused, then issue tokens.
+	if err := s.db.DeleteLoginPin(ctx, stored.ID); err != nil {
+		return nil, nil, err
 	}
 	pair, err := s.issue(ctx, user)
 	if err != nil {
 		return nil, nil, err
 	}
 	return user, pair, nil
+}
+
+// IssueForUser mints a token pair for an already-authenticated user. It exists
+// for first-run setup, which creates the admin account and logs it straight in
+// without a pin round-trip (there is no mailbox loop before mail is set up).
+func (s *Service) IssueForUser(ctx context.Context, user *model.User) (*TokenPair, error) {
+	return s.issue(ctx, user)
 }
 
 // issue mints an access JWT and a stored refresh token for the user.
@@ -156,6 +229,27 @@ func (s *Service) VerifyAccess(tokenString string) (*Claims, error) {
 		return nil, ErrInvalidToken
 	}
 	return claims, nil
+}
+
+// hashPin returns a keyed (HMAC-SHA256) hash of a pin. Keying with the server
+// secret means the pin cannot be recovered from a database leak alone.
+func (s *Service) hashPin(pin string) string {
+	mac := hmac.New(sha256.New, s.secret)
+	mac.Write([]byte(pin))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// randomPin returns a zero-padded decimal pin of pinLength digits.
+func randomPin() (string, error) {
+	max := big.NewInt(1)
+	for range pinLength {
+		max.Mul(max, big.NewInt(10))
+	}
+	n, err := rand.Int(rand.Reader, max)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%0*d", pinLength, n), nil
 }
 
 func randomToken() (string, error) {

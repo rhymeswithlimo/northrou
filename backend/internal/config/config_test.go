@@ -16,6 +16,17 @@ func TestDefaultsApplied(t *testing.T) {
 	if c.TMDB.Language != "en-US" {
 		t.Errorf("expected default language en-US, got %q", c.TMDB.Language)
 	}
+	// Zero-config login delivery must resolve to the hosted relay, so a fresh
+	// install can email sign-in pins without the household configuring anything.
+	if c.Email.RelayURL != DefaultRelayURL {
+		t.Errorf("expected default relay %q, got %q", DefaultRelayURL, c.Email.RelayURL)
+	}
+	if c.Email.RelayDisabled {
+		t.Error("relay should be enabled by default")
+	}
+	if c.Email.SMTPHost != "" {
+		t.Error("no SMTP should be configured by default")
+	}
 }
 
 func TestSaveLoadRoundTrip(t *testing.T) {
