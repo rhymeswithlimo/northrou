@@ -8,6 +8,22 @@ coordination/  signaling relay + pin-delivery relay (github.com/rhymeswithlimo/n
 frontend/      Tauri client (added separately)
 ```
 
+### Why Tauri (one web UI, all platforms)
+
+The frontend is **Tauri v2**, chosen because it targets desktop (Win/Mac/Linux),
+iOS, and Android from a single HTML/CSS/JS codebase. Capacitor was the other
+contender but covers mobile only, so it would have meant maintaining a second
+shell (Electron/Tauri) plus a second plugin system for desktop. One codebase
+wins for a small self-hosted project.
+
+The catch is the video player: an `<video>` tag won't deliver 4K HEVC / TrueHD
+Atmos with AirPlay/PiP/passthrough. The player is **native per platform**, wired
+in through Tauri plugins: AVPlayer (iOS/Swift), ExoPlayer/Media3
+(Android/Kotlin), and libmpv/libVLC on desktop (the OS WebView can't be trusted
+for HEVC direct play, especially WebKitGTK on Linux; fall back to the backend
+transcode cascade only when the client truly can't decode). Everything else
+(browse, search, details, settings) is the shared web UI.
+
 ## Backend (`backend/`)
 
 A single binary with several subcommands, assembled in `internal/app`.
