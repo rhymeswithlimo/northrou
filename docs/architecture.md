@@ -1,5 +1,9 @@
 # Architecture
 
+Northrou runs a server on the user's hardware; the hosted coordinator and pin
+relay provide remote connectivity by default, and the separately-developed client
+apps connect to it. This doc covers how those pieces fit.
+
 Northrou is a monorepo with two Go modules plus a separately-developed frontend.
 
 ```

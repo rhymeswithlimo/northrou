@@ -12,6 +12,9 @@ Override the location with `--config /path/to/config.toml` or the
 `NORTHROU_CONFIG_DIR` environment variable. The setup wizard writes this file
 for you; edit it directly for advanced tweaks and restart the service.
 
+This file is for the person running the server; the client apps need nothing
+from it.
+
 ## Example
 
 ```toml
@@ -80,8 +83,12 @@ names that don't parse as episodes on their own.
 ### `[remote]`
 - **enabled** - turn peer-to-peer remote access on/off. Local-network access
   works regardless, by connecting to the server's LAN address directly.
-- **coordination_url** - the signaling broker. Use the public one or your own.
-- **self_hosted_coordinator** - informational flag for self-hosters.
+- **coordination_url** - the signaling broker that lets remote devices find your
+  server. Defaults to the hosted `coord.northrou.app`, so remote access works out
+  of the box with nothing extra to run. Point it at your own coordinator only if
+  you want to self-host the signaling too (advanced).
+- **self_hosted_coordinator** - informational flag noting you run your own
+  coordinator instead of the hosted default.
 - **server_id** / **connection_code** - generated during setup. The connection
   code is what you share with remote devices.
 

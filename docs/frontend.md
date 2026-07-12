@@ -92,7 +92,7 @@ suspicion. The real risks for a self-hosted media client:
    see anything. Provide a demo server + account, or a built-in demo mode with
    sample content, in the App Review notes.
 2. **Media/piracy scrutiny** (Guideline 5.2, Intellectual Property). Frame it
-   exactly as Infuse/Plex/Jellyfin clients do: a player for the user's own
+   exactly as Infuse/Jellyfin clients do: a player for the user's own
    personal library on their own hardware. The app does not rip discs,
    circumvent DRM, or provide/index content. Keep that crisp in metadata.
 3. **In-App Purchase** (Guideline 3.1.1), only if monetized: any paid tier must
@@ -100,5 +100,5 @@ suspicion. The real risks for a self-hosted media client:
 4. **Entitlements / background modes.** Declare `UIBackgroundModes` and
    capabilities for background audio, PiP, and AirPlay correctly.
 
-Precedent: Infuse, Plex, VLC, nPlayer, and Swiftfin (Jellyfin) are all on the
+Precedent: Infuse, VLC, nPlayer, and Swiftfin (Jellyfin) are all on the
 App Store connecting to personal/self-hosted media. The path is well-worn.
