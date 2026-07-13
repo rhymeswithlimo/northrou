@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"net/http"
 	"net/mail"
+	"strings"
 
 	"github.com/rhymeswithlimo/northrou/backend/internal/auth"
 )
@@ -21,22 +22,23 @@ type setupStatusResponse struct {
 }
 
 // handleSetupStatus reports whether first-run setup is still required (no
-// accounts exist yet).
+// account exists yet).
 func (a *API) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
-	n, err := a.DB.CountUsers(r.Context())
+	exists, err := a.DB.AccountExists(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "status check failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, setupStatusResponse{NeedsSetup: n == 0})
+	writeJSON(w, http.StatusOK, setupStatusResponse{NeedsSetup: !exists})
 }
 
 type setupCompleteRequest struct {
-	Email      string   `json:"email"`
-	MovieDirs  []string `json:"movie_dirs"`
-	ShowDirs   []string `json:"show_dirs"`
-	TMDBAPIKey string   `json:"tmdb_api_key"`
-	EnableRemote bool   `json:"enable_remote"`
+	Email       string   `json:"email"`
+	ProfileName string   `json:"profile_name"` // first profile; optional
+	MovieDirs   []string `json:"movie_dirs"`
+	ShowDirs    []string `json:"show_dirs"`
+	TMDBAPIKey  string   `json:"tmdb_api_key"`
+	EnableRemote bool    `json:"enable_remote"`
 
 	// Optional SMTP settings so the admin can receive sign-in pins after setup.
 	// If omitted, pins are logged to the server log until email is configured.
@@ -49,23 +51,24 @@ type setupCompleteRequest struct {
 }
 
 type setupCompleteResponse struct {
-	User           userDTO `json:"user"`
-	ConnectionCode string  `json:"connection_code"`
-	AccessToken    string  `json:"access_token"`
-	RefreshToken   string  `json:"refresh_token"`
+	Account        accountDTO `json:"account"`
+	Profile        profileDTO `json:"profile"`
+	ConnectionCode string     `json:"connection_code"`
+	AccessToken    string     `json:"access_token"`
+	RefreshToken   string     `json:"refresh_token"`
 }
 
-// handleSetupComplete performs first-run setup: creates the admin account,
-// persists media folders and TMDB key to config, issues a remote connection
-// code, and returns a logged-in token pair. It is only allowed while no
-// accounts exist.
+// handleSetupComplete performs first-run setup: establishes the account email
+// and its first profile, persists media folders and TMDB key to config, issues
+// a remote connection code, and returns a signed-in token pair elevated for the
+// setup window. It is only allowed while no account exists.
 func (a *API) handleSetupComplete(w http.ResponseWriter, r *http.Request) {
-	n, err := a.DB.CountUsers(r.Context())
+	exists, err := a.DB.AccountExists(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "setup failed")
 		return
 	}
-	if n > 0 {
+	if exists {
 		writeError(w, http.StatusConflict, "setup already completed")
 		return
 	}
@@ -81,9 +84,17 @@ func (a *API) handleSetupComplete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	uid, err := a.DB.CreateUser(r.Context(), email, true)
+	if err := a.DB.SetAccountEmail(r.Context(), email); err != nil {
+		writeError(w, http.StatusInternalServerError, "create account failed")
+		return
+	}
+	name := strings.TrimSpace(req.ProfileName)
+	if name == "" {
+		name = defaultProfileName(email)
+	}
+	pid, err := a.DB.CreateProfile(r.Context(), name, "")
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "create user failed")
+		writeError(w, http.StatusInternalServerError, "create profile failed")
 		return
 	}
 
@@ -109,21 +120,31 @@ func (a *API) handleSetupComplete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, _ := a.DB.GetUser(r.Context(), uid)
-	// First run has no mailbox loop yet: log the new admin straight in by
-	// minting tokens directly instead of sending a pin.
-	pair, err := a.Auth.IssueForUser(r.Context(), user)
+	prof, _ := a.DB.GetProfile(r.Context(), pid)
+	// First run has no mailbox loop yet: sign the operator straight in with a
+	// setup-elevated session instead of sending a pin.
+	pair, err := a.Auth.IssueSetupSession(r.Context(), pid)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "auto-login failed")
 		return
 	}
 
 	writeJSON(w, http.StatusCreated, setupCompleteResponse{
-		User:           userDTO{ID: user.ID, Email: user.Email, IsAdmin: true},
+		Account:        accountDTO{Email: email},
+		Profile:        profileDTO{ID: prof.ID, Name: prof.Name, Avatar: prof.Avatar},
 		ConnectionCode: a.Cfg.Remote.ConnectionCode,
 		AccessToken:    pair.AccessToken,
 		RefreshToken:   pair.RefreshToken,
 	})
+}
+
+// defaultProfileName derives a friendly first-profile name from the account
+// email's local-part (e.g. "ada@example.com" -> "ada").
+func defaultProfileName(email string) string {
+	if i := strings.IndexByte(email, '@'); i > 0 {
+		return email[:i]
+	}
+	return "Me"
 }
 
 func randomHex(n int) string {

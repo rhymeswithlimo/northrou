@@ -38,7 +38,7 @@ internal/
   config                TOML config, defaults, OS-appropriate paths
   db                    SQLite (pure-Go modernc), goose migrations, query layer
   model                 domain types
-  auth                  passwordless email pins, JWT access + rotating refresh tokens, middleware
+  auth                  one account email + many profiles; passwordless email pins, per-profile JWT access + rotating refresh tokens, OTP-elevated admin capability, middleware
   email                 SMTP delivery of one-time sign-in pins (net/smtp, pure-Go)
   server                chi router, middleware, graceful shutdown
   api                   HTTP handlers (auth, library, stream, subtitles, home, admin)

@@ -26,13 +26,22 @@ const (
 	HDRHLG        HDRType = "hlg"
 )
 
-// User is a household account. The first account created by the setup wizard
-// is the admin. Accounts sign in with a one-time pin emailed to Email; there is
-// no password.
-type User struct {
-	ID        int64
+// Account is the household's single authentication root: one email address that
+// receives sign-in and admin-elevation pins. There is exactly one account per
+// server; it owns any number of Profiles.
+type Account struct {
 	Email     string
-	IsAdmin   bool
+	CreatedAt time.Time
+}
+
+// Profile is a viewer under the account, in the style of Netflix profiles. It
+// carries a display name and optional avatar and owns all per-viewer state
+// (watch history, taste profile, home rows). Profiles have no email and no
+// password; admin is not a profile attribute but an OTP-proven capability.
+type Profile struct {
+	ID        int64
+	Name      string
+	Avatar    string // optional; empty when unset
 	CreatedAt time.Time
 }
 

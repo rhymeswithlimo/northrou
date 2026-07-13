@@ -1,7 +1,10 @@
-// Package auth provides passwordless authentication: one-time sign-in pins
-// (emailed to the account address, stored hashed and single-use), JWT access
-// tokens, rotating refresh tokens (stored hashed and revocable in the
-// database), and HTTP middleware.
+// Package auth provides passwordless authentication for a single-account,
+// multi-profile household. Sign-in and admin elevation both use one-time pins
+// emailed to the account address (stored hashed and single-use). A successful
+// sign-in yields a JWT access token scoped to a chosen profile plus a rotating
+// refresh token that remembers the profile. Admin is not an identity: it is a
+// short-lived capability minted by verifying a separate emailed pin, carried as
+// the "adm" claim on an access token.
 package auth
 
 import (
@@ -23,7 +26,7 @@ import (
 
 var (
 	// ErrInvalidCredentials is returned when a pin check fails (wrong, expired,
-	// exhausted, or no such account).
+	// exhausted, or no account).
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	// ErrInvalidToken is returned when an access/refresh token is invalid or
 	// expired.
@@ -33,25 +36,28 @@ var (
 const (
 	defaultAccessTTL  = 15 * time.Minute
 	defaultRefreshTTL = 30 * 24 * time.Hour
+	// adminElevationTTL is how long an OTP-elevated access token can perform
+	// admin mutations before another pin is required. Deliberately short.
+	adminElevationTTL = 10 * time.Minute
 
-	// pinLength is the number of decimal digits in a sign-in pin.
+	// pinLength is the number of decimal digits in a one-time pin.
 	pinLength = 6
 	// pinTTL is how long a pin stays valid after issue.
 	pinTTL = 10 * time.Minute
 	// maxPinAttempts caps wrong guesses before a pin is invalidated, bounding
 	// online brute force against the small 6-digit space.
 	maxPinAttempts = 5
-	// pinCooldown throttles repeat pin requests for one address so a caller
-	// cannot flood the inbox.
+	// pinCooldown throttles repeat pin requests so a caller cannot flood the
+	// account inbox.
 	pinCooldown = 60 * time.Second
 )
 
-// Mailer delivers a login pin to an email address.
+// Mailer delivers a one-time pin to an email address.
 type Mailer interface {
 	SendPin(ctx context.Context, email, pin string) error
 }
 
-// Service issues and verifies tokens against the database and sends login pins.
+// Service issues and verifies tokens against the database and sends pins.
 type Service struct {
 	db         *db.DB
 	mailer     Mailer
@@ -73,14 +79,15 @@ func NewService(database *db.DB, secret []byte, mailer Mailer) *Service {
 	}
 }
 
-// Claims are the JWT claims carried in an access token.
+// Claims are the JWT claims carried in an access token. ProfileID scopes all
+// per-viewer data; Admin marks an OTP-elevated, short-lived session.
 type Claims struct {
-	UserID  int64 `json:"uid"`
-	IsAdmin bool  `json:"adm"`
+	ProfileID int64 `json:"pid"`
+	Admin     bool  `json:"adm"`
 	jwt.RegisteredClaims
 }
 
-// TokenPair is what a successful login/refresh returns.
+// TokenPair is what a successful login/refresh/profile-switch returns.
 type TokenPair struct {
 	AccessToken  string    `json:"access_token"`
 	RefreshToken string    `json:"refresh_token"`
@@ -88,127 +95,166 @@ type TokenPair struct {
 }
 
 // NormalizeEmail lower-cases and trims an address so lookups and storage agree
-// regardless of how the user typed it.
+// regardless of how it was typed.
 func NormalizeEmail(email string) string {
-	return strings.ToLower(strings.TrimSpace(email))
+	return normalize(email)
 }
 
-// RequestPin generates a fresh sign-in pin for the account with the given email
-// and sends it via the mailer. To avoid account enumeration it reports no error
-// when the address is unknown; the caller should respond identically in all
-// cases. A recently-issued pin (within pinCooldown) is left in place rather than
-// re-sent.
-func (s *Service) RequestPin(ctx context.Context, email string) error {
-	email = NormalizeEmail(email)
-	user, err := s.db.GetUserByEmail(ctx, email)
+// RequestLoginPin generates a sign-in pin for the account and emails it, if the
+// supplied address matches the account email. To avoid revealing whether an
+// address is the account's, it reports no error when the address does not match
+// or no account exists; callers should respond identically in all cases. A
+// recently-issued pin (within pinCooldown) is left in place rather than re-sent.
+func (s *Service) RequestLoginPin(ctx context.Context, email string) error {
+	acct, err := s.db.GetAccount(ctx)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
-			return nil // silent: do not reveal whether the address exists
+			return nil // silent: setup has not run
 		}
 		return err
 	}
-
-	if existing, err := s.db.GetLoginPin(ctx, user.ID); err == nil {
+	if normalize(email) != acct.Email {
+		return nil // silent: not the account address
+	}
+	if existing, err := s.db.GetPin(ctx, db.PinLogin); err == nil {
 		if time.Since(existing.CreatedAt) < pinCooldown {
-			return nil // throttle: a pin was just sent
+			return nil // throttle
 		}
 	}
-
 	pin, err := randomPin()
 	if err != nil {
 		return err
 	}
-	if err := s.db.ReplaceLoginPin(ctx, user.ID, s.hashPin(pin), time.Now().Add(pinTTL)); err != nil {
+	if err := s.db.ReplacePin(ctx, db.PinLogin, s.hashPin(pin), time.Now().Add(pinTTL)); err != nil {
 		return err
 	}
-	return s.mailer.SendPin(ctx, user.Email, pin)
+	return s.mailer.SendPin(ctx, acct.Email, pin)
 }
 
-// VerifyPin validates an emailed pin and, on success, consumes it and issues a
-// token pair. Wrong, expired, or exhausted pins return ErrInvalidCredentials.
-func (s *Service) VerifyPin(ctx context.Context, email, pin string) (*model.User, *TokenPair, error) {
-	email = NormalizeEmail(email)
-	user, err := s.db.GetUserByEmail(ctx, email)
+// VerifyLoginPin validates an emailed sign-in pin against the account and, on
+// success, returns the profile list, the default profile (first created), and a
+// token pair scoped to it. The client then shows the profile picker and may
+// call SelectProfile to switch. Wrong/expired/exhausted pins return
+// ErrInvalidCredentials.
+func (s *Service) VerifyLoginPin(ctx context.Context, email, pin string) ([]model.Profile, *model.Profile, *TokenPair, error) {
+	acct, err := s.db.GetAccount(ctx)
+	if err != nil || normalize(email) != acct.Email {
+		return nil, nil, nil, ErrInvalidCredentials
+	}
+	ok, err := s.consumePin(ctx, db.PinLogin, pin)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if !ok {
+		return nil, nil, nil, ErrInvalidCredentials
+	}
+	profiles, err := s.db.ListProfiles(ctx)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if len(profiles) == 0 {
+		return nil, nil, nil, ErrInvalidCredentials
+	}
+	selected := profiles[0]
+	pair, err := s.issuePair(ctx, selected.ID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return profiles, &selected, pair, nil
+}
+
+// SelectProfile switches the profile a device is signed in as. It validates the
+// device's refresh token, rotates it, and returns a fresh pair scoped to the
+// chosen profile. No pin is required: profiles are not a security boundary.
+func (s *Service) SelectProfile(ctx context.Context, rawRefresh string, profileID int64) (*model.Profile, *TokenPair, error) {
+	stored, err := s.db.GetRefreshToken(ctx, hashToken(rawRefresh))
+	if err != nil || stored.Revoked || time.Now().After(stored.ExpiresAt) {
+		return nil, nil, ErrInvalidToken
+	}
+	prof, err := s.db.GetProfile(ctx, profileID)
 	if err != nil {
 		return nil, nil, ErrInvalidCredentials
 	}
-	stored, err := s.db.GetLoginPin(ctx, user.ID)
-	if err != nil {
-		return nil, nil, ErrInvalidCredentials
-	}
-	if time.Now().After(stored.ExpiresAt) || stored.Attempts >= maxPinAttempts {
-		_ = s.db.DeleteLoginPin(ctx, stored.ID)
-		return nil, nil, ErrInvalidCredentials
-	}
-	if !hmac.Equal([]byte(stored.Hash), []byte(s.hashPin(pin))) {
-		_ = s.db.IncrementPinAttempts(ctx, stored.ID)
-		return nil, nil, ErrInvalidCredentials
-	}
-	// Correct: consume the pin so it cannot be reused, then issue tokens.
-	if err := s.db.DeleteLoginPin(ctx, stored.ID); err != nil {
+	if err := s.db.RevokeRefreshToken(ctx, hashToken(rawRefresh)); err != nil {
 		return nil, nil, err
 	}
-	pair, err := s.issue(ctx, user)
+	pair, err := s.issuePair(ctx, profileID)
 	if err != nil {
 		return nil, nil, err
 	}
-	return user, pair, nil
+	return prof, pair, nil
 }
 
-// IssueForUser mints a token pair for an already-authenticated user. It exists
-// for first-run setup, which creates the admin account and logs it straight in
-// without a pin round-trip (there is no mailbox loop before mail is set up).
-func (s *Service) IssueForUser(ctx context.Context, user *model.User) (*TokenPair, error) {
-	return s.issue(ctx, user)
-}
-
-// issue mints an access JWT and a stored refresh token for the user.
-func (s *Service) issue(ctx context.Context, user *model.User) (*TokenPair, error) {
-	now := time.Now()
-	exp := now.Add(s.accessTTL)
-	claims := Claims{
-		UserID:  user.ID,
-		IsAdmin: user.IsAdmin,
-		RegisteredClaims: jwt.RegisteredClaims{
-			Subject:   fmt.Sprint(user.ID),
-			IssuedAt:  jwt.NewNumericDate(now),
-			ExpiresAt: jwt.NewNumericDate(exp),
-		},
+// RequestAdminOTP emails a one-time admin-elevation code to the account address.
+// Anyone signed in may request it; possession of the emailed code is what grants
+// elevation. Throttled by pinCooldown.
+func (s *Service) RequestAdminOTP(ctx context.Context) error {
+	acct, err := s.db.GetAccount(ctx)
+	if err != nil {
+		return err
 	}
-	access, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(s.secret)
+	if existing, err := s.db.GetPin(ctx, db.PinAdmin); err == nil {
+		if time.Since(existing.CreatedAt) < pinCooldown {
+			return nil
+		}
+	}
+	pin, err := randomPin()
+	if err != nil {
+		return err
+	}
+	if err := s.db.ReplacePin(ctx, db.PinAdmin, s.hashPin(pin), time.Now().Add(pinTTL)); err != nil {
+		return err
+	}
+	return s.mailer.SendPin(ctx, acct.Email, pin)
+}
+
+// VerifyAdminOTP validates an admin-elevation code and, on success, mints a
+// short-lived access token carrying the admin capability, scoped to the calling
+// profile. There is no refresh token: elevation is deliberately ephemeral.
+func (s *Service) VerifyAdminOTP(ctx context.Context, profileID int64, otp string) (string, time.Time, error) {
+	ok, err := s.consumePin(ctx, db.PinAdmin, otp)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	if !ok {
+		return "", time.Time{}, ErrInvalidCredentials
+	}
+	return s.issueAccess(profileID, true, adminElevationTTL)
+}
+
+// IssueSetupSession mints a signed-in session for first-run setup: an access
+// token elevated for the setup window (so the operator can add media and scan
+// immediately) plus a normal refresh token. Elevation lapses when the access
+// token expires; later admin actions require an emailed OTP like anyone else.
+func (s *Service) IssueSetupSession(ctx context.Context, profileID int64) (*TokenPair, error) {
+	access, exp, err := s.issueAccess(profileID, true, s.accessTTL)
 	if err != nil {
 		return nil, err
 	}
-
-	refresh, err := randomToken()
+	refresh, err := s.newRefresh(ctx, profileID)
 	if err != nil {
-		return nil, err
-	}
-	if err := s.db.InsertRefreshToken(ctx, user.ID, hashToken(refresh), now.Add(s.refreshTTL)); err != nil {
 		return nil, err
 	}
 	return &TokenPair{AccessToken: access, RefreshToken: refresh, ExpiresAt: exp}, nil
 }
 
 // Refresh validates a refresh token, rotates it (revoking the old one), and
-// returns a fresh token pair.
+// returns a fresh pair scoped to the same profile the device was using.
 func (s *Service) Refresh(ctx context.Context, rawRefresh string) (*TokenPair, error) {
 	stored, err := s.db.GetRefreshToken(ctx, hashToken(rawRefresh))
 	if err != nil {
 		return nil, ErrInvalidToken
 	}
-	if stored.Revoked || time.Now().After(stored.ExpiresAt) {
+	if stored.Revoked || time.Now().After(stored.ExpiresAt) || stored.ProfileID == 0 {
 		return nil, ErrInvalidToken
 	}
-	user, err := s.db.GetUser(ctx, stored.UserID)
-	if err != nil {
-		return nil, ErrInvalidToken
+	if _, err := s.db.GetProfile(ctx, stored.ProfileID); err != nil {
+		return nil, ErrInvalidToken // profile deleted
 	}
-	// Rotate: revoke the presented token, issue a new pair.
 	if err := s.db.RevokeRefreshToken(ctx, hashToken(rawRefresh)); err != nil {
 		return nil, err
 	}
-	return s.issue(ctx, user)
+	return s.issuePair(ctx, stored.ProfileID)
 }
 
 // Logout revokes a refresh token.
@@ -229,6 +275,80 @@ func (s *Service) VerifyAccess(tokenString string) (*Claims, error) {
 		return nil, ErrInvalidToken
 	}
 	return claims, nil
+}
+
+// issuePair mints a normal (non-elevated) access token and a stored refresh
+// token, both scoped to profileID.
+func (s *Service) issuePair(ctx context.Context, profileID int64) (*TokenPair, error) {
+	access, exp, err := s.issueAccess(profileID, false, s.accessTTL)
+	if err != nil {
+		return nil, err
+	}
+	refresh, err := s.newRefresh(ctx, profileID)
+	if err != nil {
+		return nil, err
+	}
+	return &TokenPair{AccessToken: access, RefreshToken: refresh, ExpiresAt: exp}, nil
+}
+
+// issueAccess mints a signed access JWT scoped to a profile, optionally carrying
+// the admin capability, valid for ttl.
+func (s *Service) issueAccess(profileID int64, admin bool, ttl time.Duration) (string, time.Time, error) {
+	now := time.Now()
+	exp := now.Add(ttl)
+	claims := Claims{
+		ProfileID: profileID,
+		Admin:     admin,
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   fmt.Sprint(profileID),
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(exp),
+		},
+	}
+	access, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(s.secret)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	return access, exp, nil
+}
+
+// newRefresh creates and stores a refresh token bound to a profile, returning
+// the raw token.
+func (s *Service) newRefresh(ctx context.Context, profileID int64) (string, error) {
+	refresh, err := randomToken()
+	if err != nil {
+		return "", err
+	}
+	if err := s.db.InsertRefreshToken(ctx, profileID, hashToken(refresh), time.Now().Add(s.refreshTTL)); err != nil {
+		return "", err
+	}
+	return refresh, nil
+}
+
+// consumePin checks a submitted pin against the active pin for a purpose. On a
+// correct pin it deletes it and returns true. Wrong pins increment the attempt
+// counter; expired/exhausted pins are deleted. It never returns ErrInvalid; a
+// false result means "no valid pin", which callers map to ErrInvalidCredentials.
+func (s *Service) consumePin(ctx context.Context, purpose db.PinPurpose, pin string) (bool, error) {
+	stored, err := s.db.GetPin(ctx, purpose)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	if time.Now().After(stored.ExpiresAt) || stored.Attempts >= maxPinAttempts {
+		_ = s.db.DeletePin(ctx, purpose)
+		return false, nil
+	}
+	if !hmac.Equal([]byte(stored.Hash), []byte(s.hashPin(pin))) {
+		_ = s.db.IncrementPinAttempts(ctx, purpose)
+		return false, nil
+	}
+	if err := s.db.DeletePin(ctx, purpose); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // hashPin returns a keyed (HMAC-SHA256) hash of a pin. Keying with the server
@@ -263,4 +383,8 @@ func randomToken() (string, error) {
 func hashToken(raw string) string {
 	sum := sha256.Sum256([]byte(raw))
 	return hex.EncodeToString(sum[:])
+}
+
+func normalize(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
 }

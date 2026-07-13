@@ -32,13 +32,14 @@ func (s *Service) Middleware(next http.Handler) http.Handler {
 	})
 }
 
-// RequireAdmin wraps a handler so only admin accounts may access it. Must be
-// used inside Middleware.
+// RequireAdmin wraps a handler so only OTP-elevated sessions may access it. The
+// admin capability is carried as the "adm" claim, minted by verifying an emailed
+// admin pin (see VerifyAdminOTP) and short-lived. Must be used inside Middleware.
 func (s *Service) RequireAdmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c, ok := ClaimsFrom(r.Context())
-		if !ok || !c.IsAdmin {
-			http.Error(w, "admin required", http.StatusForbidden)
+		if !ok || !c.Admin {
+			http.Error(w, "admin elevation required", http.StatusForbidden)
 			return
 		}
 		next.ServeHTTP(w, r)

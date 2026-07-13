@@ -50,17 +50,13 @@ func (c *client) verifyPin(ctx context.Context, email, pin string) error {
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("invalid or expired code (HTTP %d)", resp.StatusCode)
 	}
+	// The dashboard is read-only, so a plain profile token suffices; admin
+	// elevation is only needed for mutations the TUI does not perform.
 	var out struct {
 		AccessToken string `json:"access_token"`
-		User        struct {
-			IsAdmin bool `json:"is_admin"`
-		} `json:"user"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return err
-	}
-	if !out.User.IsAdmin {
-		return fmt.Errorf("account is not an admin")
 	}
 	c.token = out.AccessToken
 	return nil

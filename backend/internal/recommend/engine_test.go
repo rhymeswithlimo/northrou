@@ -18,11 +18,11 @@ func newTestEngine(t *testing.T) (*Engine, *db.DB, int64) {
 		t.Fatalf("open db: %v", err)
 	}
 	t.Cleanup(func() { database.Close() })
-	uid, err := database.CreateUser(context.Background(), "user@example.com", true)
+	pid, err := database.CreateProfile(context.Background(), "Viewer", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(database), database, uid
+	return New(database), database, pid
 }
 
 var nextTMDB int64 = 1000

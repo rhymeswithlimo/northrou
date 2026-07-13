@@ -70,10 +70,12 @@ func (a *API) Mount(r chi.Router) {
 			r.Post("/complete", a.handleSetupComplete)
 		})
 
-		// Authentication (passwordless: request a pin, then exchange it).
+		// Authentication (passwordless: request a pin to the account email,
+		// exchange it, then pick a profile).
 		r.Route("/auth", func(r chi.Router) {
 			r.Post("/request-pin", a.handleRequestPin)
 			r.Post("/verify-pin", a.handleVerifyPin)
+			r.Post("/select-profile", a.handleSelectProfile)
 			r.Post("/refresh", a.handleRefresh)
 			r.Post("/logout", a.handleLogout)
 		})
@@ -82,6 +84,19 @@ func (a *API) Mount(r chi.Router) {
 		r.Group(func(r chi.Router) {
 			r.Use(a.Auth.Middleware)
 			r.Get("/me", a.handleMe)
+
+			// Profiles (any signed-in profile may manage the household set).
+			r.Get("/profiles", a.handleListProfiles)
+			r.Post("/profiles", a.handleCreateProfile)
+			r.Patch("/profiles/{id}", a.handleUpdateProfile)
+			r.Delete("/profiles/{id}", a.handleDeleteProfile)
+
+			// Admin elevation: request an emailed OTP, exchange it for a
+			// short-lived elevated access token used for admin mutations. These
+			// are plain-authenticated (any profile may elevate by proving
+			// control of the account email), not behind RequireAdmin.
+			r.Post("/admin/request-otp", a.handleRequestAdminOTP)
+			r.Post("/admin/verify-otp", a.handleVerifyAdminOTP)
 
 			// Library.
 			r.Get("/movies", a.handleListMovies)
@@ -106,14 +121,18 @@ func (a *API) Mount(r chi.Router) {
 			// Cached metadata images.
 			r.Handle("/images/*", a.imageHandler())
 
-			// Admin: scan control.
+			// Admin reads: dashboard/status. Any signed-in profile may view
+			// these; they expose no controls.
+			r.Get("/admin/scan", a.handleScanStatus)
+			r.Get("/admin/streams", a.handleAdminStreams)
+			r.Get("/admin/hardware", a.handleAdminHardware)
+			r.Get("/admin/update", a.handleUpdateCheck)
+
+			// Admin mutations: require an OTP-elevated session (the "adm"
+			// claim), i.e. the caller proved control of the account email.
 			r.Group(func(r chi.Router) {
 				r.Use(a.Auth.RequireAdmin)
 				r.Post("/admin/scan", a.handleStartScan)
-				r.Get("/admin/scan", a.handleScanStatus)
-				r.Get("/admin/streams", a.handleAdminStreams)
-				r.Get("/admin/hardware", a.handleAdminHardware)
-				r.Get("/admin/update", a.handleUpdateCheck)
 				r.Post("/admin/update", a.handleUpdateApply)
 			})
 			// stream / subtitles / home mount here in P3-P6.

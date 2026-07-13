@@ -17,7 +17,7 @@ func mockServer(t *testing.T) *httptest.Server {
 	})
 	mux.HandleFunc("/api/auth/verify-pin", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"access_token":"tok","user":{"is_admin":true}}`))
+		_, _ = w.Write([]byte(`{"access_token":"tok","profile":{"id":1,"name":"Owner"}}`))
 	})
 	mux.HandleFunc("/api/admin/streams", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer tok" {
@@ -64,20 +64,6 @@ func TestClientLoginAndFetch(t *testing.T) {
 	}
 	if d.movies != 3 || d.shows != 1 {
 		t.Errorf("expected 3 movies / 1 show, got %d/%d", d.movies, d.shows)
-	}
-}
-
-func TestClientRejectsNonAdmin(t *testing.T) {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/api/auth/verify-pin", func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"access_token":"tok","user":{"is_admin":false}}`))
-	})
-	srv := httptest.NewServer(mux)
-	defer srv.Close()
-
-	c := newClient(srv.URL)
-	if err := c.verifyPin(context.Background(), "user@example.com", "123456"); err == nil {
-		t.Error("expected non-admin login to be rejected")
 	}
 }
 

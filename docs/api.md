@@ -4,40 +4,83 @@ All endpoints are under `/api`. Responses are JSON. Authenticated endpoints
 require an `Authorization: Bearer <access_token>` header. This is the contract
 the frontend consumes.
 
+## Accounts, profiles, and admin
+
+There is **one account** per server: a single email address that is the
+authentication root. Under it live any number of **profiles** (Netflix-style
+viewers with a name and optional avatar); each profile has its own watch history
+and recommendations. **Admin is not a profile.** It is a short-lived capability
+proven by a one-time code emailed to the account address; anyone who can read
+that email can elevate.
+
 ## Auth
 
-Authentication is passwordless. A user submits their email, receives a one-time
-pin by email, and exchanges that pin for tokens. Access tokens are short-lived
-JWTs; refresh tokens are long-lived, rotating, and revocable.
+Authentication is passwordless. A device submits the account email, receives a
+one-time pin by email, and exchanges it for tokens scoped to a profile. Access
+tokens are short-lived JWTs; refresh tokens are long-lived, rotating, revocable,
+and remember which profile the device is using.
 
 | Method | Path | Body | Notes |
 |---|---|---|---|
-| POST | `/api/auth/request-pin` | `{email}` | Emails a one-time sign-in pin if the account exists. Always returns `200` with a generic message (no account enumeration). |
-| POST | `/api/auth/verify-pin` | `{email, pin}` | Exchanges a valid pin for `{user, access_token, refresh_token, expires_at}`. `401` on wrong/expired/exhausted pin. |
-| POST | `/api/auth/refresh` | `{refresh_token}` | Rotates and returns a new token pair |
+| POST | `/api/auth/request-pin` | `{email}` | Emails a one-time sign-in pin if `email` is the account address. Always returns `200` with a generic message (no enumeration). |
+| POST | `/api/auth/verify-pin` | `{email, pin}` | Exchanges a valid pin for `{profile, profiles[], access_token, refresh_token, expires_at}`. Tokens default to the first profile; `profiles[]` is the full list for the picker. `401` on wrong/expired/exhausted pin. |
+| POST | `/api/auth/select-profile` | `{refresh_token, profile_id}` | Switches the active profile. Rotates the refresh token and returns `{profile, access_token, refresh_token, expires_at}` scoped to `profile_id`. No pin required. `404` if the profile does not exist, `401` on a bad/rotated refresh token. |
+| POST | `/api/auth/refresh` | `{refresh_token}` | Rotates and returns a new token pair for the same profile |
 | POST | `/api/auth/logout` | `{refresh_token}` | Revokes the refresh token |
-| GET | `/api/me` | - | Current user (authenticated) |
+| GET | `/api/me` | - | `{account:{email}, profile, profiles[], admin}` for the current session |
+
+> **`admin` is not "may this profile administer".** Every profile may
+> administer (admin is gated on an emailed OTP, not identity), so the client
+> should show the Server Admin section to **all** profiles. `admin` is `true`
+> only while the current token is already OTP-elevated; use it to decide whether
+> to skip the OTP prompt, not whether to reveal the admin section at all.
 
 Pins are 6 digits, valid for 10 minutes, single-use, and limited to 5 wrong
-guesses before invalidation. Repeat pin requests for the same address within 60
-seconds reuse the outstanding pin instead of sending another. The `user` object
-is `{id, email, is_admin}`. Delivery goes through the hosted relay by default
-(no setup required), or a household's own SMTP if configured; failing both, the
-pin is logged for local single-box use. See [configuration](configuration.md).
+guesses before invalidation. Repeat requests within 60 seconds reuse the
+outstanding pin instead of sending another. A `profile` object is
+`{id, name, avatar?}`. Delivery goes through the hosted relay by default (no
+setup required), or a household's own SMTP if configured; failing both, the pin
+is logged for local single-box use. See [configuration](configuration.md).
+
+### Profiles
+
+Any signed-in profile may manage the household set (adding or removing a profile
+is not an admin action). Deleting a profile removes all of its watch history and
+recommendations.
+
+| Method | Path | Body | Notes |
+|---|---|---|---|
+| GET | `/api/profiles` | - | `{profiles[]}` |
+| POST | `/api/profiles` | `{name, avatar?}` | Create a profile → `201` with the profile |
+| PATCH | `/api/profiles/{id}` | `{name, avatar?}` | Rename / re-avatar → the updated profile |
+| DELETE | `/api/profiles/{id}` | - | `204`. `409` if it is the last profile (never leave zero). |
+
+### Admin elevation
+
+Admin mutations require an elevated access token. A signed-in profile requests a
+code (emailed to the account address), then exchanges it for a short-lived token
+carrying the admin capability. Elevation lasts 10 minutes; use the returned
+token as the bearer for admin mutation endpoints.
+
+| Method | Path | Body | Notes |
+|---|---|---|---|
+| POST | `/api/admin/request-otp` | - | Emails an admin code to the account address. Generic `200`. Any signed-in profile may call it. |
+| POST | `/api/admin/verify-otp` | `{otp}` | Exchanges a valid code for `{access_token, expires_at}` (elevated, ~10 min, scoped to the calling profile). `401` on a bad code. |
 
 ## First-run setup
 
-Only usable while no accounts exist.
+Only usable while no account exists.
 
 | Method | Path | Body |
 |---|---|---|
 | GET | `/api/setup/status` | → `{needs_setup}` |
-| POST | `/api/setup/complete` | `{email, movie_dirs, show_dirs, tmdb_api_key, enable_remote, smtp_host, smtp_port, smtp_username, smtp_password, from_address, from_name}` → account + connection code + token pair |
+| POST | `/api/setup/complete` | `{email, profile_name?, movie_dirs, show_dirs, tmdb_api_key, enable_remote, smtp_host, smtp_port, smtp_username, smtp_password, from_address, from_name}` → `{account, profile, connection_code, access_token, refresh_token}` |
 
-Setup creates the admin account and logs it straight in (it returns a token pair
-directly, since there is no mailbox loop before email is configured). The SMTP
-fields are optional; provide them so the admin can receive sign-in pins on
-subsequent logins.
+Setup establishes the account email and its first profile (named `profile_name`,
+or derived from the email local-part if omitted) and signs the operator straight
+in with a session **elevated for the setup window**, so they can add media and
+scan immediately without an email round-trip. The SMTP fields are optional;
+provide them so the account can receive pins on subsequent logins.
 
 ## Library
 
@@ -106,16 +149,21 @@ Acclaimed Films", "2000s Blockbusters", "Action Films", "American TV Shows",
 "Top-Rated TV Shows", "World Cinema", so a fresh install is immediately
 browsable. There is no onboarding quiz.
 
-## Admin (admin accounts only)
+## Admin
 
-| Method | Path | Notes |
-|---|---|---|
-| POST | `/api/admin/scan` | Start a library scan |
-| GET | `/api/admin/scan` | Scan progress |
-| GET | `/api/admin/streams` | Active streams (mode, codecs, backend, client) |
-| GET | `/api/admin/hardware` | Detected acceleration + estimated capacity |
-| GET | `/api/admin/update` | Check for a newer release |
-| POST | `/api/admin/update` | Download and install the latest release |
+Reads are available to any signed-in profile (they expose status, not controls),
+so a dashboard needs no elevation. **Mutations require an elevated token** from
+`/api/auth/admin/verify-otp` (see [Admin elevation](#admin-elevation)); without
+it they return `403 admin elevation required`.
+
+| Method | Path | Elevation | Notes |
+|---|---|---|---|
+| GET | `/api/admin/scan` | no | Scan progress |
+| GET | `/api/admin/streams` | no | Active streams (mode, codecs, backend, client) |
+| GET | `/api/admin/hardware` | no | Detected acceleration + estimated capacity |
+| GET | `/api/admin/update` | no | Check for a newer release |
+| POST | `/api/admin/scan` | **yes** | Start a library scan |
+| POST | `/api/admin/update` | **yes** | Download and install the latest release |
 
 ## Health
 

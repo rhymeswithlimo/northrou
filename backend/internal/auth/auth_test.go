@@ -36,102 +36,116 @@ func newTestService(t *testing.T) (*Service, *db.DB, *captureMailer) {
 	return svc, database, mailer
 }
 
-func TestRequestAndVerifyPin(t *testing.T) {
+// setupAccount establishes the singleton account and one profile, returning the
+// profile id. Mirrors what first-run setup does.
+func setupAccount(t *testing.T, database *db.DB, email, profile string) int64 {
+	t.Helper()
+	ctx := context.Background()
+	if err := database.SetAccountEmail(ctx, email); err != nil {
+		t.Fatalf("set account: %v", err)
+	}
+	id, err := database.CreateProfile(ctx, profile, "")
+	if err != nil {
+		t.Fatalf("create profile: %v", err)
+	}
+	return id
+}
+
+func TestRequestAndVerifyLoginPin(t *testing.T) {
 	svc, database, mailer := newTestService(t)
 	ctx := context.Background()
+	pid := setupAccount(t, database, "alice@example.com", "Alice")
 
-	if _, err := database.CreateUser(ctx, "alice@example.com", true); err != nil {
-		t.Fatal(err)
-	}
-
-	// Email is normalized on lookup, so a differently-cased request still works.
-	if err := svc.RequestPin(ctx, "Alice@Example.com"); err != nil {
+	// Email is normalized, so a differently-cased request still matches.
+	if err := svc.RequestLoginPin(ctx, "Alice@Example.com"); err != nil {
 		t.Fatalf("request pin: %v", err)
 	}
 	if mailer.calls != 1 || mailer.pin == "" {
 		t.Fatalf("expected a pin to be sent, got %+v", mailer)
 	}
 
-	user, pair, err := svc.VerifyPin(ctx, "alice@example.com", mailer.pin)
+	profiles, selected, pair, err := svc.VerifyLoginPin(ctx, "alice@example.com", mailer.pin)
 	if err != nil {
 		t.Fatalf("verify pin: %v", err)
 	}
-	if !user.IsAdmin {
-		t.Error("expected admin")
+	if len(profiles) != 1 || selected.ID != pid {
+		t.Fatalf("expected default profile %d, got %+v", pid, selected)
 	}
 
 	claims, err := svc.VerifyAccess(pair.AccessToken)
 	if err != nil {
 		t.Fatalf("verify access: %v", err)
 	}
-	if claims.UserID != user.ID || !claims.IsAdmin {
-		t.Errorf("unexpected claims: %+v", claims)
+	if claims.ProfileID != pid {
+		t.Errorf("claims profile = %d, want %d", claims.ProfileID, pid)
+	}
+	if claims.Admin {
+		t.Error("a login token must not be admin-elevated")
 	}
 
 	// A consumed pin cannot be reused.
-	if _, _, err := svc.VerifyPin(ctx, "alice@example.com", mailer.pin); err != ErrInvalidCredentials {
+	if _, _, _, err := svc.VerifyLoginPin(ctx, "alice@example.com", mailer.pin); err != ErrInvalidCredentials {
 		t.Errorf("expected consumed pin rejected, got %v", err)
 	}
 }
 
-func TestVerifyPinWrongAndUnknown(t *testing.T) {
+func TestVerifyLoginPinWrongAndWrongEmail(t *testing.T) {
 	svc, database, mailer := newTestService(t)
 	ctx := context.Background()
-	if _, err := database.CreateUser(ctx, "bob@example.com", false); err != nil {
-		t.Fatal(err)
-	}
-	if err := svc.RequestPin(ctx, "bob@example.com"); err != nil {
+	setupAccount(t, database, "bob@example.com", "Bob")
+	if err := svc.RequestLoginPin(ctx, "bob@example.com"); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, _, err := svc.VerifyPin(ctx, "bob@example.com", "000000"); err != ErrInvalidCredentials {
+	if _, _, _, err := svc.VerifyLoginPin(ctx, "bob@example.com", "000000"); err != ErrInvalidCredentials {
 		t.Errorf("expected wrong pin rejected, got %v", err)
 	}
 	// The correct pin is unaffected by an earlier wrong guess.
-	if _, _, err := svc.VerifyPin(ctx, "bob@example.com", mailer.pin); err != nil {
+	if _, _, _, err := svc.VerifyLoginPin(ctx, "bob@example.com", mailer.pin); err != nil {
 		t.Errorf("correct pin should verify, got %v", err)
 	}
 
-	// Unknown email must not reveal itself: request is silent, verify fails.
-	if err := svc.RequestPin(ctx, "ghost@example.com"); err != nil {
-		t.Errorf("request for unknown email should be silent, got %v", err)
+	// A non-account email must not reveal itself: request is silent...
+	before := mailer.calls
+	if err := svc.RequestLoginPin(ctx, "ghost@example.com"); err != nil {
+		t.Errorf("request for non-account email should be silent, got %v", err)
 	}
-	if _, _, err := svc.VerifyPin(ctx, "ghost@example.com", "123456"); err != ErrInvalidCredentials {
-		t.Errorf("expected unknown email rejected, got %v", err)
+	if mailer.calls != before {
+		t.Error("no pin should be sent for a non-account email")
+	}
+	// ...and verify fails.
+	if _, _, _, err := svc.VerifyLoginPin(ctx, "ghost@example.com", "123456"); err != ErrInvalidCredentials {
+		t.Errorf("expected non-account email rejected, got %v", err)
 	}
 }
 
 func TestPinAttemptCap(t *testing.T) {
 	svc, database, mailer := newTestService(t)
 	ctx := context.Background()
-	if _, err := database.CreateUser(ctx, "dave@example.com", false); err != nil {
-		t.Fatal(err)
-	}
-	if err := svc.RequestPin(ctx, "dave@example.com"); err != nil {
+	setupAccount(t, database, "dave@example.com", "Dave")
+	if err := svc.RequestLoginPin(ctx, "dave@example.com"); err != nil {
 		t.Fatal(err)
 	}
 
 	for i := range maxPinAttempts {
-		if _, _, err := svc.VerifyPin(ctx, "dave@example.com", "999999"); err != ErrInvalidCredentials {
+		if _, _, _, err := svc.VerifyLoginPin(ctx, "dave@example.com", "999999"); err != ErrInvalidCredentials {
 			t.Fatalf("attempt %d: expected rejection, got %v", i, err)
 		}
 	}
 	// After the cap, even the correct pin is refused (it was invalidated).
-	if _, _, err := svc.VerifyPin(ctx, "dave@example.com", mailer.pin); err != ErrInvalidCredentials {
+	if _, _, _, err := svc.VerifyLoginPin(ctx, "dave@example.com", mailer.pin); err != ErrInvalidCredentials {
 		t.Errorf("expected pin locked after attempt cap, got %v", err)
 	}
 }
 
-func TestRefreshRotation(t *testing.T) {
+func TestRefreshRotationKeepsProfile(t *testing.T) {
 	svc, database, mailer := newTestService(t)
 	ctx := context.Background()
-	if _, err := database.CreateUser(ctx, "carol@example.com", false); err != nil {
+	pid := setupAccount(t, database, "carol@example.com", "Carol")
+	if err := svc.RequestLoginPin(ctx, "carol@example.com"); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.RequestPin(ctx, "carol@example.com"); err != nil {
-		t.Fatal(err)
-	}
-	_, pair, err := svc.VerifyPin(ctx, "carol@example.com", mailer.pin)
+	_, _, pair, err := svc.VerifyLoginPin(ctx, "carol@example.com", mailer.pin)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,8 +157,81 @@ func TestRefreshRotation(t *testing.T) {
 	if newPair.RefreshToken == pair.RefreshToken {
 		t.Error("refresh token should rotate")
 	}
+	claims, err := svc.VerifyAccess(newPair.AccessToken)
+	if err != nil || claims.ProfileID != pid {
+		t.Errorf("refreshed token should keep profile %d, got %+v (%v)", pid, claims, err)
+	}
 	// Old refresh token must now be rejected.
 	if _, err := svc.Refresh(ctx, pair.RefreshToken); err != ErrInvalidToken {
 		t.Errorf("expected old token rejected, got %v", err)
+	}
+}
+
+func TestSelectProfileSwitches(t *testing.T) {
+	svc, database, mailer := newTestService(t)
+	ctx := context.Background()
+	setupAccount(t, database, "home@example.com", "Kira")
+	kid, err := database.CreateProfile(ctx, "Kids", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.RequestLoginPin(ctx, "home@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	_, selected, pair, err := svc.VerifyLoginPin(ctx, "home@example.com", mailer.pin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selected.Name != "Kira" {
+		t.Fatalf("default should be first profile, got %s", selected.Name)
+	}
+
+	prof, newPair, err := svc.SelectProfile(ctx, pair.RefreshToken, kid)
+	if err != nil {
+		t.Fatalf("select profile: %v", err)
+	}
+	if prof.ID != kid {
+		t.Errorf("switched to %d, want %d", prof.ID, kid)
+	}
+	claims, _ := svc.VerifyAccess(newPair.AccessToken)
+	if claims.ProfileID != kid {
+		t.Errorf("token profile = %d, want %d", claims.ProfileID, kid)
+	}
+	// The old refresh token was rotated away.
+	if _, _, err := svc.SelectProfile(ctx, pair.RefreshToken, kid); err != ErrInvalidToken {
+		t.Errorf("expected rotated refresh rejected, got %v", err)
+	}
+	// Switching to a nonexistent profile fails.
+	if _, _, err := svc.SelectProfile(ctx, newPair.RefreshToken, 9999); err != ErrInvalidCredentials {
+		t.Errorf("expected unknown profile rejected, got %v", err)
+	}
+}
+
+func TestAdminOTPElevation(t *testing.T) {
+	svc, database, mailer := newTestService(t)
+	ctx := context.Background()
+	pid := setupAccount(t, database, "owner@example.com", "Owner")
+
+	if err := svc.RequestAdminOTP(ctx); err != nil {
+		t.Fatalf("request admin otp: %v", err)
+	}
+	if mailer.pin == "" || mailer.email != "owner@example.com" {
+		t.Fatalf("admin otp not sent to account email: %+v", mailer)
+	}
+
+	// A wrong code does not elevate.
+	if _, _, err := svc.VerifyAdminOTP(ctx, pid, "000000"); err != ErrInvalidCredentials {
+		t.Errorf("expected wrong otp rejected, got %v", err)
+	}
+	token, _, err := svc.VerifyAdminOTP(ctx, pid, mailer.pin)
+	if err != nil {
+		t.Fatalf("verify admin otp: %v", err)
+	}
+	claims, err := svc.VerifyAccess(token)
+	if err != nil {
+		t.Fatalf("verify elevated token: %v", err)
+	}
+	if !claims.Admin || claims.ProfileID != pid {
+		t.Errorf("expected elevated token for profile %d, got %+v", pid, claims)
 	}
 }

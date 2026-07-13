@@ -10,7 +10,7 @@ import (
 // handleHome returns the personalized, rotated home-screen rows.
 func (a *API) handleHome(w http.ResponseWriter, r *http.Request) {
 	claims, _ := auth.ClaimsFrom(r.Context())
-	rows, err := a.Recommend.Home(r.Context(), claims.UserID)
+	rows, err := a.Recommend.Home(r.Context(), claims.ProfileID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "home generation failed")
 		return
@@ -39,7 +39,7 @@ func (a *API) handleWatch(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "movie_id required")
 		return
 	}
-	if err := a.Recommend.RecordWatch(r.Context(), claims.UserID, req.MovieID, req.Position, req.Duration); err != nil {
+	if err := a.Recommend.RecordWatch(r.Context(), claims.ProfileID, req.MovieID, req.Position, req.Duration); err != nil {
 		writeError(w, http.StatusInternalServerError, "record watch failed")
 		return
 	}
