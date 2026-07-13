@@ -44,16 +44,17 @@ is logged for local single-box use. See [configuration](configuration.md).
 
 ### Profiles
 
-Any signed-in profile may manage the household set (adding or removing a profile
-is not an admin action). Deleting a profile removes all of its watch history and
-recommendations.
+Any signed-in profile may list, add, or rename profiles. **Deleting** a profile
+is destructive (it removes all of that viewer's watch history and
+recommendations), so it requires an elevated token, the same admin OTP that
+gates server mutations.
 
-| Method | Path | Body | Notes |
-|---|---|---|---|
-| GET | `/api/profiles` | - | `{profiles[]}` |
-| POST | `/api/profiles` | `{name, avatar?}` | Create a profile → `201` with the profile |
-| PATCH | `/api/profiles/{id}` | `{name, avatar?}` | Rename / re-avatar → the updated profile |
-| DELETE | `/api/profiles/{id}` | - | `204`. `409` if it is the last profile (never leave zero). |
+| Method | Path | Body | Elevation | Notes |
+|---|---|---|---|---|
+| GET | `/api/profiles` | - | no | `{profiles[]}` |
+| POST | `/api/profiles` | `{name, avatar?}` | no | Create a profile → `201` with the profile |
+| PATCH | `/api/profiles/{id}` | `{name, avatar?}` | no | Rename / re-avatar → the updated profile |
+| DELETE | `/api/profiles/{id}` | - | **yes** | `204`. `403` without elevation; `409` if it is the last profile (never leave zero). |
 
 ### Admin elevation
 

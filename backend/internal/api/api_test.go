@@ -229,6 +229,16 @@ func TestAuthProfilesEndToEnd(t *testing.T) {
 	if c := do(t, h, http.MethodPost, "/api/admin/scan", elevated.AccessToken, nil, nil); c != http.StatusServiceUnavailable {
 		t.Fatalf("elevated token should pass the admin gate, got %d", c)
 	}
+
+	// Deleting a profile is destructive, so it needs elevation: a plain token
+	// is refused, the elevated one succeeds.
+	kidsPath := "/api/profiles/" + itoa(kids.ID)
+	if c := do(t, h, http.MethodDelete, kidsPath, login.AccessToken, nil, nil); c != http.StatusForbidden {
+		t.Fatalf("plain token must not delete a profile, got %d", c)
+	}
+	if c := do(t, h, http.MethodDelete, kidsPath, elevated.AccessToken, nil, nil); c != http.StatusNoContent {
+		t.Fatalf("elevated delete should succeed, got %d", c)
+	}
 }
 
 // TestDeleteLastProfileBlocked guards the invariant that the account can never

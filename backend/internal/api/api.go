@@ -85,11 +85,12 @@ func (a *API) Mount(r chi.Router) {
 			r.Use(a.Auth.Middleware)
 			r.Get("/me", a.handleMe)
 
-			// Profiles (any signed-in profile may manage the household set).
+			// Profiles: any signed-in profile may list, add, or rename.
+			// Deleting a profile is destructive (it wipes that viewer's watch
+			// history) so it is gated on admin elevation (see the group below).
 			r.Get("/profiles", a.handleListProfiles)
 			r.Post("/profiles", a.handleCreateProfile)
 			r.Patch("/profiles/{id}", a.handleUpdateProfile)
-			r.Delete("/profiles/{id}", a.handleDeleteProfile)
 
 			// Admin elevation: request an emailed OTP, exchange it for a
 			// short-lived elevated access token used for admin mutations. These
@@ -134,6 +135,7 @@ func (a *API) Mount(r chi.Router) {
 				r.Use(a.Auth.RequireAdmin)
 				r.Post("/admin/scan", a.handleStartScan)
 				r.Post("/admin/update", a.handleUpdateApply)
+				r.Delete("/profiles/{id}", a.handleDeleteProfile)
 			})
 			// stream / subtitles / home mount here in P3-P6.
 		})
