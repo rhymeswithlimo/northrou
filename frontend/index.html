@@ -51,7 +51,7 @@
                     <h3>Continue Watching</h3>
                     <!-- CLAUDE: Make sure that continue watching images are 16:9 backdrops images when fetching from TMDB. -->
                     <div class="collection-row-items">
-                        <a href="" class="collection-item">
+                        <a href="" class="collection-item" data-watch-info="silo">
                             <div class="collection-item-thumb">
                                 <img src="https://image.tmdb.org/t/p/original/n5FPNMJ0eRoiQrKGfUQQRAZeaxg.jpg" alt="">
                             </div>
@@ -63,7 +63,7 @@
                                 <span class="collection-item-meta">S03:E02 · 20m left</span>
                             </div>
                         </a>
-                        <a href="" class="collection-item">
+                        <a href="" class="collection-item" data-watch-info="pulp-fiction">
                             <div class="collection-item-thumb">
                                 <img src="https://image.tmdb.org/t/p/original/cOGysF4SXauEKz18mFGmkZW6O2T.jpg" alt="">
                             </div>
@@ -124,6 +124,344 @@
         </section>
     </main>
 
+    <section class="watch-info" id="watch-info-silo" data-watch-info="silo" aria-hidden="true">
+        <div class="watch-info-modal" role="dialog" aria-modal="true" aria-label="Silo details">
+            <button class="watch-info-close" type="button" data-close aria-label="Close">
+                <span aria-hidden="true">&times;</span>
+            </button>
+
+            <div class="watch-info-hero">
+                <img src="https://image.tmdb.org/t/p/original/n5FPNMJ0eRoiQrKGfUQQRAZeaxg.jpg" alt="Silo backdrop">
+            </div>
+
+            <div class="watch-info-wrapper">
+                <div class="wi-head">
+                    <div class="title-name">
+                        <img src="https://image.tmdb.org/t/p/original/orJ5TfInOu5CzgFIDs4avqEg0wu.png" alt="Silo" draggable="false" style="width: 280px; max-width: 60%;">
+                        <p class="visually-hidden">Silo</p>
+                    </div>
+
+                    <div class="wi-meta">
+                        <span class="wi-score">&#9733; 8.1</span>
+                        <span class="wi-sep">&middot;</span>
+                        <span>2023</span>
+                        <span class="wi-sep">&middot;</span>
+                        <span>2 Seasons</span>
+                        <span class="wi-sep">&middot;</span>
+                        <span class="wi-cert">TV-MA</span>
+                        <span class="wi-sep">&middot;</span>
+                        <span>Sci-Fi</span>
+                        <span class="wi-sep">&middot;</span>
+                        <span>Drama</span>
+                    </div>
+
+                    <div class="wi-actions">
+                        <button type="button" class="wi-play"><span>&#9654;</span><span>RESUME S03:E02</span></button>
+                        <div class="wi-resume">
+                            <div class="progress">
+                                <div class="bar" style="width: 65%"></div>
+                            </div>
+                            <span class="wi-resume-left">20m left</span>
+                        </div>
+                    </div>
+
+                    <div class="wi-synopsis">
+                        <p class="wi-tagline">The truth will surface.</p>
+                        <p class="wi-overview">In a ruined and toxic future, thousands live in a giant silo deep underground. After its sheriff breaks a cardinal rule and residents die mysteriously, engineer Juliette starts to uncover shocking secrets and the truth about the silo.</p>
+                    </div>
+                </div>
+
+                <hr>
+
+                <div class="wi-episodes">
+                    <div class="wi-episodes-header">
+                        <h3>Episodes</h3>
+                        <select class="season-select" aria-label="Select Season">
+                            <option value="1" selected>Season 1</option>
+                            <option value="2">Season 2</option>
+                            <option value="3">Season 3</option>
+                        </select>
+                    </div>
+
+                    <div class="wi-episodes-list">
+                        <div class="episode-item">
+                            <div class="episode-item-thumb">
+                                <img src="https://i.ibb.co/35BSZ7QK/vlcsnap-2026-07-14-02h13m09s671.png" alt="Freedom Day">
+                                <div class="progress">
+                                    <div class="bar" style="width: 100%"></div>
+                                </div>
+                            </div>
+                            <div class="episode-item-info">
+                                <div class="episode-item-head">
+                                    <span class="episode-item-num">1</span>
+                                    <span class="episode-item-title">Freedom Day</span>
+                                    <span class="episode-item-dur">60m</span>
+                                </div>
+                                <p class="episode-item-desc">Sheriff Becker's plans for the future are thrown off course after his wife meets a hacker with information about the silo.</p>
+                            </div>
+                        </div>
+
+                        <div class="episode-item">
+                            <div class="episode-item-thumb">
+                                <img src="https://i.ibb.co/9HpfLN9w/vlcsnap-2026-07-14-02h13m38s207.png" alt="Holston's Pick">
+                                <div class="progress">
+                                    <div class="bar" style="width: 100%"></div>
+                                </div>
+                            </div>
+                            <div class="episode-item-info">
+                                <div class="episode-item-head">
+                                    <span class="episode-item-num">2</span>
+                                    <span class="episode-item-title">Holston's Pick</span>
+                                    <span class="episode-item-dur">47m</span>
+                                </div>
+                                <p class="episode-item-desc">Juliette, an engineer, pieces together what might have led to a co-worker's mysterious death.</p>
+                            </div>
+                        </div>
+
+                        <div class="episode-item">
+                            <div class="episode-item-thumb">
+                                <img src="https://i.ibb.co/Z6XxLLb7/vlcsnap-2026-07-14-02h14m02s297.png" alt="Machines">
+                                <div class="progress">
+                                    <div class="bar" style="width: 65%"></div>
+                                </div>
+                            </div>
+                            <div class="episode-item-info">
+                                <div class="episode-item-head">
+                                    <span class="episode-item-num">3</span>
+                                    <span class="episode-item-title">Machines</span>
+                                    <span class="episode-item-dur">62m</span>
+                                </div>
+                                <p class="episode-item-desc">In her search for a new sheriff, Mayor Ruth travels down to the deep levels to meet Juliette.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <hr>
+
+                <div class="collection-row cast-crew">
+                    <h3>Cast &amp; Crew</h3>
+                    <div class="collection-row-items">
+                        <div class="collection-item">
+                            <div class="collection-item-thumb">
+                                <img src="https://image.tmdb.org/t/p/original/lJloTOheuQSirSLXNA3JHsrMNfH.jpg" alt="Rebecca Ferguson">
+                            </div>
+                            <div class="collection-item-info">
+                                <span class="collection-item-title">Rebecca Ferguson</span>
+                                <span class="collection-item-meta">Juliette Nichols</span>
+                            </div>
+                        </div>
+                        <div class="collection-item">
+                            <div class="collection-item-thumb">
+                                <img src="https://image.tmdb.org/t/p/original/djLVFETFTvPyVUdrd7aLVykobof.jpg" alt="Tim Robbins">
+                            </div>
+                            <div class="collection-item-info">
+                                <span class="collection-item-title">Tim Robbins</span>
+                                <span class="collection-item-meta">Bernard Holland</span>
+                            </div>
+                        </div>
+                        <div class="collection-item">
+                            <div class="collection-item-thumb">
+                                <img src="https://image.tmdb.org/t/p/original/eggJAnJxpn8wYraX7ea5svETB54.jpg" alt="Common">
+                            </div>
+                            <div class="collection-item-info">
+                                <span class="collection-item-title">Common</span>
+                                <span class="collection-item-meta">Robert Sims</span>
+                            </div>
+                        </div>
+                        <div class="collection-item">
+                            <div class="collection-item-thumb">
+                                <img src="https://image.tmdb.org/t/p/original/vH8JrqdHaoFeGos44XeKTNuQMKE.jpg" alt="Rashida Jones">
+                            </div>
+                            <div class="collection-item-info">
+                                <span class="collection-item-title">Harriet Walter</span>
+                                <span class="collection-item-meta">Martha Walker</span>
+                            </div>
+                        </div>
+                        <div class="collection-item">
+                            <div class="collection-item-thumb">
+                                <img src="https://image.tmdb.org/t/p/original/p7ObPxJzggeJ5Xzltls2SHuFn9o.jpg" alt="Rashida Jones">
+                            </div>
+                            <div class="collection-item-info">
+                                <span class="collection-item-title">Rashida Jones</span>
+                                <span class="collection-item-meta">Allison Becker</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="collection-row">
+                    <h3>More Like This</h3>
+                    <div class="collection-row-items">
+                        <a href="" class="collection-item">
+                            <div class="collection-item-thumb">
+                                <img src="https://image.tmdb.org/t/p/original/mYLOqiStMxDK3fYZFirgrMt8z5d.jpg" alt="Severance">
+                            </div>
+                        </a>
+                        <a href="" class="collection-item">
+                            <div class="collection-item-thumb">
+                                <img src="https://image.tmdb.org/t/p/original/apbrbWs8M9lyOpJYU5WXrpFbk1Z.jpg" alt="Dark">
+                            </div>
+                        </a>
+                        <a href="" class="collection-item">
+                            <div class="collection-item-thumb">
+                                <img src="https://image.tmdb.org/t/p/original/tg9I5pOY4M9CKj8U0cxVBTsm5eh.jpg" alt="Foundation">
+                            </div>
+                        </a>
+                        <a href="" class="collection-item">
+                            <div class="collection-item-thumb">
+                                <img src="https://image.tmdb.org/t/p/original/5vQlVWkIMPhZ88OWchJsgwGEK9.jpg" alt="The Expanse">
+                            </div>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="watch-info" id="watch-info-pulp-fiction" data-watch-info="pulp-fiction" aria-hidden="true">
+        <div class="watch-info-modal" role="dialog" aria-modal="true" aria-label="Pulp Fiction details">
+            <button class="watch-info-close" type="button" data-close aria-label="Close">
+                <span aria-hidden="true">&times;</span>
+            </button>
+
+            <div class="watch-info-hero">
+                <img src="https://image.tmdb.org/t/p/original/suaEOtk1N1sgg2MTM7oZd2cfVp3.jpg" alt="">
+            </div>
+
+            <div class="watch-info-wrapper">
+                <div class="wi-head">
+                    <div class="title-name">
+                        <img src="https://image.tmdb.org/t/p/original/kpuNKsIzVbK3LDVo4iOJDAY0y7d.png" alt="Pulp Fiction" draggable="false">
+                        <p class="visually-hidden">Pulp Fiction</p>
+                    </div>
+
+                    <div class="wi-meta">
+                        <span class="wi-score">&#9733; 8.5</span>
+                        <span class="wi-sep">&middot;</span>
+                        <span>1994</span>
+                        <span class="wi-sep">&middot;</span>
+                        <span>2h 34m</span>
+                        <span class="wi-sep">&middot;</span>
+                        <span class="wi-cert">R</span>
+                        <span class="wi-sep">&middot;</span>
+                        <span>Crime</span>
+                        <span class="wi-sep">&middot;</span>
+                        <span>Thriller</span>
+                    </div>
+
+                    <div class="wi-actions">
+                        <button type="button" class="wi-play"><span>&#9654;</span><span>RESUME</span></button>
+                        <div class="wi-resume">
+                            <div class="progress">
+                                <div class="bar" style="width: 28%"></div>
+                            </div>
+                            <span class="wi-resume-left">110m left</span>
+                        </div>
+                    </div>
+
+                    <div class="wi-synopsis">
+                        <p class="wi-tagline">Just because you are a character doesn't mean you have character.</p>
+                        <p class="wi-overview">Three loosely linked Los Angeles crime stories collide over a handful of days: two philosophizing hitmen running an errand for their boss, a fading prizefighter who takes the wrong payoff, and a mob wife's night out that goes sideways. Tarantino scrambles the timeline, letting diner stick-ups, a briefcase nobody explains, and a lot of very casual conversation braid into one story about luck, loyalty, and second chances.</p>
+                    </div>
+                </div>
+
+                <hr>
+
+                <!-- Cast & Crew: circular avatars. Add a 2:3 or square TMDB profile
+                     img inside each .collection-item-thumb; alt is already set. -->
+                <div class="collection-row cast-crew">
+                    <h3>Cast &amp; Crew</h3>
+                    <div class="collection-row-items">
+                        <div class="collection-item">
+                            <div class="collection-item-thumb">
+                                <img src="https://image.tmdb.org/t/p/original/1gjcpAa99FAOWGnrUvHEXXsRs7o.jpg" alt="Quentin Tarantino">
+                            </div>
+                            <div class="collection-item-info">
+                                <span class="collection-item-title">Quentin Tarantino</span>
+                                <span class="collection-item-meta">Director</span>
+                            </div>
+                        </div>
+                        <div class="collection-item">
+                            <div class="collection-item-thumb">
+                                <img src="https://image.tmdb.org/t/p/original/zyDLuyohFiON7QliYyP8hnxu2eX.jpg" alt="John Travolta">
+                            </div>
+                            <div class="collection-item-info">
+                                <span class="collection-item-title">John Travolta</span>
+                                <span class="collection-item-meta">Vincent Vega</span>
+                            </div>
+                        </div>
+                        <div class="collection-item">
+                            <div class="collection-item-thumb">
+                                <img src="https://image.tmdb.org/t/p/original/nHa0el66nAf50XJXZwTbIIqUJwQ.jpg" alt="Samuel L. Jackson">
+                            </div>
+                            <div class="collection-item-info">
+                                <span class="collection-item-title">Samuel L. Jackson</span>
+                                <span class="collection-item-meta">Jules Winnfield</span>
+                            </div>
+                        </div>
+                        <div class="collection-item">
+                            <div class="collection-item-thumb">
+                                <img src="https://image.tmdb.org/t/p/original/hlYG0MC6im0MHNq1xixxVilfwyR.jpg" alt="Uma Thurman">
+                            </div>
+                            <div class="collection-item-info">
+                                <span class="collection-item-title">Uma Thurman</span>
+                                <span class="collection-item-meta">Mia Wallace</span>
+                            </div>
+                        </div>
+                        <div class="collection-item">
+                            <div class="collection-item-thumb">
+                                <img src="https://image.tmdb.org/t/p/original/mEVoLBcShTV8mYb4mo0aFlzWfnV.jpg" alt="Bruce Willis">
+                            </div>
+                            <div class="collection-item-info">
+                                <span class="collection-item-title">Bruce Willis</span>
+                                <span class="collection-item-meta">Butch Coolidge</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- More Like This: poster-only cards, identical to "You Might Like".
+                     Add a 2:3 TMDB poster img inside each .collection-item-thumb. -->
+                <div class="collection-row">
+                    <h3>More Like This</h3>
+                    <div class="collection-row-items">
+                        <a href="" class="collection-item">
+                            <div class="collection-item-thumb">
+                                <img src="https://image.tmdb.org/t/p/original/xi8Iu6qyTfyZVDVy60raIOYJJmk.jpg" alt="Reservoir Dogs">
+                            </div>
+                        </a>
+                        <a href="" class="collection-item">
+                            <div class="collection-item-thumb">
+                                <img src="https://image.tmdb.org/t/p/original/rOUx7qg4KmEh1juEDwqzbDSL1Nr.jpg" alt="Jackie Brown">
+                            </div>
+                        </a>
+                        <a href="" class="collection-item">
+                            <div class="collection-item-thumb">
+                                <img src="https://image.tmdb.org/t/p/original/v7TaX8kXMXs5yFFGR41guUDNcnB.jpg" alt="Kill Bill: Vol. 1">
+                            </div>
+                        </a>
+                        <a href="" class="collection-item">
+                            <div class="collection-item-thumb">
+                                <img src="https://image.tmdb.org/t/p/original/aupnPtagH9JVBuMrGEanf4iqXEQ.jpg" alt="Inglourious Basterds">
+                            </div>
+                        </a>
+                        <a href="" class="collection-item">
+                            <div class="collection-item-thumb">
+                                <img src="https://image.tmdb.org/t/p/original/7oWY8VDWW7thTzWh3OKYRkWUlD5.jpg" alt="Django Unchained">
+                            </div>
+                        </a>
+                        <a href="" class="collection-item">
+                            <div class="collection-item-thumb">
+                                <img src="https://image.tmdb.org/t/p/original/9OkCLM73MIU2CrKZbqiT8Ln1wY2.jpg" alt="Goodfellas">
+                            </div>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
     <!-- Scroll down hide nav-bar -->
     <script>
         (function () {
@@ -179,6 +517,100 @@
                     lastY = getClampedY();
                 }, 100);
             }, { passive: true });
+        })();
+    </script>
+
+    <!-- Watch-info modal: open / close, routed to the right title's modal -->
+    <script>
+        (function () {
+            // Every .watch-info section on the page, keyed by its data-watch-info id.
+            const overlays = Array.from(document.querySelectorAll('.watch-info'));
+            if (!overlays.length) return;
+
+            let currentOverlay = null;
+            let lastFocused = null;
+
+            function openModal(overlay) {
+                if (!overlay) return;
+
+                // If a different modal is already open, close it first so only
+                // one is ever visible/tabbable at a time.
+                if (currentOverlay && currentOverlay !== overlay) {
+                    currentOverlay.classList.remove('open');
+                    currentOverlay.setAttribute('aria-hidden', 'true');
+                }
+
+                currentOverlay = overlay;
+                lastFocused = document.activeElement;
+
+                overlay.classList.add('open');
+                document.body.classList.add('modal-open');
+                overlay.setAttribute('aria-hidden', 'false');
+
+                const closeBtn = overlay.querySelector('[data-close]');
+                if (closeBtn) closeBtn.focus();
+            }
+
+            function closeModal() {
+                if (!currentOverlay) return;
+
+                currentOverlay.classList.remove('open');
+                document.body.classList.remove('modal-open');
+                currentOverlay.setAttribute('aria-hidden', 'true');
+
+                if (lastFocused && typeof lastFocused.focus === 'function') {
+                    lastFocused.focus();
+                }
+                currentOverlay = null;
+            }
+
+            // Figures out which watch-info modal a clicked card belongs to.
+            // Priority: explicit data-watch-info attribute on the card, then
+            // falling back to matching its .collection-item-title text against
+            // each modal's data-watch-info key (so cards you forget to tag
+            // still resolve correctly as long as the title text lines up).
+            function resolveOverlay(card) {
+                const key = card.getAttribute('data-watch-info');
+                if (key) {
+                    const direct = document.querySelector('.watch-info[data-watch-info="' + key + '"]');
+                    if (direct) return direct;
+                }
+
+                const titleEl = card.querySelector('.collection-item-title');
+                const titleText = titleEl ? titleEl.textContent.trim().toLowerCase() : '';
+                if (!titleText) return null;
+
+                return overlays.find(function (overlay) {
+                    const overlayKey = (overlay.getAttribute('data-watch-info') || '').replace(/-/g, ' ');
+                    return overlayKey && titleText.indexOf(overlayKey) !== -1;
+                }) || null;
+            }
+
+            // Open: any title card in the page + the hero. Scoped to `main` so the
+            // cast/crew and "more like this" cards inside the modals don't reopen them.
+            document.querySelectorAll('main .collection-item, .hero-display-container').forEach(function (el) {
+                el.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    const overlay = resolveOverlay(el) || overlays[0];
+                    openModal(overlay);
+                });
+            });
+
+            // Close: click on the backdrop (not inside the card), or the close button.
+            overlays.forEach(function (overlay) {
+                overlay.addEventListener('click', function (e) {
+                    if (e.target === overlay || e.target.closest('[data-close]')) {
+                        closeModal();
+                    }
+                });
+            });
+
+            // Close: Escape.
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape' && currentOverlay) {
+                    closeModal();
+                }
+            });
         })();
     </script>
 </body>

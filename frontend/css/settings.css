@@ -1,5 +1,5 @@
 body {
-    max-width: 768px;
+    max-width: 840px;
     margin: auto;
     padding: var(--sidepadding);
     padding-block: clamp(2rem, 6vh, 4rem);
@@ -21,6 +21,10 @@ body {
     font-size: 14px;
 
     & a, button {
+        -webkit-user-select: none;
+        -ms-user-select: none;
+        user-select: none;
+
         padding: 1px;
         width: fit-content;
 

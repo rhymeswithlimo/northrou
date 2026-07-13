@@ -9,6 +9,8 @@
     padding: 0;
 }
 
+html { scrollbar-gutter: stable; }
+
 body {
     font-family: 'Geist', sans-serif;
     background-color: var(--strong);
@@ -157,4 +159,8 @@ nav {
 
     font-size: 15px;
     color: var(--muted);
+
+    -webkit-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
 }
