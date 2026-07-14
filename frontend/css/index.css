@@ -337,7 +337,7 @@ nav.nav-hidden {
     z-index: 1000;
 
     max-width: none;
-    padding: var(--sidepadding);
+    padding: 32px var(--sidepadding);
     margin: 0;
 
     background-color: hsl(from var(--strong) h s l / 0.6);
