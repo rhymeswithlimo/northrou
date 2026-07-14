@@ -2,7 +2,7 @@
 
 import SwiftUI
 
-struct SecondView: View {
+struct WatchView: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -22,5 +22,5 @@ struct SecondView: View {
 }
 
 #Preview {
-    SecondView()
+    WatchView()
 }
