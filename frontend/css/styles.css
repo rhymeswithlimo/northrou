@@ -27,6 +27,9 @@ body {
     -webkit-font-smoothing: antialiased;
 }
 
+.touch-device * { pointer-events: auto; }
+.touch-device *:hover { all: unset !important; }
+
 /* ==================== BASIC CALLING ==================== */
 
 :root {
