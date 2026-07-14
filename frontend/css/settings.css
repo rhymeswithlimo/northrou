@@ -1,0 +1,141 @@
+body {
+    max-width: 840px;
+    margin: auto;
+    padding: var(--sidepadding);
+    padding-block: clamp(2rem, 6vh, 4rem);
+
+    gap: 24px;
+}
+
+/* ==================== SETTINGS ==================== */
+
+.settings {
+    width: 100%;
+    padding: 36px var(--sidepadding);
+
+    display: flex;
+    flex-direction: column;
+    gap: 48px;
+
+    font-family: 'Geist Mono', monospace;
+    font-size: 14px;
+
+    & a, button {
+        -webkit-user-select: none;
+        -ms-user-select: none;
+        user-select: none;
+
+        padding: 1px;
+        width: fit-content;
+
+        white-space: nowrap;
+
+        color: var(--muted);
+
+        transition: opacity .3s ease;
+        &:hover { text-decoration: underline; opacity: .84; }
+
+        &:focus-visible {
+            outline: none;
+            background-color: var(--contrast);
+            color: var(--strong) !important;
+        }
+
+        &.active { color: var(--contrast); }
+    }
+
+    & h3 {
+        font-family: 'Geist', sans-serif;
+        font-size: 15px;
+        font-weight: 400;
+    }
+}
+
+.group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.settings-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+
+    height: fit-content;
+}
+
+.settings-row.end { justify-content: flex-end; }
+
+.settings-row.wrapped { padding-top: 24px; }
+.settings-row.pad-bottom { padding-bottom: 24px; }
+
+.settings-row > p {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.settings-row > div {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0px 8px;
+}
+
+.dim { color: var(--muted); }
+
+.note {
+    color: var(--muted);
+    max-width: 54ch;
+    line-height: 1.5;
+}
+
+/* ==================== SERVER ADMIN ==================== */
+
+.admin-header {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.code-entry { align-items: center; }
+
+.code-input {
+    font-family: 'Geist Mono', monospace;
+    font-size: 14px;
+    color: var(--contrast);
+    cursor: text;
+
+    width: 7ch;
+    padding: 3px 6px;
+
+    text-align: center;
+    letter-spacing: .35em;
+
+    border: 1px solid hsl(from var(--muted) h s l / .4);
+    border-radius: 3px;
+}
+
+.code-input::placeholder {
+    color: var(--muted);
+    letter-spacing: .15em;
+}
+
+.admin-locked {
+    opacity: .5;
+    pointer-events: none;
+
+    display: none;
+}
+
+/* ==================== STATUS DOT ==================== */
+
+.blink {
+    animation: pulse 2s infinite ease-in-out;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 0.2; }
+    50% { opacity: 1; }
+}

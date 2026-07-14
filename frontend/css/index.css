@@ -1,0 +1,885 @@
+header {
+    position: absolute;
+    inset: 0 0 auto 0;
+
+    height: 64px; /* gradient band; scrolls away with the page */
+    z-index: 100;
+}
+
+header::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+
+    height: 180px;
+
+    background: linear-gradient(to bottom, hsl(from var(--strong) h s l / 0.85), hsl(from var(--strong) h s l / 0.45), transparent);
+    pointer-events: none;
+    z-index: -1;
+}
+
+/* ==================== NAV BAR ==================== */
+
+nav {
+    transition: opacity .2s ease;
+
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 96px;
+    z-index: 999;
+}
+
+nav.nav-hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.nav-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+
+    height: 100%;
+    padding: 0 24px;
+
+    margin: 0 auto;
+}
+
+.nav-container button {
+    width: 26px;
+
+    display: grid;
+    place-items: center;
+    padding: 0;
+    margin: 0;
+}
+
+.nav-container button svg {
+    width: 100%;
+    fill: var(--contrast);
+    filter: drop-shadow(0 1px 4px hsl(from var(--strong) h s l / 0.2));
+}
+
+.nav-home button { border-radius: 1px; }
+
+.nav-list {
+    display: flex;
+    gap: clamp(0.5625rem, 0.1607rem + 2.0089vw, 1.125rem);
+
+    list-style: none;
+    margin: 0;
+    padding: 0;
+
+    font-size: 14px;
+}
+
+.nav-list a {
+    display: flex;
+    gap: 18px;
+
+    opacity: 1;
+    padding: 1px;
+    width: fit-content;
+
+    text-shadow: 0 1px 4px hsl(from var(--strong) h s l / 0.2);
+
+    transition: opacity .3s ease;
+    &:hover { text-decoration: underline; opacity: .84; }
+
+    &:focus-visible {
+        outline: none;
+        background-color: var(--contrast);
+        color: var(--strong) !important;
+    }
+}
+
+.nav-list:hover a { opacity: 0.5; }
+.nav-list a:hover { opacity: 1; }
+
+.nav-search button {
+    width: 35px;
+
+    box-sizing: border-box;
+    border-radius: 50vw;
+    background-color: hsl(from var(--muted) h s l / .42);
+    padding: 7px;
+}
+
+/* ==================== HERO DISPLAY ==================== */
+
+.hero-display {
+    padding: 0;
+    position: relative;
+
+    max-width: 1920px;
+}
+
+.hero-display::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+
+    background: linear-gradient(
+        to bottom,
+        rgb(5 5 5 / 0.8) 0,
+        transparent 180px
+    );
+
+    pointer-events: none;
+}
+
+.hero-display-container {
+    display: block;
+    height: clamp(31.25rem, 18.7849rem + 25.969vw, 48rem);
+    overflow: hidden;
+    position: relative;
+
+    &:active { scale: 1; }
+}
+
+.hero-display-container img {
+    width: 100%;
+    height: 100%;
+
+    object-fit: cover;
+    object-position: center;
+    display: block;
+
+    transition: opacity .5s ease;
+}
+
+.hero-display-info {
+    position: absolute;
+    inset: 0;
+
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: center;
+    justify-content: center;
+
+    z-index: 1;
+    text-align: center;
+
+    opacity: 0;
+    transition: opacity .3s ease;
+
+    -webkit-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+.hero-display:hover .hero-display-info { opacity: 1; }
+.hero-display:hover .hero-display-container img { opacity: 0.25; }
+
+/* ==================== COLLECTION ==================== */
+
+.collection-container {
+    padding: 36px 0;
+
+    display: flex;
+    flex-direction: column;
+    gap: 36px;
+}
+
+.collection-row {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+
+    & h3 {
+        font-weight: 500;
+
+        -webkit-user-select: none;
+        -ms-user-select: none;
+        user-select: none;
+    }
+}
+
+.collection-row-items {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 24px;
+}
+
+.continue-watching .collection-row-items {
+    grid-template-columns: repeat(1, 1fr);
+}
+
+@media (min-width: 550px) {
+    .collection-row-items { grid-template-columns: repeat(3, 1fr); }
+    .continue-watching .collection-row-items { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (min-width: 968px) {
+    .collection-row-items { grid-template-columns: repeat(5, 1fr); }
+    .continue-watching .collection-row-items { grid-template-columns: repeat(3, 1fr); }
+}
+
+@media (min-width: 1400px) {
+    .collection-row-items { grid-template-columns: repeat(6, 1fr); }
+    .continue-watching .collection-row-items { grid-template-columns: repeat(4, 1fr); }
+}
+
+.collection-item {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    border-radius: 6px;
+
+    width: 100%;
+
+    min-width: 0;
+
+    opacity: 1;
+    transition: opacity .3s ease;
+
+    -webkit-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+/* the actual image box: owns the ratio, rounding and clipping */
+.collection-item-thumb {
+    aspect-ratio: 2 / 3;
+    width: 100%;
+
+    border-radius: 6px;
+    overflow: hidden;
+
+    & img { object-fit: cover; width: 100%; height: 100%; display: block; }
+}
+
+/* text block below the thumb (title / meta / progress) */
+.collection-item-info {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.collection-item-title {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.collection-item-meta {
+    font-family: 'Geist Mono', monospace;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.collection-row-items:has(.collection-item:hover) .collection-item { opacity: .5; }
+.collection-row-items:has(.collection-item:hover) .collection-item:hover { opacity: 1; }
+
+.continue-watching {
+    & .collection-item {
+        gap: 6px; /* keep the bar tucked close under the thumb */
+    }
+
+    & .collection-item-thumb {
+        aspect-ratio: 16 / 9;
+    }
+
+    /* kill the uniform gap; spacing is controlled per element below */
+    & .collection-item-info {
+        gap: 0;
+    }
+
+    /* slim bar hugging the thumb, with a real break before the text */
+    & .progress {
+        height: 5px;
+        margin-bottom: 12px;
+    }
+
+    /* title anchors the block: a bit bigger, bolder, tight leading */
+    & .collection-item-title {
+        font-size: 15px;
+        font-weight: 600;
+        line-height: 1.25;
+    }
+
+    /* meta sits right under the title as a pair, not a separate line */
+    & .collection-item-meta {
+        margin-top: 3px;
+        line-height: 1.25;
+    }
+}
+
+@media (min-width: 1800px) {
+    .collection-row-items {
+        display: flex;
+        flex-wrap: wrap;
+    }
+
+    .collection-item {
+        width: auto;
+        flex: 0 1 240px;
+        max-width: 240px;
+    }
+
+    .continue-watching {
+        & .collection-item { flex-basis: 391.9px; max-width: 391.9px; /* match the 16:9 thumb width, not the poster cap */ }
+    }
+}
+
+/* ==================== WATCH INFO (MODAL) ==================== */
+
+/* full-screen overlay: fixed so it centers regardless of scroll position.
+   overrides the global `section` max-width/padding rules. */
+.watch-info {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+
+    max-width: none;
+    padding: var(--sidepadding);
+    margin: 0;
+
+    background-color: hsl(from var(--strong) h s l / 0.6);
+
+    /* scroll the overlay (the whole modal moves), not an inner box */
+    overflow-y: auto;
+
+    /* hidden by default, no interaction until opened */
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity .25s ease, visibility .25s ease;
+}
+
+.watch-info.open {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
+/* the actual dialog card */
+.watch-info-modal {
+    position: relative;
+
+    overflow: hidden;
+
+    width: 100%;
+    max-width: 1024px;
+    margin: 0 auto;
+
+    background-color: var(--strong);
+    border-radius: 12px;
+    box-shadow: 0 24px 64px rgb(0 0 0 / 0.6);
+
+    /* subtle entrance */
+    transform: translateY(10px) scale(.98);
+    transition: transform .25s ease;
+}
+
+.watch-info.open .watch-info-modal {
+    transform: translateY(0) scale(1);
+}
+
+.watch-info-close {
+    position: absolute;
+    top: 14px;
+    right: 16px;
+    z-index: 1;
+
+    transition: opacity .2s ease;
+    &:hover { opacity: .7; }
+
+    & span[aria-hidden] { font-size: 20px; line-height: 1; }
+}
+
+/* blur + lock the page behind the modal */
+body.modal-open {
+    overflow: hidden;
+}
+
+main {
+    transition: filter .25s ease;
+}
+
+body.modal-open main {
+    opacity: .9;
+    filter: blur(10px);
+}
+
+.watch-info-hero {
+    position: relative;
+    width: 100%;
+    height: clamp(18.75rem, 12.7841rem + 29.8295vw, 31.875rem);
+
+    overflow: hidden;
+
+    & img { object-fit: cover; object-position: center 20%; width: 100%; height: 100%; display: block; }
+}
+
+/* fade the backdrop into the modal body so the content sits on it, not below a hard edge */
+.watch-info-hero::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+
+    background: linear-gradient(
+        to bottom,
+        transparent 35%,
+        hsl(from var(--strong) h s l / 0.55) 70%,
+        var(--strong) 100%
+    );
+    pointer-events: none;
+}
+
+.watch-info-wrapper {
+    position: relative;
+    z-index: 1;
+    margin-top: -72px; /* pull the content up onto the faded backdrop */
+
+    padding: 0 calc(var(--sidepadding) + clamp(0rem, -0.4771rem + 1.5267vw, 0.5rem)) 40px;
+
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+
+    container-type: inline-size; /* rows below size to the modal, not the window */
+}
+
+/* ---- modal: title + top info block ---- */
+
+.wi-head {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.title-name {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    -webkit-user-drag: none;
+    user-select: none;
+    -moz-user-select: none;
+    -webkit-user-select: none;
+    -ms-user-select: none;
+
+    & img {
+        width: clamp(13.125rem, 9.2403rem + 20.7182vw, 22.5rem);
+        height: auto;
+        display: block;
+
+        filter: drop-shadow(0 2px 12px hsl(from var(--strong) h s l / 0.6));
+    }
+}
+
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    border: 0;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.wi-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+
+    font-family: 'Geist Mono', monospace;
+    font-size: 13px;
+    color: var(--muted);
+
+    -webkit-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+.wi-meta .wi-sep { color: hsl(from var(--muted) h s l / 0.45); }
+.wi-meta .wi-score { color: #00e676; }
+
+.wi-cert {
+    color: var(--contrast);
+    border: 1px solid hsl(from var(--muted) h s l / 0.5);
+    border-radius: 3px;
+    padding: 0 6px;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.wi-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+}
+
+.wi-actions button {
+    font-family: 'Geist', sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+
+    padding: 10px 20px;
+    border-radius: 6px;
+
+    transition: opacity .2s ease, background-color .2s ease;
+
+    &:hover { text-decoration: none; }
+}
+
+.wi-actions .wi-play {
+    padding: 12px 64px;
+
+    display: flex;
+    gap: 8px;
+
+    background-color: var(--contrast);
+    color: var(--strong);
+
+    &:hover { opacity: .85; }
+}
+
+.wi-actions .wi-secondary {
+    background-color: hsl(from var(--muted) h s l / 0.2);
+    color: var(--contrast);
+
+    &:hover { background-color: hsl(from var(--muted) h s l / 0.34); }
+}
+
+.wi-resume {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+
+    min-width: 160px;
+    flex: 1 1 200px;
+    max-width: 320px;
+
+    -webkit-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+.wi-resume .progress {
+    flex: 1;
+}
+
+.wi-resume-left {
+    font-family: 'Geist Mono', monospace;
+    font-size: 13px;
+    color: var(--muted);
+    white-space: nowrap;
+}
+
+.wi-synopsis {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    max-width: 70ch;
+}
+
+.wi-tagline {
+    font-family: 'Geist Mono', monospace;
+    font-size: 13px;
+    color: var(--muted);
+}
+
+.wi-overview {
+    font-weight: 450;
+    font-size: clamp(0.9375rem, 0.9rem + 0.2vw, 1rem);
+    line-height: 1.6;
+    color: hsl(from var(--contrast) h s l / 0.88);
+}
+
+.watch-info .collection-item-thumb {
+    background-color: hsl(from var(--muted) h s l / 0.08);
+}
+
+.cast-crew .collection-row-items {
+    display: grid;
+    gap: 20px;
+    grid-template-columns: repeat(2, 1fr);
+    justify-items: center;
+}
+
+@media (min-width: 500px) {
+    .cast-crew .collection-row-items { grid-template-columns: repeat(3, 1fr); }
+}
+
+@media (min-width: 768px) {
+    .cast-crew .collection-row-items { grid-template-columns: repeat(6, 1fr); }
+}
+
+.cast-crew .collection-item {
+    width: 100%;
+    max-width: 150px; /* keep the circles from ballooning when columns are few */
+
+    gap: 12px;
+    align-items: center;
+    text-align: center;
+}
+
+.cast-crew .collection-item-thumb {
+    aspect-ratio: 1 / 1;
+    width: 100%;
+    border-radius: 50%;
+}
+
+.cast-crew .collection-item-info {
+    gap: 3px;
+}
+
+.cast-crew .collection-item-title {
+    white-space: normal;
+    font-size: 13px;
+}
+
+.cast-crew .collection-item-meta {
+    font-size: 12px;
+}
+
+/* cast/crew are not interactive: no hover dimming */
+.cast-crew .collection-row-items:has(.collection-item:hover) .collection-item,
+.cast-crew .collection-row-items:has(.collection-item:hover) .collection-item:hover {
+    opacity: 1;
+}
+
+/* "More Like This" poster row: sizes to the modal width (container queries),
+   independent of the homepage. :not(.cast-crew) leaves the circular row alone. */
+.watch-info-wrapper .collection-row:not(.cast-crew) .collection-row-items {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+}
+
+@media (min-width: 500px) {
+    .watch-info-wrapper .collection-row:not(.cast-crew) .collection-row-items {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+@media (min-width: 768px) {
+    .watch-info-wrapper .collection-row:not(.cast-crew) .collection-row-items {
+        grid-template-columns: repeat(4, 1fr);
+    }
+}
+
+@media (min-width: 968px) {
+    .watch-info-wrapper .collection-row:not(.cast-crew) .collection-row-items {
+        grid-template-columns: repeat(5, 1fr);
+    }
+}
+
+/* close button: give it a legible chip over the bright backdrop */
+.watch-info-close {
+    width: 34px;
+    height: 34px;
+
+    display: grid;
+    place-items: center;
+
+    border-radius: 50vw;
+    background-color: hsl(from var(--strong) h s l / 0.55);
+    backdrop-filter: blur(4px);
+}
+
+/* ==================== EPISODES LIST ==================== */
+
+.wi-episodes {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.wi-episodes-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+
+    -webkit-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+.wi-episodes-header h3 {
+    font-weight: 500;
+}
+
+/* Season Dropdown */
+.season-select {
+    font-family: 'Geist', sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+
+    background-color: hsl(from var(--muted) h s l / 0.15);
+    color: var(--contrast);
+    
+    padding: 8px 36px 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    
+    appearance: none;
+    -webkit-appearance: none;
+    
+    /* Custom SVG chevron for the dropdown arrow */
+    background-image: url('data:image/svg+xml;utf8,<svg fill="%23FAFAFA" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/></svg>');
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    background-size: 20px;
+    
+    transition: background-color .2s ease;
+}
+
+.season-select:hover {
+    background-color: hsl(from var(--muted) h s l / 0.25);
+}
+
+.season-select:focus-visible {
+    outline: 2px solid var(--contrast);
+    outline-offset: 2px;
+}
+
+.season-select option {
+    background-color: var(--strong);
+    color: var(--contrast);
+    font-family: 'Geist', sans-serif;
+}
+
+/* Episode Items */
+.wi-episodes-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.episode-item {
+    display: flex;
+    gap: 16px;
+    padding: 12px;
+    border-radius: 8px;
+
+    width: 100%;
+    text-align: left;
+    font-family: inherit;
+
+    cursor: pointer;
+    transition: background-color .2s ease;
+
+    -webkit-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+
+    &:active { scale: 1; }
+}
+
+.episode-item:hover {
+    background-color: hsl(from var(--muted) h s l / 0.08);
+}
+
+.episode-item-thumb {
+    flex: 0 0 clamp(120px, 15vw, 160px);
+    aspect-ratio: 16 / 9;
+    
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+    
+    background-color: hsl(from var(--muted) h s l / 0.08);
+}
+
+.episode-item-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+/* Progress bar anchored to the bottom of the thumbnail */
+.episode-item-thumb .progress {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    
+    height: 4px;
+    border-radius: 0; 
+    background-color: hsl(from var(--strong) h s l / 0.6);
+}
+
+.episode-item-thumb .progress .bar {
+    border-radius: 0;
+}
+
+.episode-item-info {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+    min-width: 0; /* Prevents flexbox truncation issues */
+    justify-content: center;
+}
+
+.episode-item-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    
+    font-size: 15px;
+    font-weight: 500;
+}
+
+.episode-item-num {
+    font-family: 'Geist Mono', monospace;
+    font-size: 14px;
+    color: var(--muted);
+}
+
+.episode-item-title {
+    color: var(--contrast);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.episode-item-dur {
+    font-family: 'Geist Mono', monospace;
+    font-size: 13px;
+    color: var(--muted);
+    margin-left: auto; /* Pushes duration to the far right */
+}
+
+.episode-item-desc {
+    font-size: 14px;
+    color: hsl(from var(--contrast) h s l / 0.7);
+    line-height: 1.4;
+    
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+@media (max-width: 550px) {
+    .episode-item {
+        flex-direction: column;
+        padding: 8px 0;
+    }
+    
+    .episode-item-thumb {
+        flex: 0 0 auto;
+        width: 100%;
+    }
+}
