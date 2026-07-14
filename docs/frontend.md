@@ -79,6 +79,10 @@ Caveats to keep in mind:
   regenerated. The subview-via-plugin approach survives regens; editing the
   generated root view controller does not.
 
+The SwiftUI in `frontend/swift/` (`ContentView`, `SecondView`) is design
+reference for this chrome, not a standalone app: no `@main`, no Xcode project. It
+gets adapted into the plugin's native views once Tauri is set up.
+
 ## App Store review
 
 Using web content is **not** a rejection risk on its own. Hybrid apps ship

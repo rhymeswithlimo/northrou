@@ -18,6 +18,15 @@ coordinator
 # OS cruft
 .DS_Store
 
+# Xcode user-specific state (not shared)
+xcuserdata/
+*.xcuserstate
+# Xcode build artifacts
+frontend/swift/**/build/
+frontend/swift/**/DerivedData/
+*.xcscmblueprint
+*.xccheckout
+
 # Managed runtime downloads (ffmpeg, tesseract)
 /backend/internal/ffmpeg/testdata/bin/
 
