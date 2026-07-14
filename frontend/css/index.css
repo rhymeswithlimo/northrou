@@ -770,13 +770,19 @@ body.modal-open main {
     gap: 16px;
     padding: 12px;
     border-radius: 8px;
-    
+
+    width: 100%;
+    text-align: left;
+    font-family: inherit;
+
     cursor: pointer;
     transition: background-color .2s ease;
 
     -webkit-user-select: none;
     -ms-user-select: none;
     user-select: none;
+
+    &:active { scale: 1; }
 }
 
 .episode-item:hover {
