@@ -338,9 +338,6 @@
     <script>
         const inputs = [...document.querySelectorAll('.otp-input')];
 
-        // Writes digits across the boxes starting at `start`, then parks on the
-        // last box it touched. Used by paste and by autofill, which drops the
-        // whole code into a single box.
         const fill = (digits, start = 0) => {
             const chars = [...digits].slice(0, inputs.length - start);
             chars.forEach((d, i) => (inputs[start + i].value = d));
@@ -351,78 +348,52 @@
             const prev = inputs[index - 1];
             const next = inputs[index + 1];
 
-            input.setAttribute('inputmode', 'numeric');
-            input.setAttribute('autocomplete', index === 0 ? 'one-time-code' : 'off');
+            // Let the browser handle standard text insertion cleanly.
+            // We NO LONGER remove `maxlength="1"` because it keeps mobile keyboards stable.
 
-            // maxlength has to go. It makes the browser silently drop a
-            // keystroke aimed at a full box, and the old fix for that was
-            // selecting the contents, which is the highlight we do not want.
-            // Intercepting the insert below caps the length instead.
-            input.removeAttribute('maxlength');
-
-            input.addEventListener('beforeinput', (e) => {
-                // A typed character never reaches the field. We take the digit
-                // and assign it, which overwrites whatever was there no matter
-                // where the invisible caret happens to be sitting.
-                if (e.inputType === 'insertText') {
-                    e.preventDefault();
-                    if (!/^\d$/.test(e.data ?? '')) return;
-                    input.value = e.data;
-                    if (next) next.focus();
-                    return;
-                }
-
-                // Android keyboards report keydown as key 229 rather than
-                // Backspace, so the keydown handler below never sees the delete
-                // on mobile. This does. On desktop the keydown preventDefault
-                // stops this from firing, so the two never double up.
-                if (e.inputType === 'deleteContentBackward') {
-                    e.preventDefault();
-                    if (input.value) {
-                        input.value = '';
-                    } else if (prev) {
-                        prev.value = '';
-                        prev.focus();
-                    }
-                }
-            });
-
-            // Safety net for anything that bypasses beforeinput, mainly autofill
-            // dumping the whole code into the first box.
-            input.addEventListener('input', () => {
-                const digits = input.value.replace(/\D/g, '');
-                if (digits.length > 1) {
+            input.addEventListener('input', (e) => {
+                // Catch autofill or pastes that dump multiple characters into one box
+                if (input.value.length > 1) {
+                    const digits = input.value.replace(/\D/g, '');
                     fill(digits, index);
                     return;
                 }
-                input.value = digits;
+
+                // Strip any non-numeric characters immediately
+                input.value = input.value.replace(/\D/g, '');
+
+                // Advance focus only AFTER the native input cycle completes
+                if (input.value !== '' && next) {
+                    next.focus();
+                }
             });
 
             input.addEventListener('keydown', (e) => {
-                // Backspace in an empty box fires no beforeinput, because there
-                // is nothing to delete, so the hop back has to live here.
-                if (e.key === 'Backspace') {
+                // Desktop/Standard backspace behavior when box is empty
+                if (e.key === 'Backspace' && !input.value && prev) {
                     e.preventDefault();
-                    if (input.value) {
-                        input.value = '';
-                    } else if (prev) {
-                        prev.value = '';
-                        prev.focus();
-                    }
-                    return;
+                    prev.value = '';
+                    prev.focus();
                 }
-                if (e.key === 'Delete') {
-                    e.preventDefault();
-                    input.value = '';
-                    return;
-                }
+                
                 if (e.key === 'ArrowLeft' && prev) {
                     e.preventDefault();
                     prev.focus();
                 }
+                
                 if (e.key === 'ArrowRight' && next) {
                     e.preventDefault();
                     next.focus();
+                }
+            });
+
+            // Android Gboard specific fix: 
+            // Gboard often sends 'deleteContentBackward' instead of a normal Backspace keydown.
+            input.addEventListener('beforeinput', (e) => {
+                if (e.inputType === 'deleteContentBackward' && !input.value && prev) {
+                    e.preventDefault();
+                    prev.value = '';
+                    prev.focus();
                 }
             });
 
@@ -431,10 +402,9 @@
                 const digits = (e.clipboardData || window.clipboardData)
                     .getData('text')
                     .replace(/\D/g, '');
+                
                 if (!digits) return;
-
-                // A pasted code is the whole code, so it replaces everything
-                // rather than filling in around what is already there.
+                
                 inputs.forEach((el) => (el.value = ''));
                 fill(digits, 0);
             });
