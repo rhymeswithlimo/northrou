@@ -270,10 +270,6 @@
     animation: shake .7s cubic-bezier(.36, .07, .19, .97) both;
 }
 
-@media (prefers-reduced-motion: reduce) {
-    .shake { animation: none; }
-}
-
 /* ==================== RESPONSIVE ==================== */
 
 @media (max-width: 1024px) {
