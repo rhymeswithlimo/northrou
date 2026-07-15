@@ -65,6 +65,12 @@
 
 .login-logo {
     width: clamp(2.5rem, 2.2727rem + 1.1364vw, 3rem);
+
+    & svg {
+        display: block;
+        width: 100%;
+        height: auto;
+    }
 }
 
 .login-options {
