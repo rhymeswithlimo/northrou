@@ -122,57 +122,43 @@
         const ctx = canvas.getContext('2d');
 
         // ==================== TUNING ====================
-
-        // Formed sphere radius, as a fraction of the usable space.
-        // 1.0 = glyphs just kiss the GLYPH_MARGIN boundary. Above 1.0 the
-        // sphere gets squashed by the edge clamp into a disc, so don't.
         const SPHERE_SIZE = 0.45;
-
-        // How far scattered points reach in the noise state, same scale.
-        // Keep it under ~0.95 and the edge clamp never engages, which is
-        // the whole point: no bunching because nothing gets clamped.
         const SCATTER_SIZE = 0.95;
-
-        // Safety net only. Width in px of the band that out-of-bounds points
-        // get squashed into. Bigger = softer, more spread, less ring.
         const EDGE_SOFTNESS = 30;
-
         const GLYPH_MARGIN = 1;
         const CHARS = ['n', 'o', 'r', 't', 'h', 'r', 'o', 'u'];
         const POINT_COUNT = 260;
-
         // ================================================
 
-        // Recalculated any time the canvas box changes size.
         let W, H, CX, CY, SAFE_RADIUS, RADIUS, SCATTER_RADIUS;
 
         function resizeCanvas() {
             const rect = canvas.parentElement.getBoundingClientRect();
             const dpr = window.devicePixelRatio || 1;
 
-            // guard against a zero-size box during layout thrash
             const cssW = Math.max(rect.width, 1);
             const cssH = Math.max(rect.height, 1);
 
             canvas.width = Math.round(cssW * dpr);
             canvas.height = Math.round(cssH * dpr);
             ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            
+            // OPTIMIZATION: Set context properties once per resize instead of every frame
+            ctx.font = "11px 'Geist Mono', monospace";
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
 
             W = cssW;
             H = cssH;
             CX = W / 2;
             CY = H / 2;
             SAFE_RADIUS = Math.max(Math.min(CX, CY) - GLYPH_MARGIN, 1);
-
-            // both radii hang off SAFE_RADIUS so the tuning vars mean
-            // "fraction of the space I'm allowed to use", not an arbitrary number
             RADIUS = SAFE_RADIUS * SPHERE_SIZE;
             SCATTER_RADIUS = SAFE_RADIUS * SCATTER_SIZE;
         }
 
         resizeCanvas();
 
-        // rAF guard so rapid resize notifications don't thrash layout reads.
         let resizePending = false;
         const ro = new ResizeObserver(() => {
             if (resizePending) return;
@@ -203,7 +189,6 @@
         }
 
         let points = buildPoints(POINT_COUNT);
-
         let angleX = 0.3;
         let angleY = 0;
 
@@ -214,10 +199,6 @@
         const holdNoise = 1800;
         const reformDur = 2600;
 
-        // A point inside the unit ball, uniform by volume. Bounded at 1, which
-        // is what keeps the scatter inside SCATTER_RADIUS after projection.
-        // The old version picked from a [-1,1] cube and ADDED it to the base
-        // position, so corners hit sqrt(3) + 1 and blew straight past the edge.
         function randomNoiseTarget() {
             const z = Math.random() * 2 - 1;
             const theta = Math.random() * Math.PI * 2;
@@ -235,13 +216,20 @@
         }
 
         let lastTime = performance.now();
+        let isRunning = false;
+        let animFrameId = null;
 
         function step(now) {
+            if (!isRunning) return;
+
             const dt = now - lastTime;
             lastTime = now;
-            stateTime += dt;
+            
+            // Cap delta time to prevent massive jumps if the tab was inactive
+            const safeDt = Math.min(dt, 50); 
+            stateTime += safeDt;
 
-            angleY += dt * 0.0003;
+            angleY += safeDt * 0.0003;
             angleX = 0.35 + Math.sin(now * 0.0001) * 0.12;
 
             if (state === 'formed' && stateTime > holdFormed) {
@@ -274,26 +262,19 @@
             else if (state === 'reforming') mix = 1 - easeInOutCubic(stateTime / reformDur);
 
             render(mix);
-            requestAnimationFrame(step);
+            animFrameId = requestAnimationFrame(step);
         }
 
         function render(mix) {
             ctx.clearRect(0, 0, W, H);
-            ctx.font = "11px 'Geist Mono', monospace";
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-
+            
             const cosX = Math.cos(angleX), sinX = Math.sin(angleX);
             const cosY = Math.cos(angleY), sinY = Math.sin(angleY);
 
-            // sphere surface (unit shell) morphs into noise cloud (unit ball),
-            // and the scale interpolates between the two radii to match
             const scale = RADIUS + (SCATTER_RADIUS - RADIUS) * mix;
-
             const projected = [];
 
             for (const p of points) {
-                // true lerp, not base + offset. This is the hoarding fix.
                 const inv = 1 - mix;
                 const lx = p.bx * inv + p.tx * mix;
                 const ly = p.by * inv + p.ty * mix;
@@ -307,13 +288,10 @@
                 let px = CX + rx * scale;
                 let py = CY + ry * scale;
 
-                // Safety net. With SCATTER_SIZE under ~0.95 this should never
-                // fire. Exponential falloff asymptotes at SAFE_RADIUS +
-                // EDGE_SOFTNESS, so overshoot spreads across a band you control
-                // instead of collapsing onto one hardcoded 20px ring.
                 const dx = px - CX;
                 const dy = py - CY;
                 const dist = Math.sqrt(dx * dx + dy * dy);
+                
                 if (dist > SAFE_RADIUS) {
                     const overflow = dist - SAFE_RADIUS;
                     const compressed = SAFE_RADIUS +
@@ -336,7 +314,24 @@
             }
         }
 
-        requestAnimationFrame(step);
+        // OPTIMIZATION: IntersectionObserver to pause the loop when hidden
+        const observer = new IntersectionObserver((entries) => {
+            if (entries[0].isIntersecting) {
+                if (!isRunning) {
+                    isRunning = true;
+                    lastTime = performance.now(); // Reset time so we don't jump
+                    animFrameId = requestAnimationFrame(step);
+                }
+            } else {
+                isRunning = false;
+                if (animFrameId) {
+                    cancelAnimationFrame(animFrameId);
+                }
+            }
+        });
+        
+        // Start observing the parent container
+        observer.observe(canvas.parentElement);
     </script>
 
     <!-- OTP code: inputs, pasting, etc. This is just the visual part, needs proper integration. -->
