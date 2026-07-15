@@ -57,7 +57,7 @@
                             <span class="last-used monospace">Last used</span>
                         </button>
                     </div>
-                    <p class="monospace">OR</p>
+                    <p class="monospace" style="color: var(--muted);">OR</p>
                     <div class="login-email">
                         <label for="userEmail" class="monospace">Email Address:</label>
                         <div class="input-wrap">
@@ -67,7 +67,7 @@
                         <button id="sendCode" class="disabled" disabled>Send Code</button>
                     </div>
                     <div class="login-notice unselectable">
-                        <p>By using Northrou, you agree to our <a href="">Terms of Use</a> and <a href="">Privacy Policy</a>.</p>
+                        <p>By using Northrou, you agree to our <a href="">Terms of Use</a> and <a href="">Privacy Policy</a>.</p> <!-- Leave this alone for now.-->
                     </div>
                 </div>
             </div>
@@ -105,9 +105,12 @@
                             <input type="text" class="otp-input" maxlength="1" placeholder="-" inputmode="numeric" autocomplete="one-time-code" />
                         </div>
                     </div>
-                    <button id="signIn">
-                        Sign in
-                    </button>
+                    <div class="otp-confirm">
+                        <button id="signIn">
+                            Sign in
+                        </button>
+                        <p class="error hidden">Invalid or expired OTP.</p>
+                    </div>
                 </div>
             </div>
         </main>

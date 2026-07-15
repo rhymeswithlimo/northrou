@@ -37,6 +37,10 @@ body {
     --contrast: #FAFAFA;
     --muted: #969696;
 
+    --red: #f51a37;
+    --green: #00e676;
+    --yellow-orange: #ff9100;
+
     --sidepadding: clamp(16px, 10.2864px + 1.7857vw, 24px);
     --lockedvw: 1800px;
 }
@@ -109,9 +113,15 @@ nav {
 
 .monospace { font-family: 'Geist Mono', monospace; font-size: 14px; }
 
-.green { color: #00e676; }
-.yellow-orange { color: #ff9100; }
-.red { color: #ff1744; }
+.green { color: var(--green); }
+.yellow-orange { color: var(--yellow-orange); }
+.red { color: var(--red); }
+
+p.error {
+    color: var(--red);
+
+    font-size: 14px;
+}
 
 /* ==================== BUTTON STYLING ==================== */
 

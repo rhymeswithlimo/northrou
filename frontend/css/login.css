@@ -9,6 +9,8 @@
     gap: clamp(40px, -88px + 12.5vw, 72px);
     align-items: stretch;
     justify-content: center;
+
+    padding: 0 calc(var(--sidepadding) + 6px);
 }
 
 .login-divider-wrap {
@@ -103,12 +105,16 @@
     gap: 8px;
     position: relative;
 
+    transition: opacity .3s ease;
+
     & svg {
         width: 16px;
         height: auto;
 
         fill: var(--strong);
     }
+
+    &:hover { opacity: .85; }
 }
 
 .login-email button,
@@ -152,12 +158,12 @@
     }
 }
 
-.otp-wrapper {
+.otp-wrapper, .otp-confirm {
     display: flex;
     flex-direction: column;
     align-items: stretch;
 
-    gap: 16px;
+    gap: 12px;
 }
 
 .otp-container {
