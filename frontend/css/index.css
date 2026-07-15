@@ -67,7 +67,7 @@ nav.nav-hidden {
 
 .nav-list {
     display: flex;
-    gap: clamp(0.5625rem, 0.1607rem + 2.0089vw, 1.125rem);
+    gap: clamp(9px, 2.5712px + 2.0089vw, 18px);
 
     list-style: none;
     margin: 0;
@@ -133,7 +133,7 @@ nav.nav-hidden {
 
 .hero-display-container {
     display: block;
-    height: clamp(31.25rem, 18.7849rem + 25.969vw, 48rem);
+    height: clamp(500px, 300.5584px + 25.969vw, 768px);
     overflow: hidden;
     position: relative;
 
@@ -410,7 +410,7 @@ body.modal-open main {
 .watch-info-hero {
     position: relative;
     width: 100%;
-    height: clamp(18.75rem, 12.7841rem + 29.8295vw, 31.875rem);
+    height: clamp(300px, 204.5456px + 29.8295vw, 510px);
 
     overflow: hidden;
 
@@ -437,7 +437,7 @@ body.modal-open main {
     z-index: 1;
     margin-top: -72px; /* pull the content up onto the faded backdrop */
 
-    padding: 0 calc(var(--sidepadding) + clamp(0rem, -0.4771rem + 1.5267vw, 0.5rem)) 40px;
+    padding: 0 calc(var(--sidepadding) + clamp(0px, -7.6336px + 1.5267vw, 8px)) 40px;
 
     display: flex;
     flex-direction: column;
@@ -466,7 +466,7 @@ body.modal-open main {
     -ms-user-select: none;
 
     & img {
-        width: clamp(13.125rem, 9.2403rem + 20.7182vw, 22.5rem);
+        width: clamp(210px, 147.8448px + 20.7182vw, 360px);
         height: auto;
         display: block;
 
@@ -598,7 +598,7 @@ body.modal-open main {
 
 .wi-overview {
     font-weight: 450;
-    font-size: clamp(0.9375rem, 0.9rem + 0.2vw, 1rem);
+    font-size: clamp(15px, 14.4px + 0.2vw, 16px);
     line-height: 1.6;
     color: hsl(from var(--contrast) h s l / 0.88);
 }

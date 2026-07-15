@@ -37,7 +37,7 @@ body {
     --contrast: #FAFAFA;
     --muted: #969696;
 
-    --sidepadding: clamp(1rem, 0.6429rem + 1.7857vw, 1.5rem);
+    --sidepadding: clamp(16px, 10.2864px + 1.7857vw, 24px);
     --lockedvw: 1800px;
 }
 

@@ -6,7 +6,7 @@
     max-width: 1280px;
 
     display: flex;
-    gap: clamp(2.5rem, -5.5rem + 12.5vw, 4.5rem);
+    gap: clamp(40px, -88px + 12.5vw, 72px);
     align-items: stretch;
     justify-content: center;
 }
@@ -29,6 +29,8 @@
     flex: 1 1 50%;
     max-width: 50%;
     overflow: hidden;
+
+    padding: 0 var(--sidepadding);
 }
 
 #ascii {
@@ -44,14 +46,14 @@
     max-width: 50%;
     align-self: center;
 
-    padding: 0 clamp(0.75rem, -5.25rem + 9.375vw, 2.25rem);
+    padding: 0 clamp(12px, -84px + 9.375vw, 36px);
 }
 
 .login-form-container {
     display: flex;
     flex-direction: column;
 
-    gap: clamp(1.75rem, 1rem + 1.5625vw, 2.25rem);
+    gap: clamp(28px, 16px + 1.5625vw, 36px);
 }
 
 .login-info {
@@ -64,7 +66,7 @@
 }
 
 .login-logo {
-    width: clamp(2.5rem, 2.2727rem + 1.1364vw, 3rem);
+    width: 45px;
 
     & svg {
         display: block;
@@ -79,7 +81,7 @@
     justify-content: center;
     align-items: center;
 
-    gap: clamp(1.25rem, 1.1rem + 0.5vw, 1.5rem);
+    gap: clamp(20px, 17.6px + 0.5vw, 24px);
 
     & label { color: var(--muted); font-size: 13px; margin-bottom: -3px; }
 }
@@ -160,12 +162,12 @@
 
 .otp-container {
     display: flex;
-    gap: clamp(0.5rem, 0.2rem + 1vw, 1rem);
+    gap: clamp(8px, 3.2px + 1vw, 16px);
 }
 
 .otp-group {
     flex: 1;
-    padding: 10px clamp(0.75rem, 0.45rem + 1vw, 1.25rem);
+    padding: 10px clamp(12px, 7.2px + 1vw, 20px);
 
     display: flex;
     align-items: center;
@@ -182,7 +184,7 @@
 
 .otp-input {
     font-family: 'Geist Mono', monospace; 
-    font-size: clamp(1.125rem, 0.9596rem + 0.7353vw, 1.3125rem);
+    font-size: clamp(18px, 15.3536px + 0.7353vw, 21px);
     font-weight: 500;
 
     padding: 6px 2px;
@@ -274,10 +276,10 @@
 
 /* ==================== RESPONSIVE ==================== */
 
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
     .login {
         flex-direction: column;
-        padding-block: clamp(1.75rem, 0.5rem + 4.1667vw, 2.5rem);
+        padding-block: clamp(28px, 8px + 4.1667vw, 40px);
         min-height: auto;
     }
 
@@ -288,6 +290,4 @@
         max-width: 480px;
         padding: 0;
     }
-
-    .login-email input { font-size: 16px; }
 }

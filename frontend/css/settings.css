@@ -2,7 +2,7 @@ body {
     max-width: 840px;
     margin: auto;
     padding: var(--sidepadding);
-    padding-block: clamp(2rem, 6vh, 4rem);
+    padding-block: clamp(32px, 6vh, 64px);
 
     gap: 24px;
 }
