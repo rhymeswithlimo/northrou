@@ -7,7 +7,7 @@ struct WatchView: View {
 
     var body: some View {
         NavigationStack {
-            Color.blue.ignoresSafeArea()
+            Color.blue.ignoresSafeArea() // placeholder
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {

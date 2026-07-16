@@ -9,20 +9,22 @@
     <link rel="icon" href="assets/favicon-dark.svg" media="(prefers-color-scheme: light)">
     <link rel="icon" href="assets/favicon-light.svg" media="(prefers-color-scheme: dark)">
 
-    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/components.css">
     <link rel="stylesheet" href="css/settings.css">
 
-    <script src="js/mobile.js" defer></script>
+    <script type="module" src="js/pages/settings.js"></script>
 </head>
 <body>
 
-    <nav class="back-navigation">
-        <button onclick="history.back()" class="back-nav">
+    <nav class="back-navigation band" aria-label="Back">
+        <button type="button" class="back-link" id="back">
             <span aria-hidden="true">&lt;</span><span>Back</span>
         </button>
     </nav>
 
     <main class="settings">
+        <h1 class="u-visually-hidden">Settings</h1>
         <div class="account-settings group">
             <div class="settings-row">
                 <p>Signed in as <span>you@example.com</span></p>
@@ -35,7 +37,7 @@
         </div>
 
         <div class="profiles-settings group">
-            <h3>PROFILES</h3>
+            <h2>PROFILES</h2>
             <br>
             <div class="settings-row">
                 <p>Tomas <span class="dim">(you)</span></p>
@@ -61,7 +63,7 @@
         </div>
 
         <div class="playback-settings group">
-            <h3>PLAYBACK</h3>
+            <h2>PLAYBACK</h2>
             <br>
             <div class="settings-row">
                 <p>Max streaming quality</p>
@@ -91,7 +93,7 @@
         </div>
 
         <div class="about-settings group">
-            <h3>ABOUT</h3>
+            <h2>ABOUT</h2>
             <br>
             <div class="settings-row">
                 <p>Northrou v0.1.1</p>
@@ -109,7 +111,7 @@
             <div class="admin-header">
                 <hr>
                 <div class="settings-row">
-                    <h3>SERVER ADMIN</h3>
+                    <h2>SERVER ADMIN</h2>
                 </div>
                 <hr>
             </div>
@@ -130,13 +132,13 @@
 
             <div class="admin-locked">
                 <div class="server-settings group">
-                    <h3>SERVER</h3>
+                    <h2>SERVER</h2>
                     <br>
                     <div class="settings-row">
                         <p>Current server: <span>kimoNAS</span> <span class="dim">(192.168.1.1)</span></p>
                     </div>
                     <div class="settings-row">
-                        <p><span class="blink green">&#9679;</span> Connected</p>
+                        <p><span class="blink u-text-green" aria-hidden="true">&#9679;</span> Connected</p>
                     </div>
                     <br>
                     <div class="settings-row">
@@ -148,7 +150,7 @@
                 </div>
 
                 <div class="libraries-settings group">
-                    <h3>LIBRARIES</h3>
+                    <h2>LIBRARIES</h2>
                     <br>
                     <div class="settings-row">
                         <p>/Volumes/Media/Movies</p>
@@ -169,7 +171,7 @@
                 <br>
 
                 <div class="streaming-settings group">
-                    <h3>STREAMING</h3>
+                    <h2>STREAMING</h2>
                     <br>
                     <div class="settings-row">
                         <p>Hardware acceleration: <span>on</span> <span class="dim">(VideoToolbox)</span></p>
@@ -188,7 +190,7 @@
                 <br>
 
                 <div class="advanced-settings group">
-                    <h3>ADVANCED</h3>
+                    <h2>ADVANCED</h2>
                     <br>
                     <div class="settings-row">
                         <p>ffmpeg</p>
@@ -217,82 +219,5 @@
 
     </main>
 
-    <!-- Add padding to top/bottom of settings-row based on wrap state -->
-    <script>
-        (function () {
-            // Returns true if `el` contains any flex container whose children
-            // span more than one line (i.e. it has wrapped), checked at every
-            // nesting level, not just one level deep. This avoids having to
-            // guess how many levels deep the actual wrapping div sits.
-            function hasWrapped(el) {
-                const children = Array.from(el.children);
-
-                if (children.length >= 2) {
-                    let prevRight = null;
-                    for (const child of children) {
-                        const rect = child.getBoundingClientRect();
-                        if (rect.width > 0 && rect.height > 0) {
-                            if (prevRight !== null && rect.left < prevRight - 1) {
-                                return true;
-                            }
-                            prevRight = rect.right;
-                        }
-                    }
-                }
-
-                // Recurse into every child, not just direct ones, so wrapping
-                // at ANY depth inside this row is caught.
-                return children.some((child) => hasWrapped(child));
-            }
-
-            function checkAllRows() {
-                document.querySelectorAll('.group').forEach((group) => {
-                    const rows = Array.from(group.querySelectorAll(':scope > .settings-row'));
-
-                    // Raw wrap state per row, computed once. This is the source of truth.
-                    const wrapState = rows.map((row) => hasWrapped(row));
-
-                    // `wrapped` class drives top padding. Suppress it when the row sits
-                    // directly under a <br> or <h3>, since that already spaces it above.
-                    rows.forEach((row, i) => {
-                        const prevSibling = row.previousElementSibling;
-                        const precededByBreakOrHeading = Boolean(
-                            prevSibling && ['BR', 'H3'].includes(prevSibling.tagName)
-                        );
-                        row.classList.toggle('wrapped', wrapState[i] && !precededByBreakOrHeading);
-                    });
-
-                    // `pad-bottom` is based purely on wrap state: this row wrapped and the
-                    // next row exists and did NOT wrap. No heading/break suppression here.
-                    rows.forEach((row, i) => {
-                        const hasNext = i + 1 < rows.length;
-                        row.classList.toggle(
-                            'pad-bottom',
-                            wrapState[i] && hasNext && !wrapState[i + 1]
-                        );
-                    });
-                });
-            }
-
-            function init() {
-                checkAllRows();
-                window.addEventListener('resize', checkAllRows);
-                window.addEventListener('load', checkAllRows);
-
-                if (window.ResizeObserver) {
-                    const observer = new ResizeObserver(checkAllRows);
-                    document.querySelectorAll('.settings-row').forEach((row) => {
-                        observer.observe(row);
-                    });
-                }
-            }
-
-            if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', init);
-            } else {
-                init();
-            }
-        })();
-    </script>
 </body>
 </html>

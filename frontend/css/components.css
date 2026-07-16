@@ -1,0 +1,157 @@
+/* Shared UI components. Page-specific styling lives in the per-page sheets. */
+
+/* ==================== PROGRESS ==================== */
+
+.progress {
+    width: 100%;
+    height: 5px;
+    background-color: hsl(from var(--muted) h s l / .24);
+    border-radius: 50vw;
+    overflow: hidden;
+}
+
+.progress__bar {
+    height: 100%;
+    background-color: var(--contrast);
+    border-radius: 50vw;
+    transition: width 0.3s ease;
+}
+
+/* ==================== BACK LINK ==================== */
+
+.back-link {
+    width: fit-content;
+    padding: 2px 0;
+
+    display: flex;
+    align-items: center;
+    gap: 7px;
+
+    font-size: 14px;
+    color: hsl(from var(--muted) h s l / .75);
+
+    -webkit-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+
+    transition: color .2s ease;
+
+    &:active { scale: 1; }
+
+    @media (hover: hover) {
+        &:hover { color: var(--muted); }
+    }
+}
+
+/* ==================== BRACKET BUTTON ==================== */
+
+/* The `[ label ]` terminal-style control used on profiles and settings. */
+.btn-bracket {
+    font-family: 'Geist Mono', monospace;
+    font-size: 14px;
+
+    -webkit-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+
+    padding: 1px;
+    width: fit-content;
+
+    transition: opacity .3s ease;
+
+    @media (hover: hover) {
+        &:hover { text-decoration: underline; opacity: .84; }
+    }
+
+    &:focus-visible {
+        outline: none;
+        background-color: var(--contrast);
+        color: var(--strong) !important;
+    }
+}
+
+/* ==================== FORM ERROR ==================== */
+
+.form-error {
+    color: var(--red);
+    font-size: 14px;
+}
+
+/* ==================== ROW ==================== */
+
+/* A titled horizontal group of cards. */
+.row {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.row__title {
+    font-weight: 500;
+
+    -webkit-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+.row__items {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 24px;
+}
+
+/* ==================== CARD ==================== */
+
+.card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    border-radius: 6px;
+
+    width: 100%;
+    min-width: 0;
+
+    opacity: 1;
+    transition: opacity .3s ease;
+
+    -webkit-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+/* the image box: owns the ratio, rounding and clipping */
+.card__thumb {
+    aspect-ratio: 2 / 3;
+    width: 100%;
+
+    border-radius: 6px;
+    overflow: hidden;
+
+    & img { object-fit: cover; width: 100%; height: 100%; display: block; }
+}
+
+/* text block below the thumb (title / meta / progress) */
+.card__info {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.card__title {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.card__meta {
+    font-family: 'Geist Mono', monospace;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+/* Hovering one card dims its siblings. */
+@media (hover: hover) {
+    .row__items:has(.card:hover) .card { opacity: .5; }
+    .row__items:has(.card:hover) .card:hover { opacity: 1; }
+}

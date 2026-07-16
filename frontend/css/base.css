@@ -1,3 +1,5 @@
+/* ==================== RESET ==================== */
+
 *,
 *::before,
 *::after {
@@ -27,10 +29,7 @@ body {
     -webkit-font-smoothing: antialiased;
 }
 
-.touch-device * { pointer-events: auto; }
-.touch-device *:hover { all: unset !important; }
-
-/* ==================== BASIC CALLING ==================== */
+/* ==================== TOKENS ==================== */
 
 :root {
     --strong: #050505;
@@ -61,7 +60,7 @@ body {
     font-display: swap;
 }
 
-/* ==================== BASIC STYLING ==================== */
+/* ==================== ELEMENTS ==================== */
 
 a {
     font-family: inherit;
@@ -93,92 +92,42 @@ main {
     width: 100%;
 }
 
-section,
-nav {
+/* A full-bleed page band: spans the viewport, caps its content at the locked
+   width and gutters it. Opt in with a class - never keyed off `section`, so
+   using <section> for its meaning stays free of layout side effects. */
+.band {
     width: 100%;
     max-width: var(--lockedvw);
     padding: 0 var(--sidepadding);
     margin: 0 auto;
 }
 
-.unselectable {
+/* ==================== UTILITIES ==================== */
+
+.u-hidden { display: none !important; }
+
+.u-noselect {
     -webkit-user-select: none;
     -ms-user-select: none;
     user-select: none;
 }
 
-.hidden { display: none !important; }
-
-/* ==================== TEXT STYLING ==================== */
-
-.monospace { font-family: 'Geist Mono', monospace; font-size: 14px; }
-
-.green { color: var(--green); }
-.yellow-orange { color: var(--yellow-orange); }
-.red { color: var(--red); }
-
-p.error {
-    color: var(--red);
-
-    font-size: 14px;
-}
-
-/* ==================== BUTTON STYLING ==================== */
-
-.bracket-buttons {
-    font-family: 'Geist Mono', monospace;
-    font-size: 14px;
-
-    -webkit-user-select: none;
-    -ms-user-select: none;
-    user-select: none;
-
-    & a, button {
-        padding: 1px;
-        width: fit-content;
-
-        transition: opacity .3s ease;
-        &:hover { text-decoration: underline; opacity: .84; }
-
-        &:focus-visible {
-            outline: none;
-            background-color: var(--contrast);
-            color: var(--strong) !important;
-        }
-    }
-}
-
-/* ==================== MISC STYLING ==================== */
-
-.progress {
-    width: 100%;
-    height: 5px;
-    background-color: hsl(from var(--muted) h s l / .24);
-    border-radius: 50vw;
+/* Available to assistive tech, invisible on screen. */
+.u-visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    border: 0;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
     overflow: hidden;
+    white-space: nowrap;
 }
 
-.bar {
-    height: 100%;
-    background-color: var(--contrast);
-    border-radius: 50vw;
-    transition: width 0.3s ease;
-}
+.u-mono { font-family: 'Geist Mono', monospace; font-size: 14px; }
 
-.back-nav {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-
-    font-size: 14px;
-    color: hsl(from var(--muted) h s l / .75);
-
-    -webkit-user-select: none;
-    -ms-user-select: none;
-    user-select: none;
-
-    transition: color .2s ease;
-    &:hover { color: var(--muted); }
-
-    &:active { scale: 1; }
-}
+.u-text-green { color: var(--green); }
+.u-text-yellow-orange { color: var(--yellow-orange); }
+.u-text-red { color: var(--red); }

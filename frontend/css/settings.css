@@ -44,7 +44,7 @@ body {
         &.active { color: var(--contrast); }
     }
 
-    & h3 {
+    & h2 {
         font-family: 'Geist', sans-serif;
         font-size: 15px;
         font-weight: 400;
