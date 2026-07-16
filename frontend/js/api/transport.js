@@ -1,51 +1,32 @@
 // How a request reaches the server.
 //
-// Three transports, one interface, because the client runs in three places:
+// Two transports, one interface, because the client runs in two places:
 //
 //   browser  - served same-origin off the backend. Plain fetch.
-//   tauri    - desktop/mobile app talking to a box on another machine. That is
-//              cross-origin, so it goes through the Rust HTTP plugin rather
-//              than the WebView's fetch, which CORS would block.
-//   tunnel   - the box is off-LAN and only reachable peer-to-peer, so requests
-//              ride the WebRTC data channel (see js/api/tunnel.js).
+//   tunnel   - a desktop/mobile app, which is never same-origin with the box,
+//              so requests ride a WebRTC data channel to it (see tunnel.js).
 //
-// Which one is in play is a property of how this client was launched and where
-// its server is, not of any single call, so it is resolved once here and every
-// caller just uses request().
+// Which one is in play is a property of how this client was launched, not of
+// any single call, so it is resolved once here and every caller just uses
+// request(). A browser served off the box talks to it directly; an app always
+// reaches it peer-to-peer through the coordinator.
 
 import { openTunnel } from './tunnel.js';
 
-const isTauri = () => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
-
 /** Same-origin browser fetch. */
 const browserTransport = () => (url, init) => fetch(url, init);
-
-/**
- * Tauri: route through the Rust side so a remote box isn't blocked by CORS.
- * Falls back to fetch if the plugin isn't present, which keeps `tauri dev`
- * against a local server working before the plugin is wired.
- */
-function tauriTransport() {
-    let pluginFetch = null;
-    const load = async () => {
-        if (pluginFetch) return pluginFetch;
-        try {
-            ({ fetch: pluginFetch } = await import('@tauri-apps/plugin-http'));
-        } catch {
-            pluginFetch = fetch;
-        }
-        return pluginFetch;
-    };
-    return async (url, init) => (await load())(url, init);
-}
 
 let transport = null;
 let tunnel = null;
 let mode = 'direct';
 
-/** The active transport. Resolved once, then reused. */
+/**
+ * The active transport. The tunnel installs its own via setTransport; this
+ * default is the same-origin browser fetch, which is the only case that reaches
+ * the server without a tunnel.
+ */
 export function getTransport() {
-    if (!transport) transport = isTauri() ? tauriTransport() : browserTransport();
+    if (!transport) transport = browserTransport();
     return transport;
 }
 
@@ -54,7 +35,7 @@ export function setTransport(fn) {
     transport = fn;
 }
 
-/** 'direct' (same-origin or LAN) or 'tunnel' (peer-to-peer). */
+/** 'direct' (same-origin browser) or 'tunnel' (peer-to-peer app). */
 export const getMode = () => mode;
 
 /**
@@ -70,14 +51,14 @@ export async function useTunnel({ coordUrl, code }) {
     return tunnel;
 }
 
-/** Send every request straight to `base` (same-origin or a LAN address). */
+/** Talk to the box directly, same-origin (a browser served off it). */
 export function useDirect(base = '') {
     if (tunnel) {
         tunnel.close();
         tunnel = null;
     }
     setBaseUrl(base);
-    transport = null; // re-resolve: browser fetch or the Tauri plugin
+    transport = null; // re-resolve to the browser fetch
     mode = 'direct';
 }
 
@@ -88,7 +69,8 @@ export function closeTunnel() {
     mode = 'direct';
 }
 
-/** Where the API lives. Same-origin in a browser; an absolute base in an app. */
+/** Where the API lives. Always same-origin now: a browser hits the box it was
+ * served from, and the tunnel terminates at the box so paths go as-is. */
 let baseUrl = '';
 
 export const getBaseUrl = () => baseUrl;

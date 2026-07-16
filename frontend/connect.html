@@ -24,11 +24,6 @@
             <!-- ---------- enter a code ---------- -->
             <section class="auth" id="step-code" aria-labelledby="t-code">
                 <header class="auth__header">
-                    <span class="auth__logo">
-                        <svg viewBox="0 0 2160 2160" role="img" aria-label="Northrou">
-                            <path d="M1531,1080h0s599,0,599,0V30h-484.71c-315.22,17.98-565.29,279.28-565.29,599h0V30H30v484.71c17.98,315.22,279.28,565.29,599,565.29h0s-599,0-599,0v1050h484.71c315.22-17.98,565.29-279.28,565.29-599h0v599h1050v-484.71c-17.98-315.22-279.28-565.29-599-565.29Z"/>
-                        </svg>
-                    </span>
                     <div>
                         <h1 class="auth__title" id="t-code">Connect to your server</h1>
                         <p class="auth__subtitle">Enter the connection code from your Northrou server.</p>
@@ -41,23 +36,10 @@
                         <input type="text" id="code" class="auth__input input--mono" placeholder="NR-XXXX-XXXX"
                                autocomplete="off" autocapitalize="characters" spellcheck="false"
                                aria-describedby="code-error">
-                        <p class="setup__hint">
-                            You'll find it in Server admin on the machine running Northrou, or on
-                            the screen shown when it was first set up.
-                        </p>
 
                         <details class="setup__details">
-                            <summary class="setup__summary">On the same network?</summary>
-                            <p class="setup__hint">
-                                Give the server's local address and this device will talk to it
-                                directly, which is faster and keeps working with the internet down.
-                                Optional: without it, everything goes through the peer-to-peer tunnel.
-                            </p>
+                            <summary class="setup__summary">Run your own coordinator?</summary>
                             <div class="setup__fields">
-                                <label for="lan" class="auth__label u-mono">Local address:</label>
-                                <input type="text" id="lan" class="auth__input"
-                                       placeholder="http://192.168.1.50:7777" autocomplete="off" spellcheck="false">
-
                                 <label for="coord" class="auth__label u-mono">Coordination server:</label>
                                 <input type="text" id="coord" class="auth__input"
                                        placeholder="Default: the hosted broker" autocomplete="off" spellcheck="false">
@@ -77,21 +59,11 @@
             <!-- ---------- connecting ---------- -->
             <section class="auth u-hidden" id="step-connecting" aria-labelledby="t-connecting">
                 <header class="auth__header">
-                    <span class="auth__logo">
-                        <svg viewBox="0 0 2160 2160" role="img" aria-label="Northrou">
-                            <path d="M1531,1080h0s599,0,599,0V30h-484.71c-315.22,17.98-565.29,279.28-565.29,599h0V30H30v484.71c17.98,315.22,279.28,565.29,599,565.29h0s-599,0-599,0v1050h484.71c315.22-17.98,565.29-279.28,565.29-599h0v599h1050v-484.71c-17.98-315.22-279.28-565.29-599-565.29Z"/>
-                        </svg>
-                    </span>
                     <div>
                         <h1 class="auth__title" id="t-connecting">Finding your server</h1>
-                        <p class="auth__subtitle" id="connect-status" aria-live="polite">Looking on this network...</p>
+                        <p class="auth__subtitle" id="connect-status" aria-live="polite">Connecting peer to peer...</p>
                     </div>
                 </header>
-
-                <ol class="setup__steps" aria-label="Progress">
-                    <li id="s-lan" class="is-current">Local network</li>
-                    <li id="s-tunnel">Peer to peer</li>
-                </ol>
             </section>
 
         </div>

@@ -61,16 +61,12 @@ resolved once at boot (`js/api/transport.js`, `js/api/connect.js`):
 | Transport | When | How |
 |---|---|---|
 | same-origin | browser, served by the backend | plain `fetch` |
-| direct | app, box on this network | Tauri's Rust HTTP plugin |
-| tunnel | app, box elsewhere | WebRTC data channel |
+| tunnel | app | WebRTC data channel |
 
-**LAN before tunnel, always.** At home the direct route is faster, needs no
-broker and survives the internet being down, and home is where most viewing
-happens. The tunnel is the fallback for leaving the house, not the default.
-
-The apps go through the Rust HTTP plugin rather than the WebView's `fetch`
-because a box on another machine is a cross-origin request to a server that
-knows nothing about CORS.
+An app is never same-origin with the box, so it always reaches it peer-to-peer:
+there is no direct-to-a-LAN-address path. A single hosted-broker WebRTC tunnel is
+one code path to get right, works identically at home and away, and needs no
+address discovery or `/api/health` probing of guessed hosts.
 
 The tunnel client is **JS, not Rust**: the WebView already has a WebRTC stack on
 every platform Tauri targets, and a JS client keeps working in a plain browser,

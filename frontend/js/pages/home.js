@@ -124,6 +124,6 @@ window.__northrouCloseDetail = () => modal.close();
 mountNavAutoHide($('.nav'));
 mountOfflineBanner();
 
-// Resolve the server (same-origin, LAN or tunnel) before asking it anything.
+// Resolve the server (same-origin or tunnel) before asking it anything.
 // An app starts knowing nothing about which box it belongs to.
 if (await requireServer()) render();

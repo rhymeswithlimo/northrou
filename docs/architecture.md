@@ -110,9 +110,8 @@ clients request a server by that code; the broker relays only WebRTC signaling
 
 The client half of the tunnel is JS (`frontend/js/api/tunnel.js`), because the
 WebView already has a WebRTC stack on every platform and it keeps working in a
-plain browser. Clients try the LAN first and only tunnel when the box isn't on
-this network: the direct route is faster, needs no broker, and survives the
-internet being down.
+plain browser. A browser served off the box talks to it directly; the apps,
+which are never same-origin with it, always reach it through this tunnel.
 
 The coordinator also hosts the optional **sign-in broker** (`internal/oauth`),
 which is off unless provider credentials are configured. Google and Apple require
@@ -155,9 +154,8 @@ Home server ──(register)──▶ Coordinator ◀──(connect by code)─�
 ```
 
 Once the WebRTC connection is established, the client speaks the ordinary HTTP
-API over a data channel, one channel per request, using length-prefixed frames. On
-the local network, clients skip the coordinator entirely and connect to the
-server's LAN address.
+API over a data channel, one channel per request, using length-prefixed frames. A
+browser served off the box skips all of this and talks to it same-origin.
 
 ## Data & dependencies
 

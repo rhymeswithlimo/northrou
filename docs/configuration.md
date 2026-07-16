@@ -87,8 +87,10 @@ given paths to be treated as TV episodes, which helps for shows with messy
 names that don't parse as episodes on their own.
 
 ### `[remote]`
-- **enabled** - turn peer-to-peer remote access on/off. Local-network access
-  works regardless, by connecting to the server's LAN address directly.
+- **enabled** - turn peer-to-peer remote access on/off. This governs the tunnel
+  the client apps use; a browser opened against the box's own address on the same
+  network reaches it directly regardless, since that is just the server serving
+  its own pages.
 - **coordination_url** - the signaling broker that lets remote devices find your
   server. Defaults to the hosted `coord.northrou.app`, so remote access works out
   of the box with nothing extra to run. Point it at your own coordinator only if

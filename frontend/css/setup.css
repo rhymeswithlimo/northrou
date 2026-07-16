@@ -31,6 +31,14 @@
     margin-inline: auto;
 }
 
+/* Centre every header on these two pages (setup and connect), so alignment is
+   consistent across all their steps rather than switching between centred and
+   left depending on whether a step happens to carry a logo. The "< Back" button
+   is a sibling of the header, not inside it, so it keeps its own placement. */
+.setup .auth__header {
+    text-align: center;
+}
+
 /* ==================== DISCLOSURE ==================== */
 
 .setup__details {

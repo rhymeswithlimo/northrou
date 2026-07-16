@@ -133,8 +133,8 @@ func (a *App) Run(ctx context.Context) error {
 	go a.ensureFFmpeg(ctx)
 
 	// Remote access: register with the coordination server and tunnel the API
-	// over WebRTC. Local-network clients bypass this entirely by connecting to
-	// the server's LAN address directly.
+	// over WebRTC. A browser served off this box talks to it directly; the apps
+	// reach it through this tunnel.
 	if a.Cfg.Remote.Enabled {
 		go a.startRemote(ctx)
 	}

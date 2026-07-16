@@ -4,15 +4,14 @@
 // client knows which box it is talking to.
 
 import { $, show, hide, setError } from '../lib/dom.js';
-import { useDirect, useTunnel } from '../api/transport.js';
+import { useTunnel } from '../api/transport.js';
 import {
-    setServer, probeLan, normalizeCode, isSameOrigin, DEFAULT_COORD_URL,
+    setServer, normalizeCode, isSameOrigin, DEFAULT_COORD_URL,
 } from '../data/servers.js';
 
 const stepCode = $('#step-code');
 const stepConnecting = $('#step-connecting');
 const codeInput = $('#code');
-const lanInput = $('#lan');
 const coordInput = $('#coord');
 const connectBtn = $('#connect');
 const codeError = $('#code-error');
@@ -39,39 +38,20 @@ $('#code-form').addEventListener('submit', async (e) => {
     const code = normalizeCode(codeInput.value);
     if (!code) return;
 
-    const lan = lanInput.value.trim();
     // A self-hosted coordinator overrides the default hosted broker.
     const coordUrl = coordInput.value.trim() || DEFAULT_COORD_URL;
     show(stepConnecting);
     hide(stepCode);
-
-    // 1. LAN first. At home it is faster, needs no broker and survives the
-    //    internet being down.
-    if (lan) {
-        status.textContent = 'Looking on this network...';
-        if (await probeLan(lan)) {
-            useDirect(lan);
-            setServer({ code, lan, coordUrl, mode: 'lan' });
-            window.location.replace('login.html');
-            return;
-        }
-    }
-
-    // 2. Not here (or no address given): hole-punch to the house.
-    $('#s-lan').className = 'is-done';
-    $('#s-tunnel').className = 'is-current';
     status.textContent = 'Connecting peer to peer...';
 
     try {
         await useTunnel({ coordUrl, code });
-        setServer({ code, lan: lan || undefined, coordUrl, mode: 'tunnel' });
+        setServer({ code, coordUrl, mode: 'tunnel' });
         window.location.replace('login.html');
     } catch (err) {
         // Back to the form with the real reason, rather than a dead spinner.
         hide(stepConnecting);
         show(stepCode);
-        $('#s-lan').className = 'is-current';
-        $('#s-tunnel').className = '';
         setError(codeError, err.message || 'Could not reach that server.');
         codeInput.focus();
     }
