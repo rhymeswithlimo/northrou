@@ -9,6 +9,7 @@ import { createOtpInput } from '../components/otp.js';
 import { requestPin, verifyPin } from '../data/account.js';
 import { NetworkError } from '../api/client.js';
 import { isSignedIn } from '../api/session.js';
+import { requireServer } from '../api/connect.js';
 
 // Stricter than type="email", which happily accepts "a@b".
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -27,6 +28,9 @@ const backBtn = $('#otp-back');
 const otp = createOtpInput(otpForm);
 
 mountAsciiArt($('#ascii'));
+
+// Pair with a server first; there is nothing to sign in to otherwise.
+if (!(await requireServer())) throw new Error('no server');
 
 // Already signed in: nothing to do here.
 if (isSignedIn()) window.location.replace('profiles.html');

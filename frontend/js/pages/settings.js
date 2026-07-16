@@ -8,6 +8,7 @@ import { listProfiles, createProfile, renameProfile, deleteProfile, MAX_PROFILES
 import { getPrefs, setPref, QUALITY_OPTIONS, CELLULAR_OPTIONS } from '../data/prefs.js';
 import * as admin from '../data/admin.js';
 import { isSignedIn } from '../api/session.js';
+import { requireServer } from '../api/connect.js';
 
 const TILES = ['#3c89e0', '#19ad31', '#d4412e', '#da3ce0', '#e0a13c', '#3cd6e0'];
 const tileFor = (id) => TILES[(id - 1) % TILES.length];
@@ -15,6 +16,7 @@ const tileFor = (id) => TILES[(id - 1) % TILES.length];
 $('#back').addEventListener('click', () => history.back());
 mountOfflineBanner();
 
+if (!(await requireServer())) throw new Error('no server');
 if (!isSignedIn()) window.location.replace('login.html');
 
 let me = null;

@@ -7,6 +7,7 @@ import { posterCard, continueCard, row } from '../components/card.js';
 import { createDetailModal } from '../components/detail.js';
 import { statePanel, skeletonRow, toast, mountOfflineBanner } from '../components/states.js';
 import { getHero, getContinueWatching, getHomeRows, getDetail } from '../data/library.js';
+import { requireServer } from '../api/connect.js';
 
 const rowsEl = $('#rows');
 const heroEl = $('#hero');
@@ -96,4 +97,7 @@ document.addEventListener('click', (e) => {
 
 mountNavAutoHide($('.nav'));
 mountOfflineBanner();
-render();
+
+// Resolve the server (same-origin, LAN or tunnel) before asking it anything.
+// An app starts knowing nothing about which box it belongs to.
+if (await requireServer()) render();
