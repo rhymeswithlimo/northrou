@@ -1,4 +1,4 @@
-// Login page: email -> one-time code -> signed in.
+// Login: email -> one-time pin -> signed in.
 //
 // The two steps are sibling <section>s; only one is ever visible. Both are real
 // <form>s, so Enter submits and the browser handles autofill normally.
@@ -6,6 +6,9 @@
 import { $, show, hide, replay, setError } from '../lib/dom.js';
 import { mountAsciiArt } from '../components/ascii-art.js';
 import { createOtpInput } from '../components/otp.js';
+import { requestPin, verifyPin } from '../data/account.js';
+import { NetworkError } from '../api/client.js';
+import { isSignedIn } from '../api/session.js';
 
 // Stricter than type="email", which happily accepts "a@b".
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -25,9 +28,30 @@ const otp = createOtpInput(otpForm);
 
 mountAsciiArt($('#ascii'));
 
-function shake(el) {
-    replay(el, 'shake');
+// Already signed in: nothing to do here.
+if (isSignedIn()) window.location.replace('profiles.html');
+
+const shake = (el) => replay(el, 'shake');
+
+/** Remembers which method was last used, so the badge is real rather than decorative. */
+const LAST_USED_KEY = 'northrou.lastUsed';
+function markLastUsed(method) {
+    try {
+        localStorage.setItem(LAST_USED_KEY, method);
+    } catch { /* non-essential */ }
 }
+function showLastUsed() {
+    let last;
+    try {
+        last = localStorage.getItem(LAST_USED_KEY);
+    } catch {
+        return;
+    }
+    if (!last) return;
+    const badge = document.querySelector(`[data-last-used="${last}"]`);
+    if (badge) badge.hidden = false;
+}
+showLastUsed();
 
 // ---------- step 1: email ----------
 
@@ -41,17 +65,33 @@ emailInput.addEventListener('input', () => {
 });
 validateEmail(); // covers browser-restored values on reload
 
-emailForm.addEventListener('submit', (e) => {
+emailForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (sendBtn.disabled) return;
 
-    goToStep(stepOtp);
-    otp.focus();
+    sendBtn.disabled = true;
+    sendBtn.textContent = 'Sending...';
+    try {
+        await requestPin(emailInput.value.trim());
+        markLastUsed('email');
+        goToStep(stepOtp);
+        otp.focus();
+    } catch (err) {
+        // request-pin is always 200 for a valid request, so an error here means
+        // the server is unreachable or broken, never "wrong email".
+        setError(emailError, err instanceof NetworkError
+            ? 'Could not reach the server. Check your connection.'
+            : 'Something went wrong sending your code. Try again.');
+        shake(sendBtn);
+    } finally {
+        sendBtn.textContent = 'Send Code';
+        validateEmail();
+    }
 });
 
-// ---------- step 2: code ----------
+// ---------- step 2: pin ----------
 
-otpForm.addEventListener('submit', (e) => {
+otpForm.addEventListener('submit', async (e) => {
     e.preventDefault();
 
     if (!otp.complete) {
@@ -60,11 +100,26 @@ otpForm.addEventListener('submit', (e) => {
         return;
     }
 
-    // Until this talks to a server there is no correct code.
-    setError(otpError, 'Invalid or expired OTP.');
-    shake(otpSubmit);
-    otp.clear();
-    otp.focus();
+    otpSubmit.disabled = true;
+    otpSubmit.textContent = 'Signing in...';
+    try {
+        const res = await verifyPin(emailInput.value.trim(), otp.value);
+        setError(otpError, '');
+        // More than one profile means someone has to pick; a single-profile
+        // household should not be made to choose from a list of one.
+        window.location.assign(res.profiles?.length > 1 ? 'profiles.html' : 'index.html');
+        return;
+    } catch (err) {
+        setError(otpError, err instanceof NetworkError
+            ? 'Could not reach the server.'
+            : 'Invalid or expired code.');
+        shake(otpSubmit);
+        otp.clear();
+        otp.focus();
+    } finally {
+        otpSubmit.disabled = false;
+        otpSubmit.textContent = 'Sign in';
+    }
 });
 
 otpSubmit.addEventListener('animationend', () => otpSubmit.classList.remove('shake'));
