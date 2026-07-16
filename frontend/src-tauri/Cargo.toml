@@ -1,0 +1,26 @@
+[package]
+name = "northrou"
+version = "0.1.1"
+description = "Northrou media client"
+authors = ["rhymeswithlimo"]
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+# Mobile needs a cdylib to link into the platform project; desktop uses the
+# staticlib/rlib. One crate serves all three.
+name = "northrou_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-http = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[features]
+# Used by `tauri dev` / `tauri build` to toggle devtools.
+custom-protocol = ["tauri/custom-protocol"]

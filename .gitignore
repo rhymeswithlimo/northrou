@@ -35,3 +35,5 @@ frontend/swift/**/DerivedData/
 .vscode/
 
 CLAUDE.md
+/frontend/src-tauri/target/
+/frontend/src-tauri/gen/

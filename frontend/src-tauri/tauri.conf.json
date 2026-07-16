@@ -1,0 +1,36 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Northrou",
+  "version": "0.1.1",
+  "identifier": "sh.northrou.client",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Northrou",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 380,
+        "minHeight": 480,
+        "resizable": true,
+        "backgroundColor": "#050505"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost data: blob:; media-src 'self' asset: http://asset.localhost blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": ["icons/icon.png"],
+    "category": "Entertainment",
+    "shortDescription": "Stream your own library",
+    "longDescription": "A client for your own Northrou media server."
+  }
+}
