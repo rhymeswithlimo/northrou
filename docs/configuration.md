@@ -40,6 +40,7 @@ allow_software_4k = false
 max_bitrate_kbps = 0    # 0 = uncapped; caps the top HLS rung for remote streams
 tonemap = true          # HDR -> SDR tone mapping when transcoding for SDR clients
 prefer_system_ffmpeg = false
+max_transcodes = 0      # 0 = auto (derived from detected hardware)
 
 [tmdb]
 api_key = "…"           # required for posters and metadata
@@ -103,6 +104,12 @@ names that don't parse as episodes on their own.
 - **prefer_system_ffmpeg** - use a system-installed FFmpeg instead of the managed
   download (recommended in Docker and on Apple Silicon with a native Homebrew
   FFmpeg).
+- **max_transcodes** - cap how many expensive transcodes run at once. `0` (the
+  default) derives the cap from the detected hardware, which is almost always
+  right; set it only to protect a box that shares its CPU with other work.
+  Direct play and remux are stream copies and never count against it, so
+  lowering this does not restrict cheap playback. Requests over the cap get
+  `503` with `Retry-After` rather than queueing. Editable from Server admin.
 
 ### `[tmdb]`
 - **api_key** - a free [TMDB](https://www.themoviedb.org/settings/api) key.

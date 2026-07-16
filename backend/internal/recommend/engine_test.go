@@ -64,7 +64,7 @@ func TestRecordWatchBuildsPositiveAffinity(t *testing.T) {
 	inception := seedMovie(t, d, "Inception", 2010, []string{"Science Fiction", "Action"}, nolan, 0)
 
 	// Finish it.
-	if err := e.RecordWatch(ctx, uid, inception, 118, 120); err != nil {
+	if err := e.RecordWatch(ctx, uid, model.KindMovie, inception, 118, 120); err != nil {
 		t.Fatal(err)
 	}
 	p, err := e.LoadProfile(ctx, uid)
@@ -88,7 +88,7 @@ func TestAbandonedWatchIsNegative(t *testing.T) {
 	m := seedMovie(t, d, "Slow Drama", 1995, []string{"Drama"}, villeneuve, 0)
 
 	// Watch only 15%.
-	if err := e.RecordWatch(ctx, uid, m, 18, 120); err != nil {
+	if err := e.RecordWatch(ctx, uid, model.KindMovie, m, 18, 120); err != nil {
 		t.Fatal(err)
 	}
 	p, _ := e.LoadProfile(ctx, uid)
@@ -106,7 +106,7 @@ func TestHomeDirectorRowAndRelevance(t *testing.T) {
 	seedMovie(t, d, "Tenet", 2020, []string{"Science Fiction"}, nolan, 0)
 	seedMovie(t, d, "Rom Com", 2003, []string{"Romance", "Comedy"}, villeneuve, 0)
 
-	if err := e.RecordWatch(ctx, uid, watched, 120, 120); err != nil {
+	if err := e.RecordWatch(ctx, uid, model.KindMovie, watched, 120, 120); err != nil {
 		t.Fatal(err)
 	}
 
@@ -184,7 +184,7 @@ func TestCollectionCompletionRow(t *testing.T) {
 	seedMovie(t, d, "Saga Part 3", 2003, []string{"Fantasy"}, nolan, coll)
 
 	// Complete the first entry.
-	if err := e.RecordWatch(ctx, uid, first, 120, 120); err != nil {
+	if err := e.RecordWatch(ctx, uid, model.KindMovie, first, 120, 120); err != nil {
 		t.Fatal(err)
 	}
 	rows, _ := e.Home(ctx, uid)
@@ -207,8 +207,8 @@ func TestRewatchIncrementsTendency(t *testing.T) {
 	ctx := context.Background()
 	m := seedMovie(t, d, "Favorite", 2010, []string{"Action"}, nolan, 0)
 
-	_ = e.RecordWatch(ctx, uid, m, 120, 120) // complete
-	_ = e.RecordWatch(ctx, uid, m, 120, 120) // complete again => rewatch
+	_ = e.RecordWatch(ctx, uid, model.KindMovie, m, 120, 120) // complete
+	_ = e.RecordWatch(ctx, uid, model.KindMovie, m, 120, 120) // complete again => rewatch
 
 	rt, _ := d.GetRewatchTendency(ctx, uid)
 	if rt <= 0 {

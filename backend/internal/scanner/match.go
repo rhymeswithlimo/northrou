@@ -14,7 +14,12 @@ import (
 const (
 	posterSize   = "w500"
 	backdropSize = "w1280"
-	maxCast      = 20
+	// Headshots render as ~150px circles and stills as ~160px thumbs, so the
+	// small sizes are plenty and keep the image cache from ballooning across a
+	// large cast list.
+	profileSize = "w185"
+	stillSize   = "w300"
+	maxCast     = 20
 )
 
 // crewJobs are the crew roles we persist (drives director/creator affinity).
@@ -45,23 +50,25 @@ func (s *Scanner) matchMovie(ctx context.Context, p ParsedInfo, mf *model.MediaF
 	}
 
 	movie := &model.Movie{
-		TMDBID:       details.ID,
-		Title:        details.Title,
-		Year:         metadata.ReleaseYear(details.ReleaseDate),
-		Overview:     details.Overview,
-		Runtime:      details.Runtime,
-		OriginalLang: details.OriginalLanguage,
-		Genres:       genreNames(details.Genres),
-		PosterPath:   s.cacheImage(ctx, details.PosterPath, posterSize),
-		BackdropPath: s.cacheImage(ctx, details.BackdropPath, backdropSize),
-		Cast:         topCast(details.Credits.Cast),
-		Crew:         keyCrew(details.Credits.Crew),
-		Rating:       details.VoteAverage,
-		Votes:        details.VoteCount,
-		Popularity:   details.Popularity,
-		Revenue:      details.Revenue,
-		Country:      details.PrimaryCountry(),
-		File:         mf,
+		TMDBID:        details.ID,
+		Title:         details.Title,
+		Year:          metadata.ReleaseYear(details.ReleaseDate),
+		Overview:      details.Overview,
+		Runtime:       details.Runtime,
+		OriginalLang:  details.OriginalLanguage,
+		Genres:        genreNames(details.Genres),
+		PosterPath:    s.cacheImage(ctx, details.PosterPath, posterSize),
+		BackdropPath:  s.cacheImage(ctx, details.BackdropPath, backdropSize),
+		Tagline:       details.Tagline,
+		Certification: details.ReleaseDates.Certification(),
+		Cast:          s.topCast(ctx, details.Credits.Cast),
+		Crew:          s.keyCrew(ctx, details.Credits.Crew),
+		Rating:        details.VoteAverage,
+		Votes:         details.VoteCount,
+		Popularity:    details.Popularity,
+		Revenue:       details.Revenue,
+		Country:       details.PrimaryCountry(),
+		File:          mf,
 	}
 	if details.Collection != nil {
 		movie.CollectionID = details.Collection.ID
@@ -106,6 +113,8 @@ func (s *Scanner) matchEpisode(ctx context.Context, p ParsedInfo, mf *model.Medi
 			ep.Title = det.Name
 			ep.Overview = det.Overview
 			ep.Runtime = det.Runtime
+			ep.AirDate = det.AirDate
+			ep.StillPath = s.cacheImage(ctx, det.StillPath, stillSize)
 		}
 	}
 	if _, err := s.db.UpsertEpisode(ctx, ep); err != nil {
@@ -137,19 +146,21 @@ func (s *Scanner) resolveShow(ctx context.Context, title string, year int) (int6
 		return 0, fmt.Errorf("tmdb tv details: %w", err)
 	}
 	show := &model.Show{
-		TMDBID:       details.ID,
-		Title:        details.Name,
-		Year:         metadata.ReleaseYear(details.FirstAirDate),
-		Overview:     details.Overview,
-		OriginalLang: details.OriginalLanguage,
-		Genres:       genreNames(details.Genres),
-		PosterPath:   s.cacheImage(ctx, details.PosterPath, posterSize),
-		BackdropPath: s.cacheImage(ctx, details.BackdropPath, backdropSize),
-		Cast:         topCast(details.Credits.Cast),
-		Crew:         keyCrew(details.Credits.Crew),
-		Rating:       details.VoteAverage,
-		Popularity:   details.Popularity,
-		Country:      details.PrimaryCountry(),
+		TMDBID:        details.ID,
+		Title:         details.Name,
+		Year:          metadata.ReleaseYear(details.FirstAirDate),
+		Overview:      details.Overview,
+		OriginalLang:  details.OriginalLanguage,
+		Genres:        genreNames(details.Genres),
+		PosterPath:    s.cacheImage(ctx, details.PosterPath, posterSize),
+		BackdropPath:  s.cacheImage(ctx, details.BackdropPath, backdropSize),
+		Tagline:       details.Tagline,
+		Certification: details.ContentRatings.Certification(),
+		Cast:          s.topCast(ctx, details.Credits.Cast),
+		Crew:          s.keyCrew(ctx, details.Credits.Crew),
+		Rating:        details.VoteAverage,
+		Popularity:    details.Popularity,
+		Country:       details.PrimaryCountry(),
 	}
 	return s.db.UpsertShow(ctx, show)
 }
@@ -209,22 +220,36 @@ func genreNames(gs []metadata.Genre) []string {
 	return out
 }
 
-func topCast(cast []metadata.CastMember) []model.Credit {
+// topCast keeps the first maxCast billed actors and caches their headshots.
+func (s *Scanner) topCast(ctx context.Context, cast []metadata.CastMember) []model.Credit {
 	if len(cast) > maxCast {
 		cast = cast[:maxCast]
 	}
 	out := make([]model.Credit, 0, len(cast))
 	for _, c := range cast {
-		out = append(out, model.Credit{PersonID: c.ID, Name: c.Name, Role: c.Character, Order: c.Order})
+		out = append(out, model.Credit{
+			PersonID:    c.ID,
+			Name:        c.Name,
+			Role:        c.Character,
+			Order:       c.Order,
+			ProfilePath: s.cacheImage(ctx, c.ProfilePath, profileSize),
+		})
 	}
 	return out
 }
 
-func keyCrew(crew []metadata.CrewMember) []model.Credit {
+// keyCrew keeps only the jobs worth showing (see crewJobs) and caches their
+// headshots.
+func (s *Scanner) keyCrew(ctx context.Context, crew []metadata.CrewMember) []model.Credit {
 	var out []model.Credit
 	for _, c := range crew {
 		if crewJobs[c.Job] {
-			out = append(out, model.Credit{PersonID: c.ID, Name: c.Name, Role: c.Job})
+			out = append(out, model.Credit{
+				PersonID:    c.ID,
+				Name:        c.Name,
+				Role:        c.Job,
+				ProfilePath: s.cacheImage(ctx, c.ProfilePath, profileSize),
+			})
 		}
 	}
 	return out

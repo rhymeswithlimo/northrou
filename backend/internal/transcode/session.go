@@ -33,11 +33,29 @@ type SessionManager struct {
 	// inFlightCost is the sum of admission cost for transcodes currently
 	// holding a budget slot. Guarded by mu.
 	inFlightCost int
+
+	// maxOverride, when > 0, replaces the hardware-derived video capacity. It
+	// only ever narrows what the box admits; cheap stream-copy paths still cost
+	// nothing and are never gated by it.
+	maxOverride int
 }
 
 // NewSessionManager creates a session manager for the given hardware profile.
 func NewSessionManager(hw hwaccel.Capabilities) *SessionManager {
 	return &SessionManager{sessions: map[string]*StreamSession{}, hw: hw}
+}
+
+// SetMaxTranscodes overrides the hardware-derived concurrent video-transcode
+// cap. 0 restores auto-detection. Values are clamped to >= 1: a cap of zero
+// would make every transcode fail rather than queue, which is not a setting a
+// household could recover from through the UI it just used to set it.
+func (m *SessionManager) SetMaxTranscodes(n int) {
+	m.mu.Lock()
+	if n < 0 {
+		n = 0
+	}
+	m.maxOverride = n
+	m.mu.Unlock()
 }
 
 // Add registers a session.
@@ -114,6 +132,9 @@ func (m *SessionManager) EstimatedCapacity() int {
 // the worst-case target) is derived from CPU cores with a floor of 1 so a single
 // stream always plays.
 func (m *SessionManager) videoCapacity() int {
+	if m.maxOverride > 0 {
+		return m.maxOverride
+	}
 	if c := m.EstimatedCapacity(); c > 0 {
 		return c
 	}

@@ -17,15 +17,16 @@ func (d *DB) UpsertShow(ctx context.Context, s *model.Show) (int64, error) {
 	err := d.WithTx(ctx, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO shows (tmdb_id, title, year, overview, original_lang, poster_path, backdrop_path,
-				vote_average, popularity, country)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				vote_average, popularity, country, tagline, certification)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(tmdb_id) DO UPDATE SET
 				title=excluded.title, year=excluded.year, overview=excluded.overview,
 				original_lang=excluded.original_lang, poster_path=excluded.poster_path,
 				backdrop_path=excluded.backdrop_path, vote_average=excluded.vote_average,
-				popularity=excluded.popularity, country=excluded.country`,
+				popularity=excluded.popularity, country=excluded.country,
+				tagline=excluded.tagline, certification=excluded.certification`,
 			s.TMDBID, s.Title, s.Year, s.Overview, s.OriginalLang, s.PosterPath, s.BackdropPath,
-			s.Rating, s.Popularity, s.Country); err != nil {
+			s.Rating, s.Popularity, s.Country, s.Tagline, s.Certification); err != nil {
 			return err
 		}
 		if err := tx.QueryRowContext(ctx, `SELECT id FROM shows WHERE tmdb_id = ?`, s.TMDBID).Scan(&id); err != nil {
@@ -57,12 +58,17 @@ func (d *DB) UpsertSeason(ctx context.Context, showID int64, number int) (int64,
 // UpsertEpisode inserts or updates an episode and returns its id.
 func (d *DB) UpsertEpisode(ctx context.Context, e *model.Episode) (int64, error) {
 	_, err := d.ExecContext(ctx, `
-		INSERT INTO episodes (show_id, season_id, season, number, title, overview, runtime, file_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO episodes (show_id, season_id, season, number, title, overview, runtime, file_id,
+			still_path, air_date)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(show_id, season, number) DO UPDATE SET
 			season_id=excluded.season_id, title=excluded.title,
-			overview=excluded.overview, runtime=excluded.runtime, file_id=excluded.file_id`,
-		e.ShowID, e.SeasonID, e.Season, e.Number, e.Title, e.Overview, e.Runtime, fileIDOrNil(e.File))
+			overview=excluded.overview, runtime=excluded.runtime, file_id=excluded.file_id,
+			air_date=excluded.air_date,
+			-- a rescan without a cached still must not blank an existing one
+			still_path = CASE WHEN excluded.still_path != '' THEN excluded.still_path ELSE episodes.still_path END`,
+		e.ShowID, e.SeasonID, e.Season, e.Number, e.Title, e.Overview, e.Runtime, fileIDOrNil(e.File),
+		e.StillPath, e.AirDate)
 	if err != nil {
 		return 0, err
 	}
@@ -115,11 +121,13 @@ func (d *DB) ListShows(ctx context.Context, limit, offset int) ([]model.Show, er
 // GetShow loads a show with its seasons and episodes.
 func (d *DB) GetShow(ctx context.Context, id int64) (*model.Show, error) {
 	row := d.QueryRowContext(ctx, `
-		SELECT id, tmdb_id, title, year, overview, original_lang, poster_path, backdrop_path, added_at
+		SELECT id, tmdb_id, title, year, overview, original_lang, poster_path, backdrop_path, added_at,
+			vote_average, popularity, country, tagline, certification
 		FROM shows WHERE id = ?`, id)
 	var s model.Show
 	err := row.Scan(&s.ID, &s.TMDBID, &s.Title, &s.Year, &s.Overview,
-		&s.OriginalLang, &s.PosterPath, &s.BackdropPath, &s.AddedAt)
+		&s.OriginalLang, &s.PosterPath, &s.BackdropPath, &s.AddedAt,
+		&s.Rating, &s.Popularity, &s.Country, &s.Tagline, &s.Certification)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -127,9 +135,11 @@ func (d *DB) GetShow(ctx context.Context, id int64) (*model.Show, error) {
 		return nil, err
 	}
 	s.Genres, _ = d.getGenres(ctx, "show_genres", "show_id", id)
+	s.Cast, s.Crew, _ = d.getCredits(ctx, model.KindShow, id)
 
 	rows, err := d.QueryContext(ctx, `
-		SELECT id, season_id, season, number, title, overview, runtime, COALESCE(file_id,0)
+		SELECT id, season_id, season, number, title, overview, runtime, COALESCE(file_id,0),
+			still_path, air_date
 		FROM episodes WHERE show_id = ? ORDER BY season, number`, id)
 	if err != nil {
 		return nil, err
@@ -140,7 +150,7 @@ func (d *DB) GetShow(ctx context.Context, id int64) (*model.Show, error) {
 		var e model.Episode
 		var fileID int64
 		if err := rows.Scan(&e.ID, &e.SeasonID, &e.Season, &e.Number, &e.Title,
-			&e.Overview, &e.Runtime, &fileID); err != nil {
+			&e.Overview, &e.Runtime, &fileID, &e.StillPath, &e.AirDate); err != nil {
 			return nil, err
 		}
 		e.ShowID = id

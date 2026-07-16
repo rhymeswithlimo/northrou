@@ -13,30 +13,48 @@ import (
 
 // --- DTOs (decoupled from DB rows so the frontend contract is stable) ---
 
+type creditDTO struct {
+	ID         int64  `json:"id"`
+	Name       string `json:"name"`
+	Role       string `json:"role,omitempty"`
+	ProfileURL string `json:"profile_url,omitempty"`
+}
+
 type movieDTO struct {
-	ID          int64    `json:"id"`
-	TMDBID      int64    `json:"tmdb_id"`
-	Title       string   `json:"title"`
-	Year        int      `json:"year"`
-	Overview    string   `json:"overview,omitempty"`
-	Runtime     int      `json:"runtime,omitempty"`
-	Genres      []string `json:"genres,omitempty"`
-	PosterURL   string   `json:"poster_url,omitempty"`
-	BackdropURL string   `json:"backdrop_url,omitempty"`
-	StreamURL   string   `json:"stream_url,omitempty"`
-	MediaInfo   *mediaInfoDTO `json:"media_info,omitempty"`
+	ID            int64         `json:"id"`
+	TMDBID        int64         `json:"tmdb_id"`
+	Title         string        `json:"title"`
+	Year          int           `json:"year"`
+	Overview      string        `json:"overview,omitempty"`
+	Tagline       string        `json:"tagline,omitempty"`
+	Certification string        `json:"certification,omitempty"`
+	Runtime       int           `json:"runtime,omitempty"`
+	Rating        float64       `json:"rating,omitempty"`
+	Genres        []string      `json:"genres,omitempty"`
+	CollectionID  int64         `json:"collection_id,omitempty"`
+	PosterURL     string        `json:"poster_url,omitempty"`
+	BackdropURL   string        `json:"backdrop_url,omitempty"`
+	StreamURL     string        `json:"stream_url,omitempty"`
+	Cast          []creditDTO   `json:"cast,omitempty"`
+	Crew          []creditDTO   `json:"crew,omitempty"`
+	MediaInfo     *mediaInfoDTO `json:"media_info,omitempty"`
 }
 
 type showDTO struct {
-	ID          int64       `json:"id"`
-	TMDBID      int64       `json:"tmdb_id"`
-	Title       string      `json:"title"`
-	Year        int         `json:"year"`
-	Overview    string      `json:"overview,omitempty"`
-	Genres      []string    `json:"genres,omitempty"`
-	PosterURL   string      `json:"poster_url,omitempty"`
-	BackdropURL string      `json:"backdrop_url,omitempty"`
-	Seasons     []seasonDTO `json:"seasons,omitempty"`
+	ID            int64       `json:"id"`
+	TMDBID        int64       `json:"tmdb_id"`
+	Title         string      `json:"title"`
+	Year          int         `json:"year"`
+	Overview      string      `json:"overview,omitempty"`
+	Tagline       string      `json:"tagline,omitempty"`
+	Certification string      `json:"certification,omitempty"`
+	Rating        float64     `json:"rating,omitempty"`
+	Genres        []string    `json:"genres,omitempty"`
+	PosterURL     string      `json:"poster_url,omitempty"`
+	BackdropURL   string      `json:"backdrop_url,omitempty"`
+	Cast          []creditDTO `json:"cast,omitempty"`
+	Crew          []creditDTO `json:"crew,omitempty"`
+	Seasons       []seasonDTO `json:"seasons,omitempty"`
 }
 
 type seasonDTO struct {
@@ -51,6 +69,8 @@ type episodeDTO struct {
 	Title     string `json:"title,omitempty"`
 	Overview  string `json:"overview,omitempty"`
 	Runtime   int    `json:"runtime,omitempty"`
+	AirDate   string `json:"air_date,omitempty"`
+	StillURL  string `json:"still_url,omitempty"`
 	StreamURL string `json:"stream_url,omitempty"`
 }
 
@@ -99,9 +119,28 @@ func (a *API) handleGetMovie(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, a.movieToDTO(m, true))
 }
 
+// creditsToDTO maps credits, rewriting cached headshot paths into API image
+// URLs. The client never talks to TMDB.
+func (a *API) creditsToDTO(cs []model.Credit) []creditDTO {
+	if len(cs) == 0 {
+		return nil
+	}
+	out := make([]creditDTO, 0, len(cs))
+	for _, c := range cs {
+		out = append(out, creditDTO{
+			ID:         c.PersonID,
+			Name:       c.Name,
+			Role:       c.Role,
+			ProfileURL: a.imageURL(c.ProfilePath),
+		})
+	}
+	return out
+}
+
 func (a *API) movieToDTO(m *model.Movie, detail bool) movieDTO {
 	dto := movieDTO{
 		ID: m.ID, TMDBID: m.TMDBID, Title: m.Title, Year: m.Year,
+		Rating:      m.Rating,
 		Genres:      m.Genres,
 		PosterURL:   a.imageURL(m.PosterPath),
 		BackdropURL: a.imageURL(m.BackdropPath),
@@ -109,6 +148,11 @@ func (a *API) movieToDTO(m *model.Movie, detail bool) movieDTO {
 	if detail {
 		dto.Overview = m.Overview
 		dto.Runtime = m.Runtime
+		dto.Tagline = m.Tagline
+		dto.Certification = m.Certification
+		dto.CollectionID = m.CollectionID
+		dto.Cast = a.creditsToDTO(m.Cast)
+		dto.Crew = a.creditsToDTO(m.Crew)
 	}
 	if m.File != nil && m.File.ID != 0 {
 		dto.StreamURL = "/api/media/" + strconv.FormatInt(m.File.ID, 10) + "/stream"
@@ -162,18 +206,25 @@ func (a *API) handleGetShow(w http.ResponseWriter, r *http.Request) {
 func (a *API) showToDTO(s *model.Show, detail bool) showDTO {
 	dto := showDTO{
 		ID: s.ID, TMDBID: s.TMDBID, Title: s.Title, Year: s.Year,
+		Rating:      s.Rating,
 		Genres:      s.Genres,
 		PosterURL:   a.imageURL(s.PosterPath),
 		BackdropURL: a.imageURL(s.BackdropPath),
 	}
 	if detail {
 		dto.Overview = s.Overview
+		dto.Tagline = s.Tagline
+		dto.Certification = s.Certification
+		dto.Cast = a.creditsToDTO(s.Cast)
+		dto.Crew = a.creditsToDTO(s.Crew)
 		for _, sea := range s.Seasons {
 			sd := seasonDTO{Number: sea.Number}
 			for _, e := range sea.Episodes {
 				ed := episodeDTO{
 					ID: e.ID, Season: e.Season, Number: e.Number,
 					Title: e.Title, Overview: e.Overview, Runtime: e.Runtime,
+					AirDate:  e.AirDate,
+					StillURL: a.imageURL(e.StillPath),
 				}
 				if e.File != nil && e.File.ID != 0 {
 					ed.StreamURL = "/api/media/" + strconv.FormatInt(e.File.ID, 10) + "/stream"

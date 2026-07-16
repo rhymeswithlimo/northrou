@@ -19,11 +19,11 @@ const (
 type HDRType string
 
 const (
-	HDRNone       HDRType = ""
-	HDR10         HDRType = "hdr10"
-	HDR10Plus     HDRType = "hdr10plus"
+	HDRNone        HDRType = ""
+	HDR10          HDRType = "hdr10"
+	HDR10Plus      HDRType = "hdr10plus"
 	HDRDolbyVision HDRType = "dolbyvision"
-	HDRHLG        HDRType = "hlg"
+	HDRHLG         HDRType = "hlg"
 )
 
 // Account is the household's single authentication root: one email address that
@@ -55,46 +55,50 @@ type Library struct {
 
 // Movie is a matched film with TMDB metadata plus its physical file.
 type Movie struct {
-	ID          int64
-	TMDBID      int64
-	Title       string
-	Year        int
-	Overview    string
-	Runtime     int // minutes
-	Genres      []string
-	CollectionID int64 // TMDB collection id, 0 if none
-	PosterPath  string // local cached path
-	BackdropPath string
-	Cast        []Credit
-	Crew        []Credit
-	OriginalLang string
-	Rating      float64 // TMDB vote average (0-10)
-	Votes       int     // TMDB vote count
-	Popularity  float64 // TMDB popularity
-	Revenue     int64   // box office revenue (USD), 0 if unknown
-	Country     string  // primary production country (ISO 3166-1, e.g. "US")
-	AddedAt     time.Time
-	File        *MediaFile
+	ID            int64
+	TMDBID        int64
+	Title         string
+	Year          int
+	Overview      string
+	Runtime       int // minutes
+	Genres        []string
+	Tagline       string
+	Certification string // e.g. "R", resolved to one country
+	CollectionID  int64  // TMDB collection id, 0 if none
+	PosterPath    string // local cached path
+	BackdropPath  string
+	Cast          []Credit
+	Crew          []Credit
+	OriginalLang  string
+	Rating        float64 // TMDB vote average (0-10)
+	Votes         int     // TMDB vote count
+	Popularity    float64 // TMDB popularity
+	Revenue       int64   // box office revenue (USD), 0 if unknown
+	Country       string  // primary production country (ISO 3166-1, e.g. "US")
+	AddedAt       time.Time
+	File          *MediaFile
 }
 
 // Show is a matched TV series.
 type Show struct {
-	ID           int64
-	TMDBID       int64
-	Title        string
-	Year         int
-	Overview     string
-	Genres       []string
-	PosterPath   string
-	BackdropPath string
-	OriginalLang string
-	Rating       float64 // TMDB vote average (0-10)
-	Popularity   float64 // TMDB popularity
-	Country      string  // primary origin country (ISO 3166-1, e.g. "US")
-	AddedAt      time.Time
-	Cast         []Credit
-	Crew         []Credit
-	Seasons      []Season
+	ID            int64
+	TMDBID        int64
+	Title         string
+	Year          int
+	Overview      string
+	Genres        []string
+	Tagline       string
+	Certification string // e.g. "TV-MA", resolved to one country
+	PosterPath    string
+	BackdropPath  string
+	OriginalLang  string
+	Rating        float64 // TMDB vote average (0-10)
+	Popularity    float64 // TMDB popularity
+	Country       string  // primary origin country (ISO 3166-1, e.g. "US")
+	AddedAt       time.Time
+	Cast          []Credit
+	Crew          []Credit
+	Seasons       []Season
 }
 
 // Season groups episodes.
@@ -107,15 +111,17 @@ type Season struct {
 
 // Episode is a single TV episode with its physical file.
 type Episode struct {
-	ID       int64
-	ShowID   int64
-	SeasonID int64
-	Season   int
-	Number   int
-	Title    string
-	Overview string
-	Runtime  int
-	File     *MediaFile
+	ID        int64
+	ShowID    int64
+	SeasonID  int64
+	Season    int
+	Number    int
+	Title     string
+	Overview  string
+	Runtime   int
+	StillPath string // local cached path
+	AirDate   string // ISO date, empty when unknown
+	File      *MediaFile
 }
 
 // MediaFile is one physical media file on disk with authoritative technical
@@ -125,7 +131,7 @@ type MediaFile struct {
 	Path      string
 	SizeBytes int64
 	ModTime   time.Time
-	Container string // "matroska,webm", "mov,mp4", ...
+	Container string  // "matroska,webm", "mov,mp4", ...
 	Duration  float64 // seconds
 	Video     VideoStream
 	Audio     []AudioStream
@@ -145,15 +151,15 @@ type VideoStream struct {
 
 // AudioStream describes one audio track.
 type AudioStream struct {
-	Index     int
-	Codec     string // "truehd", "dts", "eac3", "aac", ...
-	Profile   string // e.g. "DTS-HD MA", used to detect lossless/Atmos
-	Channels  int
+	Index         int
+	Codec         string // "truehd", "dts", "eac3", "aac", ...
+	Profile       string // e.g. "DTS-HD MA", used to detect lossless/Atmos
+	Channels      int
 	ChannelLayout string
-	Language  string
-	Atmos     bool // Dolby Atmos / object audio present
-	Default   bool
-	BitRate   int64
+	Language      string
+	Atmos         bool // Dolby Atmos / object audio present
+	Default       bool
+	BitRate       int64
 }
 
 // SubtitleStream describes one subtitle track as found in the container.
@@ -168,10 +174,11 @@ type SubtitleStream struct {
 
 // Credit is a cast or crew member.
 type Credit struct {
-	PersonID int64
-	Name     string
-	Role     string // character (cast) or job (crew), e.g. "Director"
-	Order    int
+	PersonID    int64
+	Name        string
+	Role        string // character (cast) or job (crew), e.g. "Director"
+	Order       int
+	ProfilePath string // local cached headshot path; empty when none
 }
 
 // WatchEvent records progress against a playable item (movie or episode).
@@ -202,11 +209,11 @@ func (w WatchEvent) Completion() float64 {
 // UnmatchedFile is a scanned file the scanner could not confidently match to
 // TMDB, surfaced in the UI for manual correction.
 type UnmatchedFile struct {
-	ID       int64
-	Path     string
-	Kind     MediaKind
-	Reason   string
+	ID          int64
+	Path        string
+	Kind        MediaKind
+	Reason      string
 	ParsedTitle string
 	ParsedYear  int
-	FoundAt  time.Time
+	FoundAt     time.Time
 }

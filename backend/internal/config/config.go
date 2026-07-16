@@ -68,6 +68,11 @@ type TranscodeConfig struct {
 	// PreferSystemFFmpeg uses a system-installed ffmpeg (if new enough)
 	// instead of the managed download.
 	PreferSystemFFmpeg bool `toml:"prefer_system_ffmpeg"`
+	// MaxTranscodes overrides the concurrent-transcode cap that SessionManager
+	// derives from the detected hardware. 0 = auto (the derived value), which
+	// is almost always the right answer; set it to protect a box that shares
+	// its CPU with other work. Cheap stream-copy paths are never counted.
+	MaxTranscodes int `toml:"max_transcodes"`
 }
 
 // TMDBConfig holds credentials for The Movie Database metadata provider.

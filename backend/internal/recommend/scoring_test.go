@@ -39,7 +39,7 @@ func TestDecayFavorsRecent(t *testing.T) {
 	// Old strong-negative signal, then a recent strong-positive signal.
 	a := db.AffinityRow{Dimension: DimGenre, Key: "Drama"}
 	a = updateAccumulator(a, -0.5, now.Add(-2*halfLife)) // two half-lives ago
-	a = updateAccumulator(a, 1.0, now)                    // now
+	a = updateAccumulator(a, 1.0, now)                   // now
 	if normalized(a) <= 0 {
 		t.Errorf("recent positive should dominate old negative, got %f", normalized(a))
 	}

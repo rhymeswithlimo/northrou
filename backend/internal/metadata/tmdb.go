@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -71,12 +72,12 @@ type SearchResult struct {
 }
 
 type SearchItem struct {
-	ID           int64  `json:"id"`
-	Title        string `json:"title"`         // movies
-	Name         string `json:"name"`          // tv
-	ReleaseDate  string `json:"release_date"`  // movies
-	FirstAirDate string `json:"first_air_date"` // tv
-	Overview     string `json:"overview"`
+	ID           int64   `json:"id"`
+	Title        string  `json:"title"`          // movies
+	Name         string  `json:"name"`           // tv
+	ReleaseDate  string  `json:"release_date"`   // movies
+	FirstAirDate string  `json:"first_air_date"` // tv
+	Overview     string  `json:"overview"`
 	Popularity   float64 `json:"popularity"`
 }
 
@@ -98,35 +99,117 @@ type Credits struct {
 }
 
 type CastMember struct {
-	ID        int64  `json:"id"`
-	Name      string `json:"name"`
-	Character string `json:"character"`
-	Order     int    `json:"order"`
+	ID          int64  `json:"id"`
+	Name        string `json:"name"`
+	Character   string `json:"character"`
+	Order       int    `json:"order"`
+	ProfilePath string `json:"profile_path"`
 }
 
 type CrewMember struct {
-	ID         int64  `json:"id"`
-	Name       string `json:"name"`
-	Job        string `json:"job"`
-	Department string `json:"department"`
+	ID          int64  `json:"id"`
+	Name        string `json:"name"`
+	Job         string `json:"job"`
+	Department  string `json:"department"`
+	ProfilePath string `json:"profile_path"`
+}
+
+// ReleaseDates is the append_to_response=release_dates payload: per-country
+// certification for a movie.
+type ReleaseDates struct {
+	Results []struct {
+		ISO31661     string `json:"iso_3166_1"`
+		ReleaseDates []struct {
+			Certification string `json:"certification"`
+			Type          int    `json:"type"`
+		} `json:"release_dates"`
+	} `json:"results"`
+}
+
+// ContentRatings is the append_to_response=content_ratings payload: per-country
+// certification for a show.
+type ContentRatings struct {
+	Results []struct {
+		ISO31661 string `json:"iso_3166_1"`
+		Rating   string `json:"rating"`
+	} `json:"results"`
+}
+
+// certPreference is the country order used to pick one certification to show.
+// TMDB returns every country's rating; the UI has room for a single badge.
+var certPreference = []string{"US", "GB", "CA", "AU"}
+
+// Certification resolves the per-country release dates to one rating.
+func (r *ReleaseDates) Certification() string {
+	byCountry := map[string]string{}
+	for _, res := range r.Results {
+		for _, rd := range res.ReleaseDates {
+			if rd.Certification != "" {
+				byCountry[res.ISO31661] = rd.Certification
+				break
+			}
+		}
+	}
+	for _, c := range certPreference {
+		if v := byCountry[c]; v != "" {
+			return v
+		}
+	}
+	// No preferred country: any rating beats none, but map order is random, so
+	// pick deterministically.
+	keys := make([]string, 0, len(byCountry))
+	for k := range byCountry {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	if len(keys) > 0 {
+		return byCountry[keys[0]]
+	}
+	return ""
+}
+
+// Certification resolves the per-country content ratings to one rating.
+func (r *ContentRatings) Certification() string {
+	byCountry := map[string]string{}
+	for _, res := range r.Results {
+		if res.Rating != "" {
+			byCountry[res.ISO31661] = res.Rating
+		}
+	}
+	for _, c := range certPreference {
+		if v := byCountry[c]; v != "" {
+			return v
+		}
+	}
+	keys := make([]string, 0, len(byCountry))
+	for k := range byCountry {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	if len(keys) > 0 {
+		return byCountry[keys[0]]
+	}
+	return ""
 }
 
 type MovieDetails struct {
-	ID               int64       `json:"id"`
-	Title            string      `json:"title"`
-	ReleaseDate      string      `json:"release_date"`
-	Overview         string      `json:"overview"`
-	Runtime          int         `json:"runtime"`
-	OriginalLanguage string      `json:"original_language"`
-	PosterPath       string      `json:"poster_path"`
-	BackdropPath     string      `json:"backdrop_path"`
-	Genres           []Genre     `json:"genres"`
-	Collection       *Collection `json:"belongs_to_collection"`
-	Credits          Credits     `json:"credits"`
-	VoteAverage      float64     `json:"vote_average"`
-	VoteCount        int         `json:"vote_count"`
-	Popularity       float64     `json:"popularity"`
-	Revenue          int64       `json:"revenue"`
+	ID                  int64        `json:"id"`
+	Title               string       `json:"title"`
+	ReleaseDate         string       `json:"release_date"`
+	Overview            string       `json:"overview"`
+	Runtime             int          `json:"runtime"`
+	OriginalLanguage    string       `json:"original_language"`
+	PosterPath          string       `json:"poster_path"`
+	BackdropPath        string       `json:"backdrop_path"`
+	Genres              []Genre      `json:"genres"`
+	Collection          *Collection  `json:"belongs_to_collection"`
+	Credits             Credits      `json:"credits"`
+	Tagline             string       `json:"tagline"`
+	ReleaseDates        ReleaseDates `json:"release_dates"`
+	VoteAverage         float64      `json:"vote_average"`
+	VoteCount           int          `json:"vote_count"`
+	Popularity          float64      `json:"popularity"`
+	Revenue             int64        `json:"revenue"`
 	ProductionCountries []struct {
 		ISO31661 string `json:"iso_3166_1"`
 	} `json:"production_countries"`
@@ -141,18 +224,20 @@ func (m *MovieDetails) PrimaryCountry() string {
 }
 
 type TVDetails struct {
-	ID               int64    `json:"id"`
-	Name             string   `json:"name"`
-	FirstAirDate     string   `json:"first_air_date"`
-	Overview         string   `json:"overview"`
-	OriginalLanguage string   `json:"original_language"`
-	PosterPath       string   `json:"poster_path"`
-	BackdropPath     string   `json:"backdrop_path"`
-	Genres           []Genre  `json:"genres"`
-	Credits          Credits  `json:"credits"`
-	VoteAverage      float64  `json:"vote_average"`
-	Popularity       float64  `json:"popularity"`
-	OriginCountry    []string `json:"origin_country"`
+	ID               int64          `json:"id"`
+	Name             string         `json:"name"`
+	FirstAirDate     string         `json:"first_air_date"`
+	Overview         string         `json:"overview"`
+	OriginalLanguage string         `json:"original_language"`
+	PosterPath       string         `json:"poster_path"`
+	BackdropPath     string         `json:"backdrop_path"`
+	Genres           []Genre        `json:"genres"`
+	Credits          Credits        `json:"credits"`
+	Tagline          string         `json:"tagline"`
+	ContentRatings   ContentRatings `json:"content_ratings"`
+	VoteAverage      float64        `json:"vote_average"`
+	Popularity       float64        `json:"popularity"`
+	OriginCountry    []string       `json:"origin_country"`
 }
 
 // PrimaryCountry returns the first origin country code, or "".
@@ -170,6 +255,8 @@ type EpisodeDetails struct {
 	EpisodeNumber int    `json:"episode_number"`
 	SeasonNumber  int    `json:"season_number"`
 	Runtime       int    `json:"runtime"`
+	StillPath     string `json:"still_path"`
+	AirDate       string `json:"air_date"`
 }
 
 // SearchMovie returns candidate movies for a title (and optional year).
@@ -187,7 +274,7 @@ func (c *Client) SearchMovie(ctx context.Context, title string, year int) ([]Sea
 
 // MovieDetails fetches full movie metadata including credits and collection.
 func (c *Client) MovieDetails(ctx context.Context, id int64) (*MovieDetails, error) {
-	q := url.Values{"append_to_response": {"credits"}}
+	q := url.Values{"append_to_response": {"credits,release_dates"}}
 	var out MovieDetails
 	if err := c.get(ctx, fmt.Sprintf("/movie/%d", id), q, &out); err != nil {
 		return nil, err
@@ -210,7 +297,7 @@ func (c *Client) SearchTV(ctx context.Context, title string, year int) ([]Search
 
 // TVDetails fetches full show metadata including credits.
 func (c *Client) TVDetails(ctx context.Context, id int64) (*TVDetails, error) {
-	q := url.Values{"append_to_response": {"credits"}}
+	q := url.Values{"append_to_response": {"credits,content_ratings"}}
 	var out TVDetails
 	if err := c.get(ctx, fmt.Sprintf("/tv/%d", id), q, &out); err != nil {
 		return nil, err

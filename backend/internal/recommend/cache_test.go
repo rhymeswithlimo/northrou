@@ -3,6 +3,8 @@ package recommend
 import (
 	"context"
 	"testing"
+
+	"github.com/rhymeswithlimo/northrou/backend/internal/model"
 )
 
 func TestHomePopulatesCache(t *testing.T) {
@@ -31,7 +33,7 @@ func TestRecordWatchInvalidatesCache(t *testing.T) {
 		t.Fatal("expected populated cache")
 	}
 	// A watch changes the profile; the cached home must be dropped.
-	if err := e.RecordWatch(context.Background(), uid, id, 100, 100); err != nil {
+	if err := e.RecordWatch(context.Background(), uid, model.KindMovie, id, 100, 100); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := e.cachedRows(uid); ok {

@@ -88,11 +88,28 @@ provide them so the account can receive pins on subsequent logins.
 | Method | Path | Notes |
 |---|---|---|
 | GET | `/api/movies` | List movies (summaries). Optional `?limit=&offset=` pagination |
-| GET | `/api/movies/{id}` | Movie detail incl. media info |
+| GET | `/api/movies/{id}` | Movie detail incl. media info, cast/crew, tagline, certification |
+| GET | `/api/movies/{id}/similar` | Related titles from your own library |
 | GET | `/api/shows` | List shows. Optional `?limit=&offset=` pagination |
-| GET | `/api/shows/{id}` | Show detail incl. seasons & episodes |
+| GET | `/api/shows/{id}` | Show detail incl. seasons, episodes, cast/crew |
+| GET | `/api/shows/{id}/similar` | Related shows from your own library |
+| GET | `/api/search?q=&limit=` | Search movie and show titles |
 | GET | `/api/unmatched` | Files needing manual correction |
-| GET | `/api/images/{path}` | Cached poster/backdrop images (served `immutable`, long `max-age`) |
+| GET | `/api/images/{path}` | Cached poster/backdrop/still/headshot images (served `immutable`, long `max-age`) |
+
+Detail responses carry `rating` (TMDB vote average), `tagline`, `certification`
+(one country's rating, preferring US/GB/CA/AU), `cast[]` and `crew[]`
+(`{id, name, role, profile_url}`), and for movies `collection_id`. Episodes carry
+`still_url` and `air_date`. Every image is an `/api/images/...` URL: the client
+never talks to TMDB.
+
+`/api/search` matches titles case-insensitively, anywhere in the string, with
+prefix matches ranked first. An empty `q` returns `[]`, not an error. Items match
+the home-row shape (`{kind, id, title, year, poster_url}`).
+
+`/similar` is computed from the local library only: same TMDB collection first
+(sequels), then shared genres, tie-broken by rating. It never calls out to TMDB,
+so it can only ever return titles the household actually owns.
 
 `/api/movies` and `/api/shows` accept optional `limit` and `offset` query
 parameters (both integers). A missing or non-positive `limit` returns the entire
@@ -138,10 +155,25 @@ delay.
 | Method | Path | Body | Notes |
 |---|---|---|---|
 | GET | `/api/home` | - | Ranked, rotated home rows |
-| POST | `/api/watch` | `{movie_id, position, duration}` | Record progress; updates the taste profile |
+| GET | `/api/continue-watching` | - | Started but unfinished items for this profile |
+| POST | `/api/watch` | `{media_kind, media_id, position, duration}` | Record progress; updates the taste profile |
 
 Each row is `{key, title, confidence, items}` where an item is
 `{kind, id, title, year, poster_path}` and `kind` is `"movie"` or `"show"`.
+
+`POST /api/watch` takes `media_kind` of `"movie"` or `"episode"`. It is omittable
+and defaults to `"movie"`, and `movie_id` is still accepted as an alias for
+`media_id`, so the older `{movie_id, position, duration}` body keeps working.
+Recording episodes is what makes a partway-through show resumable; only movies
+feed the taste profile, since that is built from movie features (genre, director,
+decade) with no episode equivalent.
+
+`GET /api/continue-watching` returns items ordered most-recently-watched first,
+excluding anything completed or watched for under 30 seconds. Each is
+`{kind, id, show_id?, title, season?, number?, position_sec, duration_sec,
+backdrop_url, stream_url}`. For an episode the display identity is the show (its
+`title` and `backdrop_url`, opened via `show_id`) while `id` and `season`/`number`
+identify what actually resumes.
 
 With watch history, rows are personalized (Recommended for You, director rows,
 decade×genre, collection completion, etc.). With **no** history, `/api/home`
@@ -159,12 +191,36 @@ it they return `403 admin elevation required`.
 
 | Method | Path | Elevation | Notes |
 |---|---|---|---|
+| GET | `/api/admin/config` | no | Editable configuration (no secrets) |
 | GET | `/api/admin/scan` | no | Scan progress |
 | GET | `/api/admin/streams` | no | Active streams (mode, codecs, backend, client) |
 | GET | `/api/admin/hardware` | no | Detected acceleration + estimated capacity |
 | GET | `/api/admin/update` | no | Check for a newer release |
+| PATCH | `/api/admin/config` | **yes** | Partial configuration update |
 | POST | `/api/admin/scan` | **yes** | Start a library scan |
 | POST | `/api/admin/update` | **yes** | Download and install the latest release |
+
+### Configuration
+
+`/api/admin/config` exposes the subset of `config.toml` the settings screen edits:
+`movie_dirs`, `show_dirs`, `prefer_system_ffmpeg`, `max_transcodes` (0 = auto),
+`allow_software_4k`, `tonemap`, `remote_enabled`, `connection_code`, and the mail
+setup (`mail_mode` of `relay`/`smtp`/`log`, plus SMTP host/port/username/from).
+
+**Secrets are never returned.** The TMDB key and SMTP password come back only as
+`has_tmdb_key` / `has_smtp_password` booleans, so a leaked elevated token cannot
+also leak the household's mail credentials. Both can be written.
+
+Bind address, port and `data_dir` are deliberately not editable here: changing
+them through the very connection you are using is how you lock yourself out of
+your own server.
+
+`PATCH` is a true partial update. Every field is optional and only what you send
+changes; omitting a field leaves it alone rather than zeroing it. Setting
+`mail_mode` to `relay` clears `smtp_host` (SMTP otherwise takes precedence and
+the setting would appear to do nothing); `smtp` requires `smtp_host`.
+`max_transcodes` applies to the running server immediately. Invalid values return
+`400` with the validation error.
 
 ## Health
 

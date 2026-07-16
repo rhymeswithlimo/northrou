@@ -102,8 +102,11 @@ func (a *API) Mount(r chi.Router) {
 			// Library.
 			r.Get("/movies", a.handleListMovies)
 			r.Get("/movies/{id}", a.handleGetMovie)
+			r.Get("/movies/{id}/similar", a.handleSimilarMovies)
 			r.Get("/shows", a.handleListShows)
 			r.Get("/shows/{id}", a.handleGetShow)
+			r.Get("/shows/{id}/similar", a.handleSimilarShows)
+			r.Get("/search", a.handleSearch)
 			r.Get("/unmatched", a.handleListUnmatched)
 
 			// Streaming.
@@ -113,6 +116,7 @@ func (a *API) Mount(r chi.Router) {
 
 			// Home / recommendations.
 			r.Get("/home", a.handleHome)
+			r.Get("/continue-watching", a.handleContinueWatching)
 			r.Post("/watch", a.handleWatch)
 
 			// Subtitles.
@@ -124,6 +128,7 @@ func (a *API) Mount(r chi.Router) {
 
 			// Admin reads: dashboard/status. Any signed-in profile may view
 			// these; they expose no controls.
+			r.Get("/admin/config", a.handleGetConfig)
 			r.Get("/admin/scan", a.handleScanStatus)
 			r.Get("/admin/streams", a.handleAdminStreams)
 			r.Get("/admin/hardware", a.handleAdminHardware)
@@ -133,6 +138,7 @@ func (a *API) Mount(r chi.Router) {
 			// claim), i.e. the caller proved control of the account email.
 			r.Group(func(r chi.Router) {
 				r.Use(a.Auth.RequireAdmin)
+				r.Patch("/admin/config", a.handlePatchConfig)
 				r.Post("/admin/scan", a.handleStartScan)
 				r.Post("/admin/update", a.handleUpdateApply)
 				r.Delete("/profiles/{id}", a.handleDeleteProfile)

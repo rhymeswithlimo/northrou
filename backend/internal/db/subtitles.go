@@ -13,8 +13,8 @@ type SubtitleTrack struct {
 	TrackIndex int    `json:"track_index"`
 	Language   string `json:"language"`
 	Title      string `json:"title"`
-	Format     string `json:"format"`     // subrip|ass|pgs|...
-	Source     string `json:"source"`     // embedded|external
+	Format     string `json:"format"` // subrip|ass|pgs|...
+	Source     string `json:"source"` // embedded|external
 	Forced     bool   `json:"forced"`
 	VTTPath    string `json:"-"`          // local path, served via the API
 	OCRStatus  string `json:"ocr_status"` // none|queued|processing|done|failed|skipped

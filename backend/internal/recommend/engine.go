@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/rhymeswithlimo/northrou/backend/internal/db"
+	"github.com/rhymeswithlimo/northrou/backend/internal/model"
 )
 
 // homeCacheTTL bounds how long a computed home screen is reused. Building it
@@ -19,8 +20,8 @@ const homeCacheTTL = 60 * time.Second
 type Engine struct {
 	db *db.DB
 
-	mu    sync.RWMutex
-	home  map[int64]cachedHome // per-user computed home rows
+	mu   sync.RWMutex
+	home map[int64]cachedHome // per-user computed home rows
 }
 
 type cachedHome struct {
@@ -69,8 +70,8 @@ func (e *Engine) InvalidateAll() {
 // Profile is a user's taste profile in memory: normalized affinities (mean
 // signal) and per-key confidence (accumulated weight), plus rewatch tendency.
 type Profile struct {
-	aff    map[string]map[string]float64
-	weight map[string]map[string]float64
+	aff     map[string]map[string]float64
+	weight  map[string]map[string]float64
 	Rewatch float64
 }
 
@@ -126,23 +127,33 @@ func (e *Engine) LoadProfile(ctx context.Context, userID int64) (*Profile, error
 	return p, nil
 }
 
-// RecordWatch updates watch history and incrementally adjusts the taste profile
-// for a movie watch. pos/dur are the playback position and total duration.
-func (e *Engine) RecordWatch(ctx context.Context, userID, movieID int64, pos, dur float64) error {
+// RecordWatch updates watch history and incrementally adjusts the taste profile.
+// pos/dur are the playback position and total duration.
+//
+// kind is KindMovie or KindEpisode. Episodes are recorded so they can be
+// resumed, but they don't feed the taste profile: it is built from movie
+// features (genre, director, decade), and there is no episode equivalent. This
+// used to hardcode "movie", which meant episode progress could never be stored
+// at all and Continue Watching could not show a partway-through show.
+func (e *Engine) RecordWatch(ctx context.Context, userID int64, kind model.MediaKind, mediaID int64, pos, dur float64) error {
 	// A watch changes this user's taste profile, so their cached home is stale.
 	defer e.invalidate(userID)
 	completed := dur > 0 && pos/dur >= 0.9
-	wr, err := e.db.UpsertWatchEvent(ctx, userID, "movie", movieID, pos, dur, completed)
+	wr, err := e.db.UpsertWatchEvent(ctx, userID, string(kind), mediaID, pos, dur, completed)
 	if err != nil {
 		return err
 	}
 
-	mf, ok, err := e.movieFeature(ctx, movieID)
+	if kind != model.KindMovie {
+		return nil
+	}
+
+	mf, ok, err := e.movieFeature(ctx, mediaID)
 	if err != nil {
 		return err
 	}
 	if !ok {
-		return nil // unknown movie (or an episode), nothing to profile
+		return nil // unknown movie, nothing to profile
 	}
 
 	c := 0.0
