@@ -1,16 +1,21 @@
 # Architecture
 
 Northrou runs a server on the user's hardware; the hosted coordinator and pin
-relay provide remote connectivity by default, and the separately-developed client
-apps connect to it. This doc covers how those pieces fit.
+relay provide remote connectivity by default, and the client apps connect to it.
+This doc covers how those pieces fit.
 
-Northrou is a monorepo with two Go modules plus a separately-developed frontend.
+Northrou is a monorepo with two Go modules plus the client.
 
 ```
 backend/       server binary  (github.com/rhymeswithlimo/northrou/backend)
 coordination/  signaling relay + pin-delivery relay (github.com/rhymeswithlimo/northrou/coordination)
-frontend/      Tauri client (added separately)
+frontend/      Tauri client (Vite; built by `make frontend`)
 ```
+
+The client is built by Vite and embedded into the server binary via `go:embed`
+(`internal/web`), so one binary serves both the API and the UI. The same build is
+what the Tauri apps bundle. Its build output is generated and not committed; see
+[frontend.md](frontend.md).
 
 ### Why Tauri (one web UI, all platforms)
 
@@ -38,10 +43,10 @@ internal/
   config                TOML config, defaults, OS-appropriate paths
   db                    SQLite (pure-Go modernc), goose migrations, query layer
   model                 domain types
-  auth                  one account email + many profiles; passwordless email pins, per-profile JWT access + rotating refresh tokens, OTP-elevated admin capability, middleware
+  auth                  one account email + many profiles; passwordless email pins, per-profile JWT access + rotating refresh tokens, OTP-elevated admin capability, middleware; optional OAuth assertion verification (oauth.go)
   email                 SMTP delivery of one-time sign-in pins (net/smtp, pure-Go)
   server                chi router, middleware, graceful shutdown
-  api                   HTTP handlers (auth, library, stream, subtitles, home, admin)
+  api                   HTTP handlers (auth, library, search, stream, subtitles, home, admin, config)
   ffmpeg                locate/download managed static ffmpeg + ffprobe
   mediainfo             ffprobe wrapper -> normalized codec/HDR/track data
   scanner               filename parser, TMDB match, ffprobe, unmatched flagging
@@ -50,7 +55,8 @@ internal/
   transcode             decision cascade, HLS session mgr, session tracking
   transcode/hwaccel     NVENC/QSV/VideoToolbox/AMF/VA-API detection
   recommend             taste profile, scoring/decay, row generators, cold start
-  remote                WebRTC peer + HTTP-over-datachannel tunnel
+  remote                WebRTC peer + HTTP-over-datachannel tunnel (server half; the client half is JS)
+  web                   embeds the Vite client build; serves it alongside the API
   service               systemd/launchd/Windows service install
   update                self-update from GitHub releases
   tui                   bubbletea admin dashboard
@@ -101,6 +107,23 @@ and TV shows. There is no onboarding quiz.
 A tiny, stateless WebSocket relay. Home servers register by connection code;
 clients request a server by that code; the broker relays only WebRTC signaling
 (SDP + ICE). **It never sees media.**
+
+The client half of the tunnel is JS (`frontend/js/api/tunnel.js`), because the
+WebView already has a WebRTC stack on every platform and it keeps working in a
+plain browser. Clients try the LAN first and only tunnel when the box isn't on
+this network: the direct route is faster, needs no broker, and survives the
+internet being down.
+
+The coordinator also hosts the optional **sign-in broker** (`internal/oauth`),
+which is off unless provider credentials are configured. Google and Apple require
+a registered OAuth client with fixed redirect URIs, which a self-hosted box at an
+arbitrary address cannot have, so the credentials live here and the box never
+sees them. The broker mints a 2-minute ES256 assertion carrying the verified
+email; the box verifies it against `/oauth/jwks` and requires the identity to be
+its own account address. That signature check is the security boundary — without
+it the endpoint would accept anyone's claim. The broker learns only that an email
+authenticated; it never sees media, libraries, tokens, or which box that address
+belongs to.
 
 ## Pin relay (`coordination/cmd/relay`)
 
