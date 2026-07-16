@@ -174,13 +174,32 @@
     user-select: none;
 }
 
-/* Pointer devices reveal the title on hover, over a dimmed backdrop.
-   NOTE: touch devices have no hover, so the hero title is currently unreachable
-   there. That is pre-existing behavior, preserved deliberately - giving it a
-   mobile treatment is a design decision, not a cleanup. */
+/* Pointer devices reveal the title on hover, over a dimmed backdrop. */
 @media (hover: hover) {
     .hero:hover .hero__info { opacity: 1; }
     .hero:hover .hero__link img { opacity: 0.25; }
+}
+
+/* Touch has no hover, so a hover-gated title can never be read on a phone -
+   which is where the iOS client lives. Show it permanently instead.
+   Dimming the whole backdrop to 25% the way the hover state does would leave a
+   washed-out hero sitting there for good, so the title moves to the bottom over
+   a scrim: the same gradient-for-legibility idiom as .hero::before and
+   .detail__hero::after, and it leaves the image itself untouched. */
+@media (hover: none) {
+    .hero__info {
+        opacity: 1;
+
+        justify-content: flex-end;
+        padding: 0 var(--sidepadding) clamp(20px, 4vw, 32px);
+
+        background: linear-gradient(
+            to top,
+            hsl(from var(--strong) h s l / 0.9) 0,
+            hsl(from var(--strong) h s l / 0.55) 18%,
+            transparent 45%
+        );
+    }
 }
 
 .hero__title { font-weight: 450; }
