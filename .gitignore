@@ -5,8 +5,18 @@ README.md
 /dist/
 /bin/
 *.exe
-northrou
-coordinator
+# Anchored, and they must stay that way. Unanchored, these matched any path
+# segment with those names and silently swallowed the cmd/ directories named
+# after the binaries they build: backend/cmd/northrou/main.go and
+# coordination/cmd/coordinator/main.go were never committed at all, so a fresh
+# clone could not build the server. They also hid the Android plugin, whose Java
+# package is .../sh/northrou/native/.
+/northrou
+/coordinator
+/relay
+# `go build` inside coordination/ drops its binaries beside the source.
+/coordination/coordinator
+/coordination/relay
 
 # Local dev data / config
 *.db
