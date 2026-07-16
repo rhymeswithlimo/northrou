@@ -42,6 +42,12 @@ tonemap = true          # HDR -> SDR tone mapping when transcoding for SDR clien
 prefer_system_ffmpeg = false
 max_transcodes = 0      # 0 = auto (derived from detected hardware)
 
+[auth]
+# Optional. Social sign-in is off unless oauth_issuer is set; the emailed pin
+# needs no setup and works with no internet.
+oauth_issuer    = ""            # coordination broker base URL
+oauth_providers = ["google"]    # what to offer on the login screen
+
 [tmdb]
 api_key = "…"           # required for posters and metadata
 language = "en-US"
@@ -110,6 +116,19 @@ names that don't parse as episodes on their own.
   Direct play and remux are stream copies and never count against it, so
   lowering this does not restrict cheap playback. Requests over the cap get
   `503` with `Retry-After` rather than queueing. Editable from Server admin.
+
+### `[auth]`
+- **oauth_issuer** - the coordination broker that runs Google/Apple sign-in and
+  signs the assertions this server verifies. Empty (the default) disables social
+  sign-in entirely. The server never holds an OAuth client secret: it only ever
+  verifies the broker's signature against its published JWKS.
+- **oauth_providers** - which buttons the login screen offers, e.g.
+  `["google", "apple"]`. Listing one the broker does not run just means that
+  button fails, so keep it in step with the broker's own configuration.
+
+Social sign-in is a shortcut, not a second way in. It proves control of an email
+address, exactly as the pin does, and an identity that is not this server's
+account address is refused.
 
 ### `[tmdb]`
 - **api_key** - a free [TMDB](https://www.themoviedb.org/settings/api) key.

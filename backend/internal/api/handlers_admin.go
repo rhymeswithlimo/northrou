@@ -8,8 +8,8 @@ import (
 
 // adminStreamsResponse is the active-streams payload for the dashboard/TUI.
 type adminStreamsResponse struct {
-	Count   int                        `json:"count"`
-	Streams []transcode.StreamSession  `json:"streams"`
+	Count   int                       `json:"count"`
+	Streams []transcode.StreamSession `json:"streams"`
 }
 
 func (a *API) handleAdminStreams(w http.ResponseWriter, r *http.Request) {

@@ -246,8 +246,10 @@ func TestAuthProfilesEndToEnd(t *testing.T) {
 func TestDeleteLastProfileBlocked(t *testing.T) {
 	h, _ := testAPI(t)
 	var setupResp struct {
-		Profile     struct{ ID int64 `json:"id"` } `json:"profile"`
-		AccessToken string                          `json:"access_token"`
+		Profile struct {
+			ID int64 `json:"id"`
+		} `json:"profile"`
+		AccessToken string `json:"access_token"`
 	}
 	if c := do(t, h, http.MethodPost, "/api/setup/complete", "",
 		map[string]any{"email": "solo@example.com"}, &setupResp); c != http.StatusCreated {

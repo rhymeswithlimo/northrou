@@ -75,6 +75,15 @@ func New(configPath string) (*App, error) {
 	scan := scanner.New(database, tmdb, images, nil)
 	rec := recommend.New(database)
 
+	// Social sign-in is opt-in. With no broker configured the verifier stays
+	// nil and the endpoints report it as unavailable, rather than the client
+	// offering a button that cannot work.
+	var oauthVerifier *auth.OAuthVerifier
+	if cfg.Auth.OAuthIssuer != "" {
+		oauthVerifier = auth.NewOAuthVerifier(cfg.Auth.OAuthIssuer)
+		slog.Info("social sign-in enabled", "broker", cfg.Auth.OAuthIssuer, "providers", cfg.Auth.OAuthProviders)
+	}
+
 	apiSrv := api.New(api.Deps{
 		DB:         database,
 		Auth:       authSvc,
@@ -83,6 +92,7 @@ func New(configPath string) (*App, error) {
 		Scanner:    scan,
 		Recommend:  rec,
 		ImagesDir:  images.Dir(),
+		OAuth:      oauthVerifier,
 	})
 
 	addr := net.JoinHostPort(cfg.Server.BindAddr, strconv.Itoa(cfg.Server.Port))

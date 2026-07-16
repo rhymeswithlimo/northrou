@@ -23,6 +23,21 @@ type Config struct {
 	Transcode TranscodeConfig `toml:"transcode"`
 	TMDB      TMDBConfig      `toml:"tmdb"`
 	Email     EmailConfig     `toml:"email"`
+	Auth      AuthConfig      `toml:"auth"`
+}
+
+// AuthConfig turns on social sign-in. It is off by default: the emailed pin
+// needs no setup, works with no internet, and proves exactly the same thing.
+//
+// The box never holds an OAuth client secret. Google and Apple require a
+// registered client with fixed redirect URIs, which a self-hosted server at an
+// arbitrary address cannot have, so the credentials live on the coordination
+// broker and the box only verifies the short-lived assertions it signs.
+type AuthConfig struct {
+	// OAuthIssuer is the broker's base URL. Empty disables social sign-in.
+	OAuthIssuer string `toml:"oauth_issuer"`
+	// OAuthProviders lists what to offer, e.g. ["google", "apple"].
+	OAuthProviders []string `toml:"oauth_providers"`
 }
 
 // ServerConfig covers how the HTTP daemon binds and where it stores state.

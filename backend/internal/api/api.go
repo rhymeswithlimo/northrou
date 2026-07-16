@@ -27,6 +27,10 @@ type Deps struct {
 	Scanner    *scanner.Scanner
 	Recommend  *recommend.Engine
 	ImagesDir  string
+	// OAuth verifies broker sign-in assertions. Nil when no broker is
+	// configured, in which case the endpoints report social sign-in as
+	// unavailable rather than pretending.
+	OAuth *auth.OAuthVerifier
 }
 
 // API bundles handler dependencies and route registration.
@@ -74,6 +78,8 @@ func (a *API) Mount(r chi.Router) {
 		// exchange it, then pick a profile).
 		r.Route("/auth", func(r chi.Router) {
 			r.Post("/request-pin", a.handleRequestPin)
+			r.Get("/oauth/config", a.handleOAuthConfig)
+			r.Post("/oauth/signin", a.handleOAuthSignIn)
 			r.Post("/verify-pin", a.handleVerifyPin)
 			r.Post("/select-profile", a.handleSelectProfile)
 			r.Post("/refresh", a.handleRefresh)

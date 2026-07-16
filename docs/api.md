@@ -22,6 +22,8 @@ and remember which profile the device is using.
 
 | Method | Path | Body | Notes |
 |---|---|---|---|
+| GET | `/api/auth/oauth/config` | - | `{providers[], start_url}`. Empty `providers` means social sign-in is off. |
+| POST | `/api/auth/oauth/signin` | `{assertion, nonce}` | Exchanges a broker assertion for the same `{profile, profiles[], access_token, refresh_token, expires_at}` verify-pin returns. `403` if the identity is not this server's account; `401` if the assertion doesn't verify. |
 | POST | `/api/auth/request-pin` | `{email}` | Emails a one-time sign-in pin if `email` is the account address. Always returns `200` with a generic message (no enumeration). |
 | POST | `/api/auth/verify-pin` | `{email, pin}` | Exchanges a valid pin for `{profile, profiles[], access_token, refresh_token, expires_at}`. Tokens default to the first profile; `profiles[]` is the full list for the picker. `401` on wrong/expired/exhausted pin. |
 | POST | `/api/auth/select-profile` | `{refresh_token, profile_id}` | Switches the active profile. Rotates the refresh token and returns `{profile, access_token, refresh_token, expires_at}` scoped to `profile_id`. No pin required. `404` if the profile does not exist, `401` on a bad/rotated refresh token. |
@@ -34,6 +36,35 @@ and remember which profile the device is using.
 > should show the Server Admin section to **all** profiles. `admin` is `true`
 > only while the current token is already OTP-elevated; use it to decide whether
 > to skip the OTP prompt, not whether to reveal the admin section at all.
+
+### Social sign-in (optional)
+
+Off unless `[auth] oauth_issuer` is set. It is a shortcut, not a second way in:
+Google/Apple prove control of an email address, which is exactly what the pin
+proves, so an identity that is not the account address is refused with `403`.
+The pin always works and needs no setup or internet.
+
+**The server holds no OAuth secrets.** Google and Apple both require a registered
+client with fixed redirect URIs, which a self-hosted box at an arbitrary address
+cannot have, and a secret shipped in an open-source binary is not a secret. So
+the credentials live on the coordination broker, which:
+
+1. runs the provider flow at its own stable redirect URI,
+2. mints a short-lived (2 min) **assertion**: an ES256 JWT carrying the verified
+   email, the client's nonce, `aud: northrou-server`, and a `jti`,
+3. hands it back to the client in the URL **fragment**, which never reaches a
+   server, an access log, or a `Referer` header.
+
+The box then verifies that assertion against the broker's JWKS
+(`GET {oauth_issuer}/oauth/jwks`, cached ~5 min) before trusting a word of it.
+That signature check is the entire security boundary: without it the endpoint
+would accept "I am you@example.com" from anyone. The box additionally requires a
+matching nonce, a live expiry, the right issuer and audience, ES256 specifically
+(never the token's own `alg`), and refuses a `jti` it has already seen, so a
+captured assertion cannot be replayed even inside its short life.
+
+The broker learns one thing: that an email address authenticated. It never sees
+media, libraries, tokens, or which box (if any) that address belongs to.
 
 Pins are 6 digits, valid for 10 minutes, single-use, and limited to 5 wrong
 guesses before invalidation. Repeat requests within 60 seconds reuse the

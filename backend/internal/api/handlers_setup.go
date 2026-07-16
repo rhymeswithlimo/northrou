@@ -33,12 +33,12 @@ func (a *API) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 type setupCompleteRequest struct {
-	Email       string   `json:"email"`
-	ProfileName string   `json:"profile_name"` // first profile; optional
-	MovieDirs   []string `json:"movie_dirs"`
-	ShowDirs    []string `json:"show_dirs"`
-	TMDBAPIKey  string   `json:"tmdb_api_key"`
-	EnableRemote bool    `json:"enable_remote"`
+	Email        string   `json:"email"`
+	ProfileName  string   `json:"profile_name"` // first profile; optional
+	MovieDirs    []string `json:"movie_dirs"`
+	ShowDirs     []string `json:"show_dirs"`
+	TMDBAPIKey   string   `json:"tmdb_api_key"`
+	EnableRemote bool     `json:"enable_remote"`
 
 	// Optional SMTP settings so the admin can receive sign-in pins after setup.
 	// If omitted, pins are logged to the server log until email is configured.

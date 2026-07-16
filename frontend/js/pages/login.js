@@ -10,6 +10,8 @@ import { requestPin, verifyPin } from '../data/account.js';
 import { NetworkError } from '../api/client.js';
 import { isSignedIn } from '../api/session.js';
 import { requireServer } from '../api/connect.js';
+import { getOAuthConfig, authUrl, signInWithAssertion, readCallback } from '../data/oauth.js';
+import { setSession } from '../api/session.js';
 
 // Stricter than type="email", which happily accepts "a@b".
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -36,6 +38,61 @@ if (!(await requireServer())) throw new Error('no server');
 if (isSignedIn()) window.location.replace('profiles.html');
 
 const shake = (el) => replay(el, 'shake');
+
+/** Finish a session and go where the user is actually headed. */
+const landAfterSignIn = (res) =>
+    window.location.assign(res.profiles?.length > 1 ? 'profiles.html' : 'index.html');
+
+/* ---------- social sign-in ---------- */
+
+// Only offer what this server can actually honour. A household with no broker
+// configured gets the pin, which needs no setup and works offline.
+(async function mountProviders() {
+    const back = readCallback();
+    const cfg = await getOAuthConfig();
+    const providers = new Set(cfg.providers ?? []);
+
+    for (const btn of document.querySelectorAll('.provider')) {
+        const name = btn.dataset.provider;
+        if (!providers.has(name)) {
+            btn.remove();
+            continue;
+        }
+        btn.addEventListener('click', () => {
+            markLastUsed(name);
+            // A full navigation, not a popup: the WebView must hand off to a
+            // real browser so the user can see the address bar they are typing
+            // their Google password into.
+            window.location.assign(authUrl({
+                startUrl: cfg.start_url,
+                provider: name,
+                redirect: window.location.origin + window.location.pathname,
+            }));
+        });
+    }
+
+    // Nothing on offer: drop the divider so the page isn't "OR" with nothing
+    // above it.
+    if (!providers.size) {
+        $('.auth__providers')?.remove();
+        $('.auth__or')?.remove();
+    }
+
+    if (!back) return;
+    if (back.error) {
+        setError(emailError, back.error === 'access_denied'
+            ? 'Sign-in was cancelled.'
+            : 'That sign-in did not complete. Try again, or use a code.');
+        return;
+    }
+    try {
+        landAfterSignIn(setSession(await signInWithAssertion(back.assertion)));
+    } catch (err) {
+        setError(emailError, err.isForbidden
+            ? 'That account is not this server\'s account. Sign in with the address this server belongs to.'
+            : 'That sign-in could not be verified. Try again, or use a code.');
+    }
+})();
 
 /** Remembers which method was last used, so the badge is real rather than decorative. */
 const LAST_USED_KEY = 'northrou.lastUsed';
@@ -111,7 +168,7 @@ otpForm.addEventListener('submit', async (e) => {
         setError(otpError, '');
         // More than one profile means someone has to pick; a single-profile
         // household should not be made to choose from a list of one.
-        window.location.assign(res.profiles?.length > 1 ? 'profiles.html' : 'index.html');
+        landAfterSignIn(res);
         return;
     } catch (err) {
         setError(otpError, err instanceof NetworkError

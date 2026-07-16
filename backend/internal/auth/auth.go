@@ -148,6 +148,14 @@ func (s *Service) VerifyLoginPin(ctx context.Context, email, pin string) ([]mode
 	if !ok {
 		return nil, nil, nil, ErrInvalidCredentials
 	}
+	return s.signInAccount(ctx)
+}
+
+// signInAccount issues a session once control of the account address has been
+// proven, by whatever means. Shared by the pin flow and the OAuth flow so the
+// two cannot drift: both default to the first profile and hand back the full
+// list for the picker.
+func (s *Service) signInAccount(ctx context.Context) ([]model.Profile, *model.Profile, *TokenPair, error) {
 	profiles, err := s.db.ListProfiles(ctx)
 	if err != nil {
 		return nil, nil, nil, err

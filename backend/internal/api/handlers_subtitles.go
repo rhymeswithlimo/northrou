@@ -9,13 +9,13 @@ import (
 )
 
 type subtitleDTO struct {
-	ID        int64  `json:"id"`
-	Language  string `json:"language"`
-	Label     string `json:"label"`
-	Format    string `json:"format"`
-	Forced    bool   `json:"forced"`
-	Status    string `json:"status"` // ready|processing|queued|unavailable
-	URL       string `json:"url,omitempty"`
+	ID       int64  `json:"id"`
+	Language string `json:"language"`
+	Label    string `json:"label"`
+	Format   string `json:"format"`
+	Forced   bool   `json:"forced"`
+	Status   string `json:"status"` // ready|processing|queued|unavailable
+	URL      string `json:"url,omitempty"`
 }
 
 // formatPriority ranks subtitle formats; higher wins when the same language has
