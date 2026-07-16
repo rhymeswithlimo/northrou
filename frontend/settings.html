@@ -17,207 +17,263 @@
 </head>
 <body>
 
-    <nav class="back-navigation band" aria-label="Back">
+    <nav class="settings-nav" aria-label="Back">
         <button type="button" class="back-link" id="back">
             <span aria-hidden="true">&lt;</span><span>Back</span>
         </button>
     </nav>
 
     <main class="settings">
-        <h1 class="u-visually-hidden">Settings</h1>
-        <div class="account-settings group">
-            <div class="settings-row">
-                <p>Signed in as <span>you@example.com</span></p>
-                <button>[ sign out ]</button>
-            </div>
-            <div class="settings-row">
-                <p>Profile: <span>Tomas</span></p>
-                <a href="profiles.html">[ switch profiles ]</a>
-            </div>
-        </div>
+        <h1 class="settings__title">Settings</h1>
 
-        <div class="profiles-settings group">
-            <h2>PROFILES</h2>
-            <br>
-            <div class="settings-row">
-                <p>Tomas <span class="dim">(you)</span></p>
-                <button>[ edit ]</button>
-            </div>
-            <div class="settings-row">
-                <p>Kira</p>
-                <button>[ edit ]</button>
-            </div>
-            <div class="settings-row">
-                <p>Ivan</p>
-                <button>[ edit ]</button>
-            </div>
-            <div class="settings-row">
-                <p>Lena</p>
-                <button>[ edit ]</button>
-            </div>
-            <div class="settings-row end">
-                <button>[ add profile ]</button>
-            </div>
-            <br>
-            <p class="note">Anyone can add or remove a profile. Each has its own watch history and recommendations. Maximum of 6 profiles.</p>
-        </div>
+        <!-- ---------- account ---------- -->
+        <section class="settings__group" aria-labelledby="h-account">
+            <h2 class="settings__heading" id="h-account">Account</h2>
 
-        <div class="playback-settings group">
-            <h2>PLAYBACK</h2>
-            <br>
-            <div class="settings-row">
-                <p>Max streaming quality</p>
-                <div>
-                    <button class="active">[ auto ]</button>
-                    <button>[ 4k ]</button>
-                    <button>[ 1080p ]</button>
-                    <button>[ 720p ]</button>
+            <div class="setting">
+                <div class="setting__text">
+                    <p class="setting__name">Signed in as</p>
+                    <p class="setting__desc" id="account-email"></p>
                 </div>
+                <button type="button" class="btn btn--quiet" id="sign-out">Sign out</button>
             </div>
-            <div class="settings-row">
-                <p>Quality on cellular</p>
-                <div>
-                    <button>[ 4k ]</button>
-                    <button class="active">[ 1080p ]</button>
-                    <button>[ 720p ]</button>
-                    <button>[ 480p ]</button>
-                </div>
-            </div>
-            <div class="settings-row">
-                <p>Direct play when possible</p>
-                <div>
-                    <button class="active">[ on ]</button>
-                    <button>[ off ]</button>
-                </div>
-            </div>
-        </div>
 
-        <div class="about-settings group">
-            <h2>ABOUT</h2>
-            <br>
-            <div class="settings-row">
-                <p>Northrou v0.1.1</p>
+            <div class="setting">
+                <div class="setting__text">
+                    <p class="setting__name">Current profile</p>
+                    <p class="setting__desc" id="current-profile"></p>
+                </div>
+                <a class="btn btn--quiet" href="profiles.html">Switch profile</a>
             </div>
-            <div class="settings-row">
-                <a href="https://northrou.sh" target="_blank" rel="noopener noreferrer">northrou.sh</a>
-                <div>
-                    <a href="">[ view logs ]</a>
-                    <a href="">[ report a problem ]</a>
-                </div>
+        </section>
+
+        <!-- ---------- profiles ---------- -->
+        <section class="settings__group" aria-labelledby="h-profiles">
+            <h2 class="settings__heading" id="h-profiles">Profiles</h2>
+
+            <ul class="settings__list" id="profiles-list"></ul>
+
+            <div class="setting setting--end">
+                <button type="button" class="btn btn--quiet" id="add-profile">Add profile</button>
             </div>
-        </div>
 
-        <div class="admin-settings group">
-            <div class="admin-header">
-                <hr>
-                <div class="settings-row">
-                    <h2>SERVER ADMIN</h2>
+            <p class="settings__note" id="profiles-note"></p>
+        </section>
+
+        <!-- ---------- playback ---------- -->
+        <section class="settings__group" aria-labelledby="h-playback">
+            <h2 class="settings__heading" id="h-playback">Playback</h2>
+
+            <div class="setting">
+                <div class="setting__text">
+                    <p class="setting__name">Max streaming quality</p>
+                    <p class="setting__desc">Auto follows your connection speed.</p>
                 </div>
-                <hr>
+                <fieldset class="segmented" id="quality-max">
+                    <legend class="u-visually-hidden">Max streaming quality</legend>
+                </fieldset>
             </div>
-            <br>
-            <p class="note">Changing server settings needs a one-time code emailed to the account address (you@example.com).</p>
-            <br>
-            <br>
-            <div class="settings-row">
-                <button>[ email me a code ]</button>
-                <div class="code-entry">
-                    <span class="dim">code</span>
-                    <input class="code-input" type="text" inputmode="numeric" maxlength="6" placeholder="______" aria-label="one-time code">
-                    <button>[ unlock ]</button>
+
+            <div class="setting">
+                <div class="setting__text">
+                    <p class="setting__name">Quality on cellular</p>
+                    <p class="setting__desc">Used when you're not on Wi-Fi.</p>
                 </div>
+                <fieldset class="segmented" id="quality-cellular">
+                    <legend class="u-visually-hidden">Quality on cellular</legend>
+                </fieldset>
             </div>
-            <br>
-            <br>
 
-            <div class="admin-locked">
-                <div class="server-settings group">
-                    <h2>SERVER</h2>
-                    <br>
-                    <div class="settings-row">
-                        <p>Current server: <span>kimoNAS</span> <span class="dim">(192.168.1.1)</span></p>
-                    </div>
-                    <div class="settings-row">
-                        <p><span class="blink u-text-green" aria-hidden="true">&#9679;</span> Connected</p>
-                    </div>
-                    <br>
-                    <div class="settings-row">
-                        <div>
-                            <button>[ switch server ]</button>
-                            <button>[ forget this server ]</button>
-                        </div>
-                    </div>
+            <div class="setting">
+                <div class="setting__text">
+                    <p class="setting__name">Direct play when possible</p>
+                    <p class="setting__desc">Skips transcoding when this device can decode the file itself.</p>
                 </div>
+                <label class="switch">
+                    <input type="checkbox" id="direct-play" checked>
+                    <span class="switch__track"></span>
+                    <span class="switch__thumb"></span>
+                    <span class="u-visually-hidden">Direct play when possible</span>
+                </label>
+            </div>
+        </section>
 
-                <div class="libraries-settings group">
-                    <h2>LIBRARIES</h2>
-                    <br>
-                    <div class="settings-row">
-                        <p>/Volumes/Media/Movies</p>
-                        <button>[ remove ]</button>
-                    </div>
-                    <div class="settings-row">
-                        <p>/Volumes/Media/TV</p>
-                        <button>[ remove ]</button>
-                    </div>
-                    <div class="settings-row end">
-                        <div>
-                            <button>[ scan now ]</button>
-                        </div>
-                    </div>
-                    <p class="note">Last scan: 2h ago, 1,204 items</p>
+        <!-- ---------- about ---------- -->
+        <section class="settings__group" aria-labelledby="h-about">
+            <h2 class="settings__heading" id="h-about">About</h2>
+
+            <div class="setting">
+                <div class="setting__text">
+                    <p class="setting__name">Northrou</p>
+                    <p class="setting__desc" id="version">Checking version...</p>
                 </div>
-                <br>
-                <br>
+                <button type="button" class="btn btn--quiet" id="check-update">Check for updates</button>
+            </div>
 
-                <div class="streaming-settings group">
-                    <h2>STREAMING</h2>
-                    <br>
-                    <div class="settings-row">
-                        <p>Hardware acceleration: <span>on</span> <span class="dim">(VideoToolbox)</span></p>
-                    </div>
-                    <div class="settings-row">
-                        <p>Max concurrent transcodes</p>
-                        <div>
-                            <button class="active">[ auto ]</button>
-                            <button>[ 1 ]</button>
-                            <button>[ 2 ]</button>
-                            <button>[ 4 ]</button>
-                        </div>
-                    </div>
+            <div class="setting">
+                <div class="setting__text">
+                    <p class="setting__name">Project</p>
+                    <p class="setting__desc">
+                        <a href="https://northrou.sh" target="_blank" rel="noopener noreferrer">northrou.sh</a>
+                    </p>
                 </div>
-                <br>
-                <br>
-
-                <div class="advanced-settings group">
-                    <h2>ADVANCED</h2>
-                    <br>
-                    <div class="settings-row">
-                        <p>ffmpeg</p>
-                        <div>
-                            <button class="active">[ managed ]</button>
-                            <button>[ system ]</button>
-                        </div>
-                    </div>
-                    <div class="settings-row">
-                        <p>Login code delivery</p>
-                        <div>
-                            <button class="active">[ hosted relay ]</button>
-                            <button>[ own smtp ]</button>
-                        </div>
-                    </div>
-                    <div class="settings-row">
-                        <p>Remote access</p>
-                        <div>
-                            <button class="active">[ on ]</button>
-                            <button>[ off ]</button>
-                        </div>
-                    </div>
+                <div class="setting__control">
+                    <button type="button" class="btn btn--quiet" id="view-logs">View logs</button>
                 </div>
             </div>
-        </div>
+        </section>
 
+        <!-- ---------- server admin ---------- -->
+        <section class="settings__group settings__group--admin" aria-labelledby="h-admin">
+            <div class="settings__admin-head">
+                <h2 class="settings__heading" id="h-admin">Server admin</h2>
+                <span class="settings__badge" id="admin-state" data-state="locked">Locked</span>
+            </div>
+
+            <!-- Elevation gate. Admin reads are open to any profile; mutations
+                 need an OTP-elevated token, so this unlocks the controls only. -->
+            <form class="settings__unlock" id="unlock-form">
+                <p class="settings__note" id="unlock-note"></p>
+                <div class="settings__unlock-row">
+                    <button type="button" class="btn btn--quiet" id="request-otp">Email me a code</button>
+                    <div class="settings__code">
+                        <label for="admin-otp" class="u-visually-hidden">One-time admin code</label>
+                        <input class="input input--mono settings__code-input" id="admin-otp" type="text"
+                               inputmode="numeric" maxlength="6" placeholder="______" autocomplete="one-time-code">
+                        <button type="submit" class="btn btn--primary" id="unlock" disabled>Unlock</button>
+                    </div>
+                </div>
+                <p class="form-error u-hidden" id="unlock-error" role="alert"></p>
+            </form>
+
+            <div class="settings__admin" id="admin-panel" hidden></div>
+        </section>
     </main>
+
+    <!-- ==================== TEMPLATES ==================== -->
+
+    <template id="tpl-profile-row">
+        <li class="setting">
+            <div class="setting__text setting__text--avatar">
+                <span class="setting__avatar" aria-hidden="true"></span>
+                <span>
+                    <span class="setting__name"></span>
+                    <span class="setting__desc setting__you u-hidden">This profile</span>
+                </span>
+            </div>
+            <div class="setting__control">
+                <button type="button" class="btn btn--quiet" data-edit>Rename</button>
+                <button type="button" class="btn btn--danger" data-delete>Delete</button>
+            </div>
+        </li>
+    </template>
+
+    <template id="tpl-admin">
+        <div class="settings__admin-inner">
+            <section class="settings__group" aria-labelledby="h-server">
+                <h2 class="settings__heading" id="h-server">Server</h2>
+
+                <div class="setting">
+                    <div class="setting__text">
+                        <p class="setting__name" id="server-name"></p>
+                        <p class="setting__desc" id="server-address"></p>
+                    </div>
+                    <span class="settings__status" id="server-status">
+                        <span class="blink" aria-hidden="true">&#9679;</span>
+                        <span id="server-status-text"></span>
+                    </span>
+                </div>
+
+                <div class="setting setting--end">
+                    <div class="setting__control">
+                        <button type="button" class="btn btn--quiet" id="switch-server">Switch server</button>
+                        <button type="button" class="btn btn--danger" id="forget-server">Forget this server</button>
+                    </div>
+                </div>
+            </section>
+
+            <section class="settings__group" aria-labelledby="h-libraries">
+                <h2 class="settings__heading" id="h-libraries">Libraries</h2>
+                <ul class="settings__list" id="libraries-list"></ul>
+                <div class="setting setting--end">
+                    <div class="setting__control">
+                        <button type="button" class="btn btn--quiet" id="add-library">Add folder</button>
+                        <button type="button" class="btn btn--primary" id="scan-now">Scan now</button>
+                    </div>
+                </div>
+                <p class="settings__note" id="scan-note"></p>
+            </section>
+
+            <section class="settings__group" aria-labelledby="h-streaming">
+                <h2 class="settings__heading" id="h-streaming">Streaming</h2>
+
+                <div class="setting">
+                    <div class="setting__text">
+                        <p class="setting__name">Hardware acceleration</p>
+                        <p class="setting__desc" id="hwaccel"></p>
+                    </div>
+                    <span class="settings__value" id="hwaccel-state"></span>
+                </div>
+
+                <div class="setting">
+                    <div class="setting__text">
+                        <p class="setting__name">Max concurrent transcodes</p>
+                        <p class="setting__desc" id="capacity-note"></p>
+                    </div>
+                    <fieldset class="segmented" id="transcode-cap">
+                        <legend class="u-visually-hidden">Max concurrent transcodes</legend>
+                    </fieldset>
+                </div>
+            </section>
+
+            <section class="settings__group" aria-labelledby="h-advanced">
+                <h2 class="settings__heading" id="h-advanced">Advanced</h2>
+
+                <div class="setting">
+                    <div class="setting__text">
+                        <p class="setting__name">ffmpeg</p>
+                        <p class="setting__desc">Managed downloads a known-good build on first run.</p>
+                    </div>
+                    <fieldset class="segmented" id="ffmpeg-mode">
+                        <legend class="u-visually-hidden">ffmpeg source</legend>
+                    </fieldset>
+                </div>
+
+                <div class="setting">
+                    <div class="setting__text">
+                        <p class="setting__name">Login code delivery</p>
+                        <p class="setting__desc">The hosted relay needs no setup. Own SMTP keeps mail in-house.</p>
+                    </div>
+                    <fieldset class="segmented" id="mail-mode">
+                        <legend class="u-visually-hidden">Login code delivery</legend>
+                    </fieldset>
+                </div>
+
+                <div class="setting">
+                    <div class="setting__text">
+                        <p class="setting__name">Remote access</p>
+                        <p class="setting__desc">Lets your devices reach this server from outside the house.</p>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="remote-access">
+                        <span class="switch__track"></span>
+                        <span class="switch__thumb"></span>
+                        <span class="u-visually-hidden">Remote access</span>
+                    </label>
+                </div>
+            </section>
+        </div>
+    </template>
+
+    <template id="tpl-library-row">
+        <li class="setting">
+            <div class="setting__text">
+                <p class="setting__name" data-path></p>
+                <p class="setting__desc" data-kind></p>
+            </div>
+            <button type="button" class="btn btn--danger" data-remove>Remove</button>
+        </li>
+    </template>
 
 </body>
 </html>

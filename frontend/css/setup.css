@@ -1,0 +1,176 @@
+/* First-run setup wizard. Reuses the auth panel from auth.css; this file is
+   only the page frame and the few controls setup adds on top. */
+
+.setup {
+    flex: 1;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    padding: clamp(28px, 6vh, 56px) var(--sidepadding);
+}
+
+.setup__panel {
+    width: 100%;
+    max-width: 460px;
+}
+
+.setup__hint {
+    font-family: 'Geist Mono', monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    color: hsl(from var(--muted) h s l / .8);
+}
+
+/* ==================== FOLDER LIST ==================== */
+
+.setup__group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.setup__paths {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.setup__path {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    & .auth__input { flex: 1; min-width: 0; }
+}
+
+.setup__path-remove {
+    width: 34px;
+    height: 34px;
+    flex: none;
+
+    display: grid;
+    place-items: center;
+
+    border-radius: 6px;
+    color: var(--muted);
+
+    transition: background-color .2s ease, color .2s ease;
+
+    & span { font-size: 18px; line-height: 1; }
+
+    @media (hover: hover) {
+        &:hover {
+            background-color: hsl(from var(--red) h s l / .12);
+            color: var(--red);
+        }
+    }
+}
+
+.setup__add { align-self: flex-start; }
+
+/* ==================== SMTP ==================== */
+
+.setup__details {
+    border-top: 1px solid hsl(from var(--muted) h s l / .2);
+    padding-top: 16px;
+
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.setup__summary {
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+
+    -webkit-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+
+    &::marker { color: var(--muted); }
+
+    &:focus-visible {
+        outline: 2px solid var(--contrast);
+        outline-offset: 2px;
+    }
+}
+
+.setup__smtp {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    margin-top: 8px;
+}
+
+/* ==================== PROGRESS ==================== */
+
+.setup__steps {
+    display: flex;
+    gap: 8px;
+
+    list-style: none;
+    margin: 0;
+    padding: 0;
+
+    font-family: 'Geist Mono', monospace;
+    font-size: 11px;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: hsl(from var(--muted) h s l / .5);
+
+    -webkit-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+.setup__steps li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Chevron between steps, not after the last one. */
+.setup__steps li + li::before {
+    content: "›";
+    color: hsl(from var(--muted) h s l / .35);
+}
+
+.setup__steps .is-current { color: var(--contrast); }
+.setup__steps .is-done { color: var(--muted); }
+
+/* ==================== DONE ==================== */
+
+.setup__code-block {
+    align-self: stretch;
+
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+
+    padding: 20px;
+    border-radius: 6px;
+    background-color: hsl(from var(--muted) h s l / .1);
+}
+
+.setup__code {
+    font-family: 'Geist Mono', monospace;
+    font-size: clamp(20px, 16px + 1.2vw, 26px);
+    font-weight: 500;
+    letter-spacing: .18em;
+    color: var(--contrast);
+
+    overflow-wrap: anywhere;
+    -webkit-user-select: all;
+    user-select: all;
+}
+
+/* The finish link is an <a>, so it needs the flex centring the <button>
+   version gets from its own UA styling. */
+#go-home {
+    display: flex;
+    text-decoration: none;
+}

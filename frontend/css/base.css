@@ -1,3 +1,16 @@
+/* Northrou base: reset, tokens, element defaults, utilities.
+ *
+ * HOVER RULE - applies to every stylesheet here:
+ * always wrap :hover styling in `@media (hover: hover)`.
+ *
+ * On a touch screen a tap latches :hover and it sticks after your finger is
+ * gone, so a card tapped mid-scroll stays lit. Gating on the media query means
+ * the rule never applies to a device that can't truly hover, which is the fix
+ * at the source. (This replaced mobile.js, which achieved the same thing by
+ * walking every stylesheet at runtime and deleting any rule containing :hover -
+ * effective, but it fought the CSS instead of expressing the intent.)
+ */
+
 /* ==================== RESET ==================== */
 
 *,

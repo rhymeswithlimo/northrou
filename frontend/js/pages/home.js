@@ -5,6 +5,7 @@ import { heroMeta } from '../lib/format.js';
 import { mountNavAutoHide } from '../components/nav.js';
 import { posterCard, continueCard, row } from '../components/card.js';
 import { createDetailModal } from '../components/detail.js';
+import { statePanel, skeletonRow, toast, mountOfflineBanner } from '../components/states.js';
 import { getHero, getContinueWatching, getHomeRows, getDetail } from '../data/library.js';
 
 const rowsEl = $('#rows');
@@ -13,8 +14,13 @@ const heroEl = $('#hero');
 const modal = createDetailModal($('#detail-root'), { onSelect: openDetail });
 
 async function openDetail(kind, id) {
-    const data = await getDetail(kind, id);
-    if (data) modal.show(data);
+    try {
+        const data = await getDetail(kind, id);
+        if (data) modal.show(data);
+        else toast("That title isn't in your library any more.", { variant: 'error' });
+    } catch {
+        toast("Couldn't load that title.", { variant: 'error' });
+    }
 }
 
 function renderHero(item) {
@@ -32,21 +38,49 @@ function renderHero(item) {
 }
 
 async function render() {
-    const [hero, continuing, rows] = await Promise.all([
-        getHero(),
-        getContinueWatching(),
-        getHomeRows(),
-    ]);
+    // Skeletons match the real grid, so the page doesn't jump when data lands.
+    rowsEl.replaceChildren(skeletonRow({ count: 4, ratio: '16 / 9' }), skeletonRow());
+
+    let hero, continuing, rows;
+    try {
+        [hero, continuing, rows] = await Promise.all([
+            getHero(),
+            getContinueWatching(),
+            getHomeRows(),
+        ]);
+    } catch {
+        heroEl.replaceChildren();
+        rowsEl.replaceChildren(statePanel({
+            variant: 'error',
+            title: "Couldn't reach your server",
+            body: 'Northrou could not load your library. Check that the server is running, then try again.',
+            action: { label: 'Try again', onClick: render },
+        }));
+        return;
+    }
 
     if (hero) renderHero(hero);
+    else heroEl.replaceChildren();
 
     const nodes = [];
     if (continuing.length) {
         nodes.push(row('Continue Watching', continuing, continueCard, 'row--continue'));
     }
     for (const r of rows) {
-        nodes.push(row(r.title, r.items, posterCard));
+        if (r.items?.length) nodes.push(row(r.title, r.items, posterCard));
     }
+
+    // A fresh install with no media at all: say so, rather than showing a page
+    // of nothing and letting it read as a failure.
+    if (!nodes.length) {
+        rowsEl.replaceChildren(statePanel({
+            title: 'Your library is empty',
+            body: 'Add a movie or TV folder in Server admin, then run a scan. Everything you add shows up here.',
+            action: { label: 'Open settings', onClick: () => window.location.assign('settings.html') },
+        }));
+        return;
+    }
+
     rowsEl.replaceChildren(...nodes);
 }
 
@@ -61,4 +95,5 @@ document.addEventListener('click', (e) => {
 });
 
 mountNavAutoHide($('.nav'));
+mountOfflineBanner();
 render();

@@ -1,133 +1,257 @@
-body {
-    max-width: 840px;
-    margin: auto;
-    padding: var(--sidepadding);
-    padding-block: clamp(32px, 6vh, 64px);
+/* Settings.
+ *
+ * Built in the login page's language rather than the old terminal one: Geist
+ * for content with Geist Mono reserved for labels and machine values, 6px
+ * radii, filled --contrast primaries, and the same fluid clamp scale. Controls
+ * are real controls (radio-backed segments, checkbox-backed switches) instead
+ * of buttons named "[ on ]".
+ */
 
-    gap: 24px;
+body {
+    padding-block: clamp(32px, 6vh, 64px);
+    gap: clamp(28px, 4vh, 40px);
 }
 
-/* ==================== SETTINGS ==================== */
-
+.settings-nav,
 .settings {
     width: 100%;
-    padding: 36px var(--sidepadding);
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 0 var(--sidepadding);
+}
 
+.settings {
     display: flex;
     flex-direction: column;
-    gap: 48px;
+    gap: clamp(36px, 5vh, 52px);
+}
 
+.settings__title {
+    font-size: 24px;
+    font-weight: 400;
+}
+
+/* ==================== GROUP ==================== */
+
+.settings__group {
+    display: flex;
+    flex-direction: column;
+}
+
+.settings__heading {
     font-family: 'Geist Mono', monospace;
-    font-size: 14px;
+    font-size: 13px;
+    font-weight: 400;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--muted);
 
-    & a, button {
-        -webkit-user-select: none;
-        -ms-user-select: none;
-        user-select: none;
-
-        padding: 1px;
-        width: fit-content;
-
-        white-space: nowrap;
-
-        color: var(--muted);
-
-        transition: opacity .3s ease;
-        &:hover { text-decoration: underline; opacity: .84; }
-
-        &:focus-visible {
-            outline: none;
-            background-color: var(--contrast);
-            color: var(--strong) !important;
-        }
-
-        &.active { color: var(--contrast); }
-    }
-
-    & h2 {
-        font-family: 'Geist', sans-serif;
-        font-size: 15px;
-        font-weight: 400;
-    }
+    margin-bottom: 8px;
 }
 
-.group {
+.settings__note {
+    font-family: 'Geist Mono', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    color: hsl(from var(--muted) h s l / .8);
+
+    max-width: 60ch;
+    margin-top: 12px;
+}
+
+.settings__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+/* ==================== ROW ==================== */
+
+.setting {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+
+    padding: 16px 0;
+    border-bottom: 1px solid hsl(from var(--muted) h s l / .14);
+}
+
+/* The last row in a group owns the bottom edge; a trailing rule would read as
+   a separator to nothing. */
+.settings__group > .setting:last-of-type,
+.settings__list > .setting:last-child {
+    border-bottom: 0;
+}
+
+.setting--end { justify-content: flex-end; }
+
+.setting__text {
     display: flex;
     flex-direction: column;
-    gap: 2px;
-}
-
-.settings-row {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    justify-content: space-between;
-
-    height: fit-content;
-}
-
-.settings-row.end { justify-content: flex-end; }
-
-.settings-row.wrapped { padding-top: 24px; }
-.settings-row.pad-bottom { padding-bottom: 24px; }
-
-.settings-row > p {
+    gap: 3px;
     min-width: 0;
+}
+
+.setting__text--avatar {
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+}
+
+.setting__name {
+    font-size: 15px;
+    font-weight: 450;
+    color: var(--contrast);
+
     overflow-wrap: anywhere;
 }
 
-.settings-row > div {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 0px 8px;
+.setting__desc {
+    font-family: 'Geist Mono', monospace;
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--muted);
+
+    overflow-wrap: anywhere;
+
+    & a { text-decoration: underline; }
 }
 
-.dim { color: var(--muted); }
+.setting__control {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+    flex: none;
+}
 
-.note {
-    color: var(--muted);
-    max-width: 54ch;
-    line-height: 1.5;
+.setting__value {
+    font-family: 'Geist Mono', monospace;
+    font-size: 13px;
+    color: var(--contrast);
+    flex: none;
+}
+
+.setting__avatar {
+    width: 34px;
+    height: 34px;
+    flex: none;
+
+    border-radius: 6px;
+    background-color: var(--tile, hsl(from var(--muted) h s l / .2));
+    background-image: linear-gradient(155deg, hsl(from var(--contrast) h s l / 0.16), transparent 62%);
+
+    display: grid;
+    place-items: center;
+
+    font-size: 15px;
+    font-weight: 450;
+    color: var(--contrast);
+}
+
+/* The rows stack under their own control on narrow screens: a label and a
+   4-way segmented control never fit side by side on a phone. */
+@media (max-width: 720px) {
+    .setting {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+    }
+
+    .setting--end,
+    .setting__control { justify-content: flex-start; }
+
+    .setting__text--avatar { align-items: center; }
+
+    /* Stacked, the control has the full row width, so let a 4-way segment wrap
+       rather than overflow it. */
+    .setting .segmented {
+        align-self: flex-start;
+        max-width: 100%;
+        flex-wrap: wrap;
+    }
 }
 
 /* ==================== SERVER ADMIN ==================== */
 
-.admin-header {
+.settings__group--admin {
+    border-top: 1px solid hsl(from var(--muted) h s l / .25);
+    padding-top: clamp(28px, 4vh, 40px);
+}
+
+.settings__admin-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.settings__badge {
+    font-family: 'Geist Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+
+    padding: 2px 8px;
+    border-radius: 4px;
+
+    background-color: hsl(from var(--muted) h s l / .18);
+    color: var(--muted);
+}
+
+.settings__badge[data-state="unlocked"] {
+    background-color: hsl(from var(--green) h s l / .16);
+    color: var(--green);
+}
+
+.settings__unlock {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 16px;
 }
 
-.code-entry { align-items: center; }
+.settings__unlock-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+}
 
-.code-input {
-    font-family: 'Geist Mono', monospace;
+.settings__code {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.settings__code-input {
+    width: 8ch;
+    padding: 9px 10px;
     font-size: 14px;
-    color: var(--contrast);
-    cursor: text;
-
-    width: 7ch;
-    padding: 3px 6px;
-
-    text-align: center;
-    letter-spacing: .35em;
-
-    border: 1px solid hsl(from var(--muted) h s l / .4);
-    border-radius: 3px;
 }
 
-.code-input::placeholder {
+.settings__admin-inner {
+    display: flex;
+    flex-direction: column;
+    gap: clamp(36px, 5vh, 52px);
+
+    margin-top: clamp(28px, 4vh, 40px);
+}
+
+.settings__status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: none;
+
+    font-family: 'Geist Mono', monospace;
+    font-size: 13px;
     color: var(--muted);
-    letter-spacing: .15em;
 }
 
-.admin-locked {
-    opacity: .5;
-    pointer-events: none;
-
-    display: none;
-}
+.settings__status[data-state="connected"] { color: var(--green); }
+.settings__status[data-state="error"] { color: var(--red); }
 
 /* ==================== STATUS DOT ==================== */
 
@@ -138,4 +262,9 @@ body {
 @keyframes pulse {
     0%, 100% { opacity: 0.2; }
     50% { opacity: 1; }
+}
+
+/* A pulsing dot is decoration; the adjacent word carries the meaning. */
+@media (prefers-reduced-motion: reduce) {
+    .blink { animation: none; }
 }
