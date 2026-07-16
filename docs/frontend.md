@@ -1,14 +1,14 @@
 # Frontend
 
-Decisions for the Northrou client. The client lives in `frontend/` and is
-developed separately; it binds to the backend's stable HTTP API. This doc exists
-so the framework and native-integration questions are settled and don't get
-re-litigated.
+Decisions for the Northrou client. The client lives in `frontend/` and binds to
+the backend's stable HTTP API. This doc exists so the framework and native
+integration questions are settled and don't get re-litigated.
 
 ## Framework: Tauri v2 (decided)
 
 The client is **Tauri v2**: one HTML/CSS/JS codebase targeting desktop
-(Win/Mac/Linux), iOS, and Android.
+(Win/Mac/Linux), iOS, and Android, plus the same build served straight from the
+backend for a browser.
 
 Why not Capacitor (the main alternative): Capacitor is mobile-only. Using it
 would mean maintaining a second shell (Electron or Tauri) plus a second plugin
@@ -16,6 +16,26 @@ system for desktop. For a small self-hosted project, one codebase across all
 three tiers wins. Choose Tauri specifically for the single cross-platform
 codebase, not for reusing any existing desktop UI (a touch-first phone UI is
 largely a rewrite of the screens regardless).
+
+## Build
+
+Vite, multi-page. Each screen is its own document with its own entry module,
+which is what they already were; there is no SPA bundle and no router yet.
+
+```sh
+make frontend       # build + stage into backend/internal/web/assets for go:embed
+make frontend-dev   # :5173 with /api proxied to a local server
+cd frontend && npx tauri dev     # desktop shell against the dev server
+cd frontend && npx tauri build   # desktop bundle
+```
+
+`base: './'` so one build works both served from the backend at `/` and loaded
+by Tauri's asset protocol. Target is `es2022`/`safari16`: every platform runs a
+modern WebView, so transpiled fallbacks would ship for nobody.
+
+The build output is generated and **not committed**. Only `.gitkeep` is tracked,
+which keeps `go build` working in a fresh clone; without a build the server says
+so at `/` rather than 404ing, and the API still works.
 
 ## Architecture: web UI + native where it's irreplaceable
 
@@ -31,6 +51,35 @@ not "native navigation chrome wrapping web screens." Split the app accordingly:
 You do not get "mostly HTML/CSS" *and* "mostly native UIKit." Those pull in
 opposite directions. If most of the UI needs to be native, the right tool is
 React Native or fully native, not Tauri.
+
+### Reaching the server
+
+The client does not start out knowing which box it belongs to; only a browser
+served off the backend does. Everything else pairs first, and the transport is
+resolved once at boot (`js/api/transport.js`, `js/api/connect.js`):
+
+| Transport | When | How |
+|---|---|---|
+| same-origin | browser, served by the backend | plain `fetch` |
+| direct | app, box on this network | Tauri's Rust HTTP plugin |
+| tunnel | app, box elsewhere | WebRTC data channel |
+
+**LAN before tunnel, always.** At home the direct route is faster, needs no
+broker and survives the internet being down, and home is where most viewing
+happens. The tunnel is the fallback for leaving the house, not the default.
+
+The apps go through the Rust HTTP plugin rather than the WebView's `fetch`
+because a box on another machine is a cross-origin request to a server that
+knows nothing about CORS.
+
+The tunnel client is **JS, not Rust**: the WebView already has a WebRTC stack on
+every platform Tauri targets, and a JS client keeps working in a plain browser,
+which a Rust one would not. Its wire format must match
+`internal/remote/tunnel.go` byte for byte. One gotcha, pinned by
+`internal/remote/framing_test.go`: a data channel is SCTP (message-oriented) but
+the server reads it as a stream with a 4-byte `io.ReadFull`, and pion returns
+`ErrShortBuffer` if the message is bigger than the read. Frames must therefore be
+sent as **two messages**, header then payload, exactly as Go's `writeFrame` does.
 
 ### The player is native on every platform
 
@@ -65,13 +114,30 @@ screens), not just web styled to look native. The mechanism:
   `trigger` -> web filters) or fully native screens (present a
   `UIViewController`).
 
+This is implemented in `frontend/plugins/northrou-native/`:
+
+| Piece | Where |
+|---|---|
+| iOS `UITabBar` | `ios/Sources/NorthrouNative/NorthrouNativePlugin.swift` |
+| Android `BottomNavigationView` | `android/.../NorthrouNativePlugin.kt` |
+| Rust binding (no-ops on desktop) | `src/lib.rs` |
+| JS API | `guest-js/index.ts`, `js/components/native-chrome.js` |
+
+The web half hides its own chrome when the native chrome is up, keyed on
+`<html data-native-chrome>`: the web nav goes on mobile (or the app wears two
+tab bars), and the detail modal's close button goes on iOS (the presented
+sheet's own button drives it instead, see `frontend/swift/WatchView.swift`). The
+native bar reports its height into `--native-tabbar-height` so the page reserves
+exactly the right room rather than guessing at a device and safe area.
+
 Caveats to keep in mind:
 
 - **Written twice.** Per-platform native code: Swift `UITabBar` on iOS, Kotlin
   `BottomNavigationView` on Android. No sharing.
 - **No desktop equivalent.** Desktop WebViews have no native tab bar to add, so
   desktop chrome stays web-styled. You maintain native chrome for mobile *and*
-  web chrome for desktop.
+  web chrome for desktop. The Rust binding no-ops there so the web layer can
+  call it unconditionally.
 - **Manual layout.** Coordinating native overlays with WebView content
   (safe-area insets, keyboard) is fiddly and on you.
 - **Keep native code in the plugin's own Swift/Kotlin package**, not in the
@@ -79,9 +145,22 @@ Caveats to keep in mind:
   regenerated. The subview-via-plugin approach survives regens; editing the
   generated root view controller does not.
 
-The SwiftUI in `frontend/swift/` (`ContentView`, `SecondView`) is design
-reference for this chrome, not a standalone app: no `@main`, no Xcode project. It
-gets adapted into the plugin's native views once Tauri is set up.
+The SwiftUI in `frontend/swift/` (`ContentView`, `WatchView`) is design
+reference for this chrome, not a standalone app: no `@main`, no Xcode project.
+It is the source of truth for what the chrome looks like, and the plugin mirrors
+it item for item (same titles, SF Symbols, order, search last). It needs
+**iOS 18+** to typecheck: the `Tab(_:systemImage:value:)` initialiser it uses is
+iOS 18 API.
+
+## Per-platform status
+
+| Target | Built | Notes |
+|---|---|---|
+| Browser (served by backend) | yes | verified end to end against a real server |
+| macOS desktop | yes | `Northrou.app` bundles and launches |
+| Windows / Linux desktop | not built here | pure-web + Rust; no platform-specific code beyond the player |
+| iOS | plugin written, not built | needs an Apple developer team for `tauri ios build` |
+| Android | plugin written, not built | needs the Android SDK/NDK |
 
 ## App Store review
 
@@ -101,7 +180,11 @@ suspicion. The real risks for a self-hosted media client:
    circumvent DRM, or provide/index content. Keep that crisp in metadata.
 3. **In-App Purchase** (Guideline 3.1.1), only if monetized: any paid tier must
    go through Apple IAP. A free/open-source client is unaffected.
-4. **Entitlements / background modes.** Declare `UIBackgroundModes` and
+4. **Sign in with Apple** (Guideline 4.8), if social sign-in ships: offering
+   Google login on iOS requires offering an equivalent privacy-preserving
+   option, which Sign in with Apple satisfies. Both are implemented; enable them
+   together or neither.
+5. **Entitlements / background modes.** Declare `UIBackgroundModes` and
    capabilities for background audio, PiP, and AirPlay correctly.
 
 Precedent: Infuse, VLC, nPlayer, and Swiftfin (Jellyfin) are all on the

@@ -125,7 +125,7 @@ function build(data) {
     return el;
 }
 
-export function createDetailModal(mount, { onSelect } = {}) {
+export function createDetailModal(mount, { onSelect, onOpen, onClose } = {}) {
     let el = null;
     let lastFocused = null;
 
@@ -180,6 +180,7 @@ export function createDetailModal(mount, { onSelect } = {}) {
         requestAnimationFrame(() => el?.classList.add('is-open'));
         el.setAttribute('aria-hidden', 'false');
         $('[data-close]', el).focus();
+        onOpen?.();
     }
 
     function close() {
@@ -189,6 +190,7 @@ export function createDetailModal(mount, { onSelect } = {}) {
         document.body.classList.remove('is-modal-open');
         if (typeof lastFocused?.focus === 'function') lastFocused.focus();
         lastFocused = null;
+        onClose?.();
     }
 
     return { show, close, get isOpen() { return el !== null; } };

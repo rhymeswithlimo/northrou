@@ -799,3 +799,33 @@ body.is-modal-open main {
         width: 100%;
     }
 }
+
+/* ==================== NATIVE CHROME ==================== */
+
+/* iOS and Android draw a real tab bar over the WebView, so the web nav must go
+   or the app wears two. The shell sets this on <html> once the native bar is up;
+   it is never set on desktop or in a browser, which have no native bar to add
+   and keep the web nav as the nav. */
+
+[data-native-chrome] .site-header,
+[data-native-chrome] .nav {
+    display: none;
+}
+
+/* The native bar reports its own height (it differs by device and safe area),
+   so the page reserves exactly that much rather than guessing. */
+[data-native-chrome] .rows {
+    padding-bottom: calc(36px + var(--native-tabbar-height, 0px));
+}
+
+[data-native-chrome] .detail {
+    padding-bottom: calc(32px + var(--native-tabbar-height, 0px));
+}
+
+/* On iOS the detail sheet is presented natively and its close button lives in
+   the navigation bar, so the web one would be a second, differently-placed
+   button for the same job. The native one drives the web modal instead
+   (see frontend/swift/WatchView.swift). */
+[data-native-chrome] .detail__close {
+    display: none;
+}

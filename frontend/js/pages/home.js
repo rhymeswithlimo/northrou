@@ -8,11 +8,18 @@ import { createDetailModal } from '../components/detail.js';
 import { statePanel, skeletonRow, toast, mountOfflineBanner } from '../components/states.js';
 import { getHero, getContinueWatching, getHomeRows, getDetail } from '../data/library.js';
 import { requireServer } from '../api/connect.js';
+import { mountNativeChrome, setNativeChromeVisible } from '../components/native-chrome.js';
 
 const rowsEl = $('#rows');
 const heroEl = $('#hero');
 
-const modal = createDetailModal($('#detail-root'), { onSelect: openDetail });
+const modal = createDetailModal($('#detail-root'), {
+    onSelect: openDetail,
+    // A detail view is immersive. Native chrome hides while it is open and
+    // comes back with it, the same way a presented view controller behaves.
+    onOpen: () => setNativeChromeVisible(false),
+    onClose: () => setNativeChromeVisible(true),
+});
 
 async function openDetail(kind, id) {
     try {
@@ -94,6 +101,16 @@ document.addEventListener('click', (e) => {
     e.preventDefault();
     openDetail(target.dataset.kind, target.dataset.id);
 });
+
+// On mobile the shell puts a real tab bar over the WebView and this hides the
+// web nav; everywhere else this is a no-op and the web nav stays.
+await mountNativeChrome({ current: 'home' });
+
+// The native sheet's close button (and its swipe-to-dismiss) drive the web
+// modal on iOS, where the web close button is hidden. Without this the two
+// halves fall out of step: the sheet goes away and the page still thinks it is
+// showing a dialog.
+window.__northrouCloseDetail = () => modal.close();
 
 mountNavAutoHide($('.nav'));
 mountOfflineBanner();
