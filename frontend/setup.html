@@ -47,64 +47,24 @@
 
                 <ol class="setup__steps" aria-label="Progress">
                     <li class="is-current">Account</li>
-                    <li>Media</li>
                     <li>Metadata</li>
                 </ol>
             </section>
 
-            <!-- ---------- step 2: media folders ---------- -->
-            <section class="auth u-hidden" id="step-media" aria-labelledby="t-media">
+            <!-- ---------- step 2: metadata ---------- -->
+            <!-- There is no media-folder step: folders are paths on this
+                 machine's disks and are added with `northrou admin` on the
+                 server, which can check they exist. Nor is there a mail step:
+                 sign-in codes go through the coordination relay. -->
+            <section class="auth u-hidden" id="step-meta" aria-labelledby="t-meta">
                 <button type="button" class="back-link" data-back="step-account">
                     <span aria-hidden="true">&lt;</span><span>Back</span>
                 </button>
 
                 <header class="auth__header">
                     <div>
-                        <h1 class="auth__title" id="t-media">Where's your media?</h1>
-                        <p class="auth__subtitle">Point Northrou at the folders you keep your library in.</p>
-                    </div>
-                </header>
-
-                <div class="auth__options">
-                    <form class="auth__form" id="media-form" novalidate>
-                        <!-- role=group rather than fieldset/legend: a <legend> is
-                             rendered specially by the UA and never becomes a flex
-                             item, so it escapes this column and overlaps the field
-                             above. This names the group identically for a11y. -->
-                        <div class="setup__group" role="group" aria-labelledby="l-movie-dirs">
-                            <p class="auth__label u-mono" id="l-movie-dirs">Movie folders</p>
-                            <div class="setup__paths" id="movie-dirs"></div>
-                            <button type="button" class="btn btn--quiet setup__add" data-add="movie-dirs">Add folder</button>
-                        </div>
-
-                        <div class="setup__group" role="group" aria-labelledby="l-show-dirs">
-                            <p class="auth__label u-mono" id="l-show-dirs">TV show folders</p>
-                            <div class="setup__paths" id="show-dirs"></div>
-                            <button type="button" class="btn btn--quiet setup__add" data-add="show-dirs">Add folder</button>
-                        </div>
-
-                        <p class="setup__hint">Absolute paths, as the server sees them. You can change these later in Server admin.</p>
-                        <button type="submit" class="auth__submit" id="media-next" disabled>Continue</button>
-                    </form>
-                </div>
-
-                <ol class="setup__steps" aria-label="Progress">
-                    <li class="is-done">Account</li>
-                    <li class="is-current">Media</li>
-                    <li>Metadata</li>
-                </ol>
-            </section>
-
-            <!-- ---------- step 3: metadata + mail ---------- -->
-            <section class="auth u-hidden" id="step-meta" aria-labelledby="t-meta">
-                <button type="button" class="back-link" data-back="step-media">
-                    <span aria-hidden="true">&lt;</span><span>Back</span>
-                </button>
-
-                <header class="auth__header">
-                    <div>
-                        <h1 class="auth__title" id="t-meta">Posters and mail</h1>
-                        <p class="auth__subtitle">Both are optional. You can add them later.</p>
+                        <h1 class="auth__title" id="t-meta">Posters and descriptions</h1>
+                        <p class="auth__subtitle">Optional. You can add this later.</p>
                     </div>
                 </header>
 
@@ -115,30 +75,6 @@
                                autocomplete="off" spellcheck="false">
                         <p class="setup__hint">Without a key, Northrou still finds your files but can't fetch posters, cast or descriptions.</p>
 
-                        <details class="setup__details">
-                            <summary class="setup__summary">Email delivery (SMTP)</summary>
-                            <p class="setup__hint">
-                                Skip this and sign-in codes go through the hosted relay, or to the server
-                                log if that's unreachable. Set it to keep mail in-house.
-                            </p>
-                            <div class="setup__smtp">
-                                <label for="smtp_host" class="auth__label u-mono">SMTP host:</label>
-                                <input type="text" id="smtp_host" class="auth__input" placeholder="smtp.example.com" autocomplete="off">
-
-                                <label for="smtp_port" class="auth__label u-mono">SMTP port:</label>
-                                <input type="text" id="smtp_port" class="auth__input" placeholder="587" inputmode="numeric" autocomplete="off">
-
-                                <label for="smtp_username" class="auth__label u-mono">SMTP username:</label>
-                                <input type="text" id="smtp_username" class="auth__input" autocomplete="off">
-
-                                <label for="smtp_password" class="auth__label u-mono">SMTP password:</label>
-                                <input type="password" id="smtp_password" class="auth__input" autocomplete="new-password">
-
-                                <label for="from_address" class="auth__label u-mono">From address:</label>
-                                <input type="email" id="from_address" class="auth__input" placeholder="Defaults to the SMTP username" autocomplete="off">
-                            </div>
-                        </details>
-
                         <button type="submit" class="auth__submit" id="finish">Create account &amp; finish</button>
                         <p class="form-error u-hidden" id="setup-error" role="alert"></p>
                     </form>
@@ -146,7 +82,6 @@
 
                 <ol class="setup__steps" aria-label="Progress">
                     <li class="is-done">Account</li>
-                    <li class="is-done">Media</li>
                     <li class="is-current">Metadata</li>
                 </ol>
             </section>
@@ -166,6 +101,18 @@
                 </header>
 
                 <div class="auth__options">
+                    <!-- The library is empty until folders are added, and that
+                         happens on the server. Say so here rather than letting
+                         the home screen read as broken. -->
+                    <div class="setup__code-block">
+                        <p class="auth__label u-mono">Next: add your media</p>
+                        <p class="setup__hint">
+                            On this machine, run <span class="u-mono">northrou admin</span> and open the
+                            Library tab to point Northrou at your movie and TV folders. It scans them
+                            from there.
+                        </p>
+                    </div>
+
                     <div class="setup__code-block">
                         <p class="auth__label u-mono">Connection code</p>
                         <p class="setup__code" id="connection-code"></p>
@@ -182,16 +129,6 @@
 
         </div>
     </main>
-
-    <template id="tpl-path-row">
-        <div class="setup__path">
-            <label class="u-visually-hidden">Folder path</label>
-            <input type="text" class="auth__input" placeholder="/Volumes/Media/Movies" autocomplete="off" spellcheck="false">
-            <button type="button" class="setup__path-remove" data-remove aria-label="Remove folder">
-                <span aria-hidden="true">&times;</span>
-            </button>
-        </div>
-    </template>
 
 </body>
 </html>

@@ -253,8 +253,19 @@ func (a *API) handleStartScan(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "scanner unavailable")
 		return
 	}
+	// Read from disk, not a.Cfg: the TUI writes media folders into config.toml
+	// while the daemon runs, so the in-memory copy is stale as soon as the
+	// operator adds one, and a scan would quietly walk the old folders.
+	movieDirs, showDirs := a.mediaDirs()
+	if len(movieDirs)+len(showDirs) == 0 {
+		// Nothing to walk. Without this the scan "succeeds" instantly and the
+		// library stays empty, which reads as a broken scanner.
+		writeError(w, http.StatusBadRequest,
+			"no media folders configured; add them on the server with `northrou admin`")
+		return
+	}
 	go func() {
-		_ = a.Scanner.Scan(context.Background(), a.Cfg.Media.MovieDirs, a.Cfg.Media.ShowDirs)
+		_ = a.Scanner.Scan(context.Background(), movieDirs, showDirs)
 		// The catalog may have changed; drop cached home screens for everyone.
 		if a.Recommend != nil {
 			a.Recommend.InvalidateAll()

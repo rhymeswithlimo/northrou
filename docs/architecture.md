@@ -44,7 +44,7 @@ internal/
   db                    SQLite (pure-Go modernc), goose migrations, query layer
   model                 domain types
   auth                  one account email + many profiles; passwordless email pins, per-profile JWT access + rotating refresh tokens, OTP-elevated admin capability, middleware; optional OAuth assertion verification (oauth.go)
-  email                 SMTP delivery of one-time sign-in pins (net/smtp, pure-Go)
+  email                 delivery of one-time sign-in pins via the coordination relay (log fallback)
   server                chi router, middleware, graceful shutdown
   api                   HTTP handlers (auth, library, search, stream, subtitles, home, admin, config)
   ffmpeg                locate/download managed static ffmpeg + ffprobe
@@ -131,8 +131,10 @@ The only other piece of infrastructure Northrou operates centrally, and a
 separate binary from the coordinator (the coordinator stays stateless; the relay
 holds in-memory rate-limit counters). Home servers keep accounts and pins
 entirely local and call `POST /v1/pin/send` on the relay only to deliver the pin
-email, so a household never has to run its own SMTP. It is on by default
-(`config.email.relay_url`), overridable with a household's own SMTP.
+email, so a household never has to run a mail server. It is on by default
+(`config.email.relay_url`); disabling it falls back to logging the pin. The box
+speaks no SMTP itself, deliberately: self-hosted outbound mail is the classic
+way to lock yourself out of your own login.
 
 The relay has no account list and cannot distinguish a real address from a
 fabricated one, so it is protected by input validation and rate limiting rather
@@ -141,7 +143,7 @@ stops the relay from being used to spam a third party's inbox with sign-in
 codes. Per-server and global limits protect the operator's cost and sender
 reputation. Mail is readable in transit like any email, so the relay is a
 trusted delivery party by nature; privacy-sensitive households can run their own
-SMTP or their own relay. It **never sees accounts, library, or media.**
+relay and point `relay_url` at it. It **never sees accounts, library, or media.**
 
 ## Remote access data flow
 

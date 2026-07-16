@@ -11,6 +11,8 @@ export class ApiError extends Error {
         this.status = status;
         this.body = body;
     }
+    /** The request was rejected on its merits; `body.error` says why. */
+    get isBadRequest() { return this.status === 400; }
     get isAuth() { return this.status === 401; }
     get isForbidden() { return this.status === 403; }
     get isNotFound() { return this.status === 404; }

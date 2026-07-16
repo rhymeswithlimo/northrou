@@ -151,8 +151,13 @@ body {
 }
 
 /* The rows stack under their own control on narrow screens: a label and a
-   4-way segmented control never fit side by side on a phone. */
-@media (max-width: 720px) {
+   4-way segmented control never fit side by side on a phone.
+
+   Keep this well below the 720px column width. Matching it meant the rows
+   stacked while the column was still at its widest, so the side-by-side layout
+   this page is built around only ever appeared on a desktop window. 560px is
+   about where a label plus a 4-way segment genuinely stops fitting. */
+@media (max-width: 560px) {
     .setting {
         flex-direction: column;
         align-items: stretch;
@@ -212,24 +217,26 @@ body {
     gap: 16px;
 }
 
-.settings__unlock-row {
+/* The code boxes are a comfortable size on the sign-in page's narrow card and
+   would look stretched across the full settings column, so cap them at roughly
+   that width. */
+.settings__unlock-step {
     display: flex;
-    flex-wrap: wrap;
-    align-items: center;
+    flex-direction: column;
     gap: 12px;
+
+    max-width: 380px;
 }
 
-.settings__code {
+.settings__unlock-actions {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 8px;
 }
 
-.settings__code-input {
-    width: 8ch;
-    padding: 9px 10px;
-    font-size: 14px;
-}
+/* The request button sizes to its text rather than the column. */
+.settings__unlock-step > .btn { align-self: flex-start; }
 
 .settings__admin-inner {
     display: flex;

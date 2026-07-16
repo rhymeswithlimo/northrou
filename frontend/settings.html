@@ -131,19 +131,43 @@
             </div>
 
             <!-- Elevation gate. Admin reads are open to any profile; mutations
-                 need an OTP-elevated token, so this unlocks the controls only. -->
+                 need an OTP-elevated token, so this unlocks the controls only.
+
+                 Two steps, like signing in: ask for the code, then enter it.
+                 Showing six empty boxes next to a "send" button implies you
+                 already have a code, and leaves the page's main action sitting
+                 disabled by default. -->
             <form class="settings__unlock" id="unlock-form">
                 <p class="settings__note" id="unlock-note"></p>
-                <div class="settings__unlock-row">
-                    <button type="button" class="btn btn--quiet" id="request-otp">Email me a code</button>
-                    <div class="settings__code">
-                        <label for="admin-otp" class="u-visually-hidden">One-time admin code</label>
-                        <input class="input input--mono settings__code-input" id="admin-otp" type="text"
-                               inputmode="numeric" maxlength="6" placeholder="______" autocomplete="one-time-code">
-                        <button type="submit" class="btn btn--primary" id="unlock" disabled>Unlock</button>
-                    </div>
+
+                <div class="settings__unlock-step" id="unlock-request">
+                    <button type="button" class="btn btn--primary" id="request-otp">Email me a code</button>
                 </div>
-                <p class="form-error u-hidden" id="unlock-error" role="alert"></p>
+
+                <div class="settings__unlock-step u-hidden" id="unlock-verify">
+                    <p class="settings__note" id="unlock-sent"></p>
+
+                    <fieldset class="otp__fields">
+                        <legend class="u-visually-hidden">One-time admin code</legend>
+                        <div class="otp__group">
+                            <input type="text" class="otp__input" maxlength="1" placeholder="-" inputmode="numeric" autocomplete="one-time-code" aria-label="Digit 1 of 6">
+                            <input type="text" class="otp__input" maxlength="1" placeholder="-" inputmode="numeric" autocomplete="one-time-code" aria-label="Digit 2 of 6">
+                            <input type="text" class="otp__input" maxlength="1" placeholder="-" inputmode="numeric" autocomplete="one-time-code" aria-label="Digit 3 of 6">
+                        </div>
+                        <div class="otp__group">
+                            <input type="text" class="otp__input" maxlength="1" placeholder="-" inputmode="numeric" autocomplete="one-time-code" aria-label="Digit 4 of 6">
+                            <input type="text" class="otp__input" maxlength="1" placeholder="-" inputmode="numeric" autocomplete="one-time-code" aria-label="Digit 5 of 6">
+                            <input type="text" class="otp__input" maxlength="1" placeholder="-" inputmode="numeric" autocomplete="one-time-code" aria-label="Digit 6 of 6">
+                        </div>
+                    </fieldset>
+
+                    <div class="settings__unlock-actions">
+                        <button type="submit" class="btn btn--primary" id="unlock" disabled>Unlock</button>
+                        <button type="button" class="btn btn--quiet" id="resend-otp">Send a new code</button>
+                    </div>
+
+                    <p class="form-error u-hidden" id="unlock-error" role="alert"></p>
+                </div>
             </form>
 
             <div class="settings__admin" id="admin-panel" hidden></div>
@@ -192,16 +216,24 @@
                 </div>
             </section>
 
-            <section class="settings__group" aria-labelledby="h-libraries">
-                <h2 class="settings__heading" id="h-libraries">Libraries</h2>
-                <ul class="settings__list" id="libraries-list"></ul>
-                <div class="setting setting--end">
-                    <div class="setting__control">
-                        <button type="button" class="btn btn--quiet" id="add-library">Add folder</button>
-                        <button type="button" class="btn btn--primary" id="scan-now">Scan now</button>
+            <!-- Scanning is an action, so it stays here; choosing what to scan
+                 is not, so it doesn't. Media folders are paths on the server's
+                 own disks and are set there (`northrou admin`). -->
+            <section class="settings__group" aria-labelledby="h-library">
+                <h2 class="settings__heading" id="h-library">Library</h2>
+
+                <div class="setting">
+                    <div class="setting__text">
+                        <p class="setting__name">Scan for new media</p>
+                        <p class="setting__desc" id="scan-note"></p>
                     </div>
+                    <button type="button" class="btn btn--primary" id="scan-now">Scan now</button>
                 </div>
-                <p class="settings__note" id="scan-note"></p>
+
+                <p class="settings__note">
+                    Media folders are set on the server itself. Run
+                    <code class="u-mono">northrou admin</code> there and open the Library tab.
+                </p>
             </section>
 
             <section class="settings__group" aria-labelledby="h-streaming">
@@ -241,16 +273,6 @@
 
                 <div class="setting">
                     <div class="setting__text">
-                        <p class="setting__name">Login code delivery</p>
-                        <p class="setting__desc">The hosted relay needs no setup. Own SMTP keeps mail in-house.</p>
-                    </div>
-                    <fieldset class="segmented" id="mail-mode">
-                        <legend class="u-visually-hidden">Login code delivery</legend>
-                    </fieldset>
-                </div>
-
-                <div class="setting">
-                    <div class="setting__text">
                         <p class="setting__name">Remote access</p>
                         <p class="setting__desc">Lets your devices reach this server from outside the house.</p>
                     </div>
@@ -263,16 +285,6 @@
                 </div>
             </section>
         </div>
-    </template>
-
-    <template id="tpl-library-row">
-        <li class="setting">
-            <div class="setting__text">
-                <p class="setting__name" data-path></p>
-                <p class="setting__desc" data-kind></p>
-            </div>
-            <button type="button" class="btn btn--danger" data-remove>Remove</button>
-        </li>
     </template>
 
 </body>

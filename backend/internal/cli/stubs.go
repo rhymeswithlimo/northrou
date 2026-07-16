@@ -52,10 +52,17 @@ func newAdminCmd() *cobra.Command {
 		Short: "Launch the admin dashboard (TUI)",
 		Long: "Open the Northrou admin dashboard in your terminal. Connects to " +
 			"the running server's local API and shows active streams, hardware " +
-			"acceleration, capacity, and scan/library status.",
+			"acceleration, capacity, and scan/library status.\n\n" +
+			"The Library tab is also where this server's media folders are set. " +
+			"They live here rather than in the apps because the paths describe " +
+			"this machine's own disks. With --addr the dashboard is read-only: " +
+			"another server's folders are edited from that server.",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// No --addr means we are the box: the config we would edit is the
+			// config the daemon reads, so folder editing is safe to offer.
+			local := addr == ""
 			base := addr
-			if base == "" {
+			if local {
 				cfg, _, err := config.LoadOrInit(flagConfigPath)
 				if err != nil {
 					return err
@@ -63,7 +70,7 @@ func newAdminCmd() *cobra.Command {
 				port := cfg.Server.Port
 				base = fmt.Sprintf("http://localhost:%d", port)
 			}
-			return tui.Run(base)
+			return tui.Run(base, flagConfigPath, local)
 		},
 	}
 	cmd.Flags().StringVar(&addr, "addr", "", "server base URL (default from config, e.g. http://localhost:8674)")

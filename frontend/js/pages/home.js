@@ -58,12 +58,16 @@ async function render() {
         ]);
     } catch {
         heroEl.replaceChildren();
-        rowsEl.replaceChildren(statePanel({
+        // The hero is gone, so this panel is the only thing on the page. Centre
+        // it in the viewport rather than leaving it stranded under the nav.
+        const panel = statePanel({
             variant: 'error',
             title: "Couldn't reach your server",
             body: 'Northrou could not load your library. Check that the server is running, then try again.',
             action: { label: 'Try again', onClick: render },
-        }));
+        });
+        panel.classList.add('state--fill');
+        rowsEl.replaceChildren(panel);
         return;
     }
 
@@ -81,11 +85,16 @@ async function render() {
     // A fresh install with no media at all: say so, rather than showing a page
     // of nothing and letting it read as a failure.
     if (!nodes.length) {
-        rowsEl.replaceChildren(statePanel({
+        // Same slot, same treatment as the error above: the hero is empty here
+        // too, so anything less would leave the page looking half-loaded.
+        const panel = statePanel({
             title: 'Your library is empty',
-            body: 'Add a movie or TV folder in Server admin, then run a scan. Everything you add shows up here.',
+            body: 'Add your movie and TV folders on the server with `northrou admin`, then run a scan. '
+                + 'Everything you add shows up here.',
             action: { label: 'Open settings', onClick: () => window.location.assign('settings.html') },
-        }));
+        });
+        panel.classList.add('state--fill');
+        rowsEl.replaceChildren(panel);
         return;
     }
 

@@ -8,16 +8,20 @@ import (
 
 // configDTO is the settings-page view of config.toml.
 //
-// It is deliberately a subset. Secrets never leave the box: the TMDB key and
-// the SMTP password are reported as booleans ("is one set?") rather than
-// echoed, so an elevated token leaking cannot also leak the household's mail
-// credentials. Fields that would strand the operator (bind address, port,
-// data_dir) are not editable here either; changing those from the very UI you
-// are connected through is how you lock yourself out of your own server.
+// It is deliberately a subset. The TMDB key never leaves the box: it is
+// reported as a boolean ("is one set?") rather than echoed, so an elevated
+// token leaking cannot also leak the household's credentials. Fields that would
+// strand the operator (bind address, port, data_dir) are not editable here
+// either; changing those from the very UI you are connected through is how you
+// lock yourself out of your own server.
+//
+// Media folders are not here at all, in either direction. They are set on the
+// box itself (`northrou admin` -> Library), because a path is a statement about
+// the server's own filesystem: it can only be typed correctly by someone who
+// can see that filesystem, and a client that can rewrite it can point the
+// scanner anywhere the daemon can read. Read them from disk when you need them
+// (see mediaDirs) rather than trusting the long-lived in-memory copy.
 type configDTO struct {
-	MovieDirs []string `json:"movie_dirs"`
-	ShowDirs  []string `json:"show_dirs"`
-
 	PreferSystemFFmpeg bool `json:"prefer_system_ffmpeg"`
 	MaxTranscodes      int  `json:"max_transcodes"` // 0 = auto
 	AllowSoftware4K    bool `json:"allow_software_4k"`
@@ -26,46 +30,18 @@ type configDTO struct {
 	RemoteEnabled  bool   `json:"remote_enabled"`
 	ConnectionCode string `json:"connection_code,omitempty"`
 
-	// MailMode is "smtp" when the household runs its own mail server, "relay"
-	// when it uses the hosted one, or "log" when neither is available and pins
-	// fall back to the server log.
-	MailMode    string `json:"mail_mode"`
-	SMTPHost    string `json:"smtp_host,omitempty"`
-	SMTPPort    int    `json:"smtp_port,omitempty"`
-	SMTPUser    string `json:"smtp_username,omitempty"`
-	FromAddress string `json:"from_address,omitempty"`
-
-	HasTMDBKey      bool `json:"has_tmdb_key"`
-	HasSMTPPassword bool `json:"has_smtp_password"`
-}
-
-func mailMode(c *config.Config) string {
-	if c.Email.SMTPHost != "" {
-		return "smtp"
-	}
-	if c.Email.RelayDisabled {
-		return "log"
-	}
-	return "relay"
+	HasTMDBKey bool `json:"has_tmdb_key"`
 }
 
 func toConfigDTO(c *config.Config) configDTO {
 	return configDTO{
-		MovieDirs:          c.Media.MovieDirs,
-		ShowDirs:           c.Media.ShowDirs,
 		PreferSystemFFmpeg: c.Transcode.PreferSystemFFmpeg,
 		MaxTranscodes:      c.Transcode.MaxTranscodes,
 		AllowSoftware4K:    c.Transcode.AllowSoftware4K,
 		Tonemap:            c.Transcode.Tonemap,
 		RemoteEnabled:      c.Remote.Enabled,
 		ConnectionCode:     c.Remote.ConnectionCode,
-		MailMode:           mailMode(c),
-		SMTPHost:           c.Email.SMTPHost,
-		SMTPPort:           c.Email.SMTPPort,
-		SMTPUser:           c.Email.SMTPUsername,
-		FromAddress:        c.Email.FromAddress,
 		HasTMDBKey:         c.TMDB.APIKey != "",
-		HasSMTPPassword:    c.Email.SMTPPassword != "",
 	}
 }
 
@@ -77,24 +53,14 @@ func (a *API) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 
 // configPatch is a partial update. Every field is a pointer so "absent" is
 // distinguishable from "set to false/empty": without that, a PATCH touching
-// only movie_dirs would silently switch remote access off.
+// only the transcode cap would silently switch remote access off.
 type configPatch struct {
-	MovieDirs *[]string `json:"movie_dirs"`
-	ShowDirs  *[]string `json:"show_dirs"`
-
 	PreferSystemFFmpeg *bool `json:"prefer_system_ffmpeg"`
 	MaxTranscodes      *int  `json:"max_transcodes"`
 	AllowSoftware4K    *bool `json:"allow_software_4k"`
 	Tonemap            *bool `json:"tonemap"`
 
 	RemoteEnabled *bool `json:"remote_enabled"`
-
-	MailMode     *string `json:"mail_mode"`
-	SMTPHost     *string `json:"smtp_host"`
-	SMTPPort     *int    `json:"smtp_port"`
-	SMTPUser     *string `json:"smtp_username"`
-	SMTPPassword *string `json:"smtp_password"`
-	FromAddress  *string `json:"from_address"`
 
 	TMDBAPIKey *string `json:"tmdb_api_key"`
 }
@@ -108,14 +74,19 @@ func (a *API) handlePatchConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg := *a.Cfg // copy: don't mutate live config until it validates and saves
+	// Start from what is on disk, not from the in-memory copy. The TUI edits
+	// [media] in this same file while the daemon runs, so a.Cfg's Media can be
+	// stale; saving a copy of it would silently revert the operator's folders.
+	// Everything here is persisted, so re-reading loses nothing and also picks
+	// up any other out-of-band edit.
+	cfg, err := config.Load(a.ConfigPath)
+	if err != nil {
+		// No file yet (pre-setup) or unreadable: fall back to the live config
+		// rather than refusing to save.
+		c := *a.Cfg
+		cfg = &c
+	}
 
-	if p.MovieDirs != nil {
-		cfg.Media.MovieDirs = *p.MovieDirs
-	}
-	if p.ShowDirs != nil {
-		cfg.Media.ShowDirs = *p.ShowDirs
-	}
 	if p.PreferSystemFFmpeg != nil {
 		cfg.Transcode.PreferSystemFFmpeg = *p.PreferSystemFFmpeg
 	}
@@ -135,45 +106,8 @@ func (a *API) handlePatchConfig(w http.ResponseWriter, r *http.Request) {
 	if p.RemoteEnabled != nil {
 		cfg.Remote.Enabled = *p.RemoteEnabled
 	}
-	if p.SMTPHost != nil {
-		cfg.Email.SMTPHost = *p.SMTPHost
-	}
-	if p.SMTPPort != nil {
-		cfg.Email.SMTPPort = *p.SMTPPort
-	}
-	if p.SMTPUser != nil {
-		cfg.Email.SMTPUsername = *p.SMTPUser
-	}
-	if p.SMTPPassword != nil {
-		cfg.Email.SMTPPassword = *p.SMTPPassword
-	}
-	if p.FromAddress != nil {
-		cfg.Email.FromAddress = *p.FromAddress
-	}
 	if p.TMDBAPIKey != nil {
 		cfg.TMDB.APIKey = *p.TMDBAPIKey
-	}
-
-	if p.MailMode != nil {
-		switch *p.MailMode {
-		case "relay":
-			cfg.Email.RelayDisabled = false
-			// SMTPHost takes precedence over the relay, so choosing the relay
-			// has to clear it or the setting would appear to do nothing.
-			cfg.Email.SMTPHost = ""
-		case "smtp":
-			cfg.Email.RelayDisabled = true
-			if cfg.Email.SMTPHost == "" {
-				writeError(w, http.StatusBadRequest, "smtp_host required to use your own SMTP")
-				return
-			}
-		case "log":
-			cfg.Email.RelayDisabled = true
-			cfg.Email.SMTPHost = ""
-		default:
-			writeError(w, http.StatusBadRequest, `mail_mode must be "relay", "smtp" or "log"`)
-			return
-		}
 	}
 
 	if err := cfg.Validate(); err != nil {
@@ -185,15 +119,29 @@ func (a *API) handlePatchConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	*a.Cfg = cfg
+	*a.Cfg = *cfg
 	a.applyConfig()
 
 	writeJSON(w, http.StatusOK, toConfigDTO(a.Cfg))
 }
 
+// mediaDirs returns the library folders as currently written on disk.
+//
+// The daemon must not answer this from a.Cfg: media folders are owned by the
+// TUI, which writes config.toml directly while the server is running, so the
+// in-memory copy goes stale the moment the operator adds a folder. Reading per
+// scan is cheap (one small file, once per scan, not per request) and means a
+// folder added in the TUI is picked up without restarting the service.
+func (a *API) mediaDirs() (movies, shows []string) {
+	if cfg, err := config.Load(a.ConfigPath); err == nil {
+		return cfg.Media.MovieDirs, cfg.Media.ShowDirs
+	}
+	return a.Cfg.Media.MovieDirs, a.Cfg.Media.ShowDirs
+}
+
 // applyConfig pushes the settings that take effect without a restart into the
-// running subsystems. Library dirs are read per scan, so they need nothing;
-// the transcode cap is read per admission, so it does.
+// running subsystems. Library dirs are read per scan (see mediaDirs), so they
+// need nothing; the transcode cap is read per admission, so it does.
 func (a *API) applyConfig() {
 	// ffmpeg downloads in the background, so the streamer may not exist yet.
 	// When it does arrive it is built from the live config, so nothing is lost.

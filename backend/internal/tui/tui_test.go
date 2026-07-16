@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -68,7 +69,7 @@ func TestClientLoginAndFetch(t *testing.T) {
 }
 
 func TestDashboardRenders(t *testing.T) {
-	m := newModel("http://localhost:8674")
+	m := newModel("http://localhost:8674", filepath.Join(t.TempDir(), "config.toml"), true)
 	m.state = viewDashboard
 	m.data = dashboardData{
 		streams:  streamsPayload{Count: 1, Streams: []streamSession{{Mode: "direct", Title: "Dune", SourceVideo: "hevc", TargetVideo: "hevc", TargetAudio: "truehd", HWBackend: "none"}}},
@@ -87,7 +88,7 @@ func TestDashboardRenders(t *testing.T) {
 }
 
 func TestLoginViewRenders(t *testing.T) {
-	m := newModel("http://localhost:8674")
+	m := newModel("http://localhost:8674", filepath.Join(t.TempDir(), "config.toml"), true)
 	out := m.View()
 	if !strings.Contains(out, "Northrou Admin") || !strings.Contains(out, "Email") {
 		t.Errorf("login view missing expected content:\n%s", out)

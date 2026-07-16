@@ -2,6 +2,7 @@
 
 import { $, show, hide, setError } from '../lib/dom.js';
 import { segmented, toggle } from '../components/controls.js';
+import { createOtpInput } from '../components/otp.js';
 import { toast, mountOfflineBanner, statePanel } from '../components/states.js';
 import { getMe, signOut } from '../data/account.js';
 import { listProfiles, createProfile, renameProfile, deleteProfile, MAX_PROFILES } from '../data/profiles.js';
@@ -22,6 +23,15 @@ if (!isSignedIn()) window.location.replace('login.html');
 let me = null;
 let profiles = [];
 let config = null;
+
+/** Send the viewer to the elevation gate, whichever step it is showing. */
+function focusUnlock() {
+    const verify = $('#unlock-verify');
+    const target = verify.classList.contains('u-hidden') ? $('#request-otp') : verify;
+    target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    // The six boxes are not focusable as a unit, so aim at the first one.
+    (target === verify ? $('.otp__input', verify) : target).focus();
+}
 
 /* ==================== profiles ==================== */
 
@@ -74,7 +84,7 @@ async function onDelete(profile) {
     // behind elevation. Say so before the confirm, not after a 403.
     if (!admin.isElevated()) {
         toast('Unlock Server admin to delete a profile.', { variant: 'error' });
-        $('#admin-otp')?.focus();
+        focusUnlock();
         return;
     }
     if (!confirm(`Delete ${profile.name}? Their watch history and recommendations go too.`)) return;
@@ -137,7 +147,7 @@ async function renderAbout() {
 async function onApplyUpdate() {
     if (!admin.isElevated()) {
         toast('Unlock Server admin to install an update.', { variant: 'error' });
-        $('#admin-otp')?.focus();
+        focusUnlock();
         return;
     }
     if (!confirm('Install the update and restart the server?')) return;
@@ -151,43 +161,53 @@ async function onApplyUpdate() {
 
 /* ==================== server admin ==================== */
 
-const otpInput = $('#admin-otp');
 const unlockBtn = $('#unlock');
 const unlockError = $('#unlock-error');
+const otp = createOtpInput($('#unlock-verify'));
 
-otpInput.addEventListener('input', () => {
-    otpInput.value = otpInput.value.replace(/\D/g, '');
-    unlockBtn.disabled = otpInput.value.length !== 6;
+// The six boxes are one field, so gate Unlock on all of them being filled.
+$('#unlock-verify').addEventListener('input', () => {
+    unlockBtn.disabled = !otp.complete;
     setError(unlockError, '');
 });
 
-$('#request-otp').addEventListener('click', async (e) => {
-    e.target.disabled = true;
+/** Ask for a code and reveal the entry step. Also the resend path. */
+async function requestOtp(btn) {
+    btn.disabled = true;
     try {
         await admin.requestOtp();
-        toast(`Code sent to ${me.account.email}.`);
-        otpInput.focus();
+        $('#unlock-sent').textContent = `Enter the 6-digit code sent to ${me.account.email}.`;
+        hide($('#unlock-request'));
+        show($('#unlock-verify'));
+        otp.clear();
+        otp.focus();
+        setError(unlockError, '');
+        unlockBtn.disabled = true;
     } catch {
         toast('Could not send the code.', { variant: 'error' });
     } finally {
-        e.target.disabled = false;
+        btn.disabled = false;
     }
-});
+}
+
+$('#request-otp').addEventListener('click', (e) => requestOtp(e.currentTarget));
+$('#resend-otp').addEventListener('click', (e) => requestOtp(e.currentTarget));
 
 $('#unlock-form').addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (!otp.complete) return;
     unlockBtn.disabled = true;
     try {
-        await admin.verifyOtp(otpInput.value);
+        await admin.verifyOtp(otp.value);
         setError(unlockError, '');
         await renderAdmin();
         toast('Server admin unlocked for 10 minutes.');
     } catch (err) {
         setError(unlockError, err.isAuth ? 'Invalid or expired code.' : 'Could not verify the code.');
-        otpInput.value = '';
-        otpInput.focus();
+        otp.clear();
+        otp.focus();
     } finally {
-        unlockBtn.disabled = otpInput.value.length !== 6;
+        unlockBtn.disabled = !otp.complete;
     }
 });
 
@@ -222,9 +242,7 @@ async function renderAdmin() {
     $('#server-status', node).dataset.state = 'connected';
     $('#server-status-text', node).textContent = 'Connected';
 
-    // ---- libraries
-    renderLibraries(node);
-
+    // ---- library
     $('#scan-note', node).textContent = scan?.running
         ? 'Scanning now...'
         : (scan?.last_scan ? `Last scan: ${scan.last_scan}.` : 'No scan has run yet.');
@@ -235,19 +253,14 @@ async function renderAdmin() {
             await admin.startScan();
             toast('Scan started.');
         } catch (err) {
-            toast(err.isForbidden ? 'Admin elevation expired. Unlock again.' : 'Could not start the scan.',
-                { variant: 'error' });
+            if (err.isForbidden) toast('Admin elevation expired. Unlock again.', { variant: 'error' });
+            // The server has no folders configured yet. That is fixed on the
+            // server, not here, so pass its instruction through verbatim.
+            else if (err.isBadRequest) toast(err.body?.error ?? 'Could not start the scan.', { variant: 'error' });
+            else toast('Could not start the scan.', { variant: 'error' });
         } finally {
             e.target.disabled = false;
         }
-    });
-
-    $('#add-library', node).addEventListener('click', async () => {
-        const path = prompt('Absolute path to a folder, as the server sees it')?.trim();
-        if (!path) return;
-        const kind = confirm('OK for a Movies folder, Cancel for TV Shows') ? 'movie_dirs' : 'show_dirs';
-        await saveConfig({ [kind]: [...(config[kind] ?? []), path] });
-        renderLibraries(node);
     });
 
     // ---- streaming
@@ -272,11 +285,6 @@ async function renderAdmin() {
     ], config.prefer_system_ffmpeg ? 'system' : 'managed',
     (v) => saveConfig({ prefer_system_ffmpeg: v === 'system' }));
 
-    segmented($('#mail-mode', node), [
-        { value: 'relay', label: 'Hosted relay' },
-        { value: 'smtp', label: 'Own SMTP' },
-    ], config.mail_mode === 'smtp' ? 'smtp' : 'relay', onMailMode);
-
     toggle($('#remote-access', node), config.remote_enabled, (v) => saveConfig({ remote_enabled: v }));
 
     $('#switch-server', node).addEventListener('click', () => window.location.assign('connect.html'));
@@ -284,48 +292,6 @@ async function renderAdmin() {
         if (!confirm('Forget this server? You will need its connection code to pair again.')) return;
         signOut();
     });
-}
-
-function renderLibraries(node) {
-    const libs = [
-        ...(config.movie_dirs ?? []).map((path) => ({ path, kind: 'Movies', key: 'movie_dirs' })),
-        ...(config.show_dirs ?? []).map((path) => ({ path, kind: 'TV Shows', key: 'show_dirs' })),
-    ];
-    const list = $('#libraries-list', node);
-
-    if (!libs.length) {
-        list.replaceChildren(statePanel({
-            title: 'No folders yet',
-            body: 'Add a folder of movies or shows, then scan to build your library.',
-        }));
-        return;
-    }
-
-    list.replaceChildren(...libs.map((lib) => {
-        const row = $('#tpl-library-row').content.firstElementChild.cloneNode(true);
-        $('[data-path]', row).textContent = lib.path;
-        $('[data-kind]', row).textContent = lib.kind;
-        $('[data-remove]', row).addEventListener('click', async () => {
-            if (!confirm(`Remove ${lib.path}? The files stay on disk.`)) return;
-            await saveConfig({ [lib.key]: config[lib.key].filter((p) => p !== lib.path) });
-            renderLibraries(node);
-        });
-        return row;
-    }));
-}
-
-async function onMailMode(v) {
-    if (v === 'smtp' && !config.smtp_host) {
-        // The API rejects smtp mode without a host; ask rather than 400.
-        const host = prompt('SMTP host, e.g. smtp.example.com')?.trim();
-        if (!host) return;
-        const port = parseInt(prompt('SMTP port', '587') ?? '587', 10) || 587;
-        const username = prompt('SMTP username')?.trim() ?? '';
-        const password = prompt('SMTP password') ?? '';
-        await saveConfig({ mail_mode: 'smtp', smtp_host: host, smtp_port: port, smtp_username: username, smtp_password: password });
-        return;
-    }
-    await saveConfig({ mail_mode: v });
 }
 
 async function saveConfig(patch) {

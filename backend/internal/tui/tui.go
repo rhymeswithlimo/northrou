@@ -1,7 +1,15 @@
 // Package tui implements Northrou's admin dashboard: a cross-platform Bubble
 // Tea terminal UI that connects to the running daemon's local admin API and
 // shows active streams, hardware acceleration, capacity, and scan/library
-// status. It is a read-only client that never touches the database directly.
+// status. It never touches the database directly.
+//
+// The dashboard is otherwise a read-only view, with one exception: the Library
+// tab is where media folders are configured, by editing config.toml on disk
+// (see volumes.go). That is deliberate, and it is why the exception exists here
+// rather than in the settings UI -- folders are a property of the server's own
+// filesystem. Editing is offered only when the TUI is talking to the box it is
+// running on; `northrou admin --addr <remote>` gets the read-only dashboard,
+// since this process's config.toml is not that server's.
 package tui
 
 import (
@@ -30,6 +38,13 @@ const (
 
 var tabs = []string{"Streams", "Hardware", "Library"}
 
+// Tab indices, named so the key handling doesn't compare against bare ints.
+const (
+	tabStreams = iota
+	tabHardware
+	tabLibrary
+)
+
 type model struct {
 	client *client
 	addr   string
@@ -47,6 +62,18 @@ type model struct {
 	lastUpdate time.Time
 	width      int
 	height     int
+
+	// library folders. Editable only when this TUI runs on the box it is
+	// showing (see the package doc); otherwise the list is not even loaded.
+	store    mediaStore
+	local    bool
+	volumes  []volume
+	volCur   int
+	volInput textinput.Model
+	adding   bool
+	addKind  string
+	volErr   string
+	volMsg   string
 }
 
 // messages
@@ -55,15 +82,19 @@ type loginResultMsg struct{ err error }
 type dataMsg struct{ data dashboardData }
 type tickMsg time.Time
 
-// Run starts the admin TUI against the server at base (e.g. http://localhost:8674).
-func Run(base string) error {
-	m := newModel(base)
+// Run starts the admin TUI against the server at base (e.g.
+// http://localhost:8674). configPath is this machine's config.toml, and local
+// says whether base is the server this process is running on -- only then may
+// the Library tab edit media folders, since configPath describes this box and
+// no other.
+func Run(base, configPath string, local bool) error {
+	m := newModel(base, configPath, local)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	_, err := p.Run()
 	return err
 }
 
-func newModel(base string) model {
+func newModel(base, configPath string, local bool) model {
 	emailIn := textinput.New()
 	emailIn.Placeholder = "you@example.com"
 	emailIn.Focus()
@@ -75,12 +106,37 @@ func newModel(base string) model {
 	pinIn.CharLimit = 6
 	pinIn.Prompt = "› "
 
+	volIn := textinput.New()
+	volIn.Placeholder = "/Volumes/Media/Movies"
+	volIn.CharLimit = 4096
+	volIn.Prompt = "› "
+
 	return model{
 		client:    newClient(base),
 		addr:      base,
 		state:     viewLogin,
 		loginStep: stepEmail,
 		inputs:    []textinput.Model{emailIn, pinIn},
+		store:     mediaStore{path: configPath},
+		local:     local,
+		volInput:  volIn,
+	}
+}
+
+// reloadVolumes re-reads the folder list from disk. Called on sign-in and after
+// every edit, so the list always reflects the file rather than our idea of it.
+func (m *model) reloadVolumes() {
+	if !m.local {
+		return
+	}
+	vols, err := m.store.load()
+	if err != nil {
+		m.volErr = err.Error()
+		return
+	}
+	m.volumes = vols
+	if m.volCur >= len(vols) {
+		m.volCur = max(len(vols)-1, 0)
 	}
 }
 
@@ -122,6 +178,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.state = viewDashboard
+		m.reloadVolumes()
 		return m, tea.Batch(m.fetchCmd(), tickCmd())
 
 	case dataMsg:
@@ -176,6 +233,16 @@ func (m model) updateLogin(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// While typing a folder path, every key belongs to the input. Checked first
+	// or "q" would quit and "l" would switch tabs mid-path.
+	if m.adding {
+		return m.updateAddVolume(msg)
+	}
+	if m.tab == tabLibrary && m.local {
+		if handled, mm, cmd := m.updateVolumeKeys(msg); handled {
+			return mm, cmd
+		}
+	}
 	switch msg.String() {
 	case "q":
 		return m, tea.Quit
@@ -187,6 +254,81 @@ func (m model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.fetchCmd()
 	}
 	return m, nil
+}
+
+// updateVolumeKeys handles the Library tab's folder bindings. It reports
+// whether it consumed the key, so anything it ignores still reaches the shared
+// tab/quit bindings.
+func (m model) updateVolumeKeys(msg tea.KeyMsg) (bool, tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "m", "t":
+		m.adding = true
+		m.addKind = kindMovie
+		if msg.String() == "t" {
+			m.addKind = kindShow
+		}
+		m.volErr, m.volMsg = "", ""
+		m.volInput.SetValue("")
+		m.volInput.Focus()
+		return true, m, textinput.Blink
+
+	case "up", "k":
+		if m.volCur > 0 {
+			m.volCur--
+		}
+		return true, m, nil
+
+	case "down", "j":
+		if m.volCur < len(m.volumes)-1 {
+			m.volCur++
+		}
+		return true, m, nil
+
+	case "d", "x", "delete":
+		if m.volCur >= len(m.volumes) {
+			return true, m, nil
+		}
+		v := m.volumes[m.volCur]
+		m.volErr, m.volMsg = "", ""
+		if err := m.store.remove(v.Kind, v.Path); err != nil {
+			m.volErr = err.Error()
+			return true, m, nil
+		}
+		m.reloadVolumes()
+		// Say the files are safe. "Remove" next to a folder path is exactly
+		// where someone fears they just deleted their collection.
+		m.volMsg = "Removed " + v.Path + ". The files on disk are untouched."
+		return true, m, nil
+	}
+	return false, m, nil
+}
+
+// updateAddVolume owns the keyboard while a path is being typed.
+func (m model) updateAddVolume(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.adding = false
+		m.volInput.Blur()
+		m.volErr = ""
+		return m, nil
+	case "enter":
+		dir := strings.TrimSpace(m.volInput.Value())
+		if err := m.store.add(m.addKind, dir); err != nil {
+			// Stay in the input with the text intact: the path is nearly right
+			// and retyping it from scratch would be punishment.
+			m.volErr = err.Error()
+			return m, nil
+		}
+		m.adding = false
+		m.volInput.Blur()
+		m.volErr = ""
+		m.reloadVolumes()
+		m.volMsg = "Added " + dir + ". Run a scan to pick up what's inside."
+		return m, nil
+	}
+	var cmd tea.Cmd
+	m.volInput, cmd = m.volInput.Update(msg)
+	return m, cmd
 }
 
 // commands
@@ -288,11 +430,11 @@ func (m model) viewDashboard() string {
 
 	var body string
 	switch m.tab {
-	case 0:
+	case tabStreams:
 		body = m.viewStreams()
-	case 1:
+	case tabHardware:
 		body = m.viewHardware()
-	case 2:
+	case tabLibrary:
 		body = m.viewLibrary()
 	}
 
@@ -304,6 +446,9 @@ func (m model) viewDashboard() string {
 	}
 
 	footer := subtleStyle.Render("tab: switch view • r: refresh • q: quit")
+	if m.tab == tabLibrary {
+		footer = subtleStyle.Render(m.volumeHelp())
+	}
 	return header.String() + "\n\n" + boxStyle.Render(body) + "\n" + status + "\n" + footer
 }
 
@@ -360,7 +505,66 @@ func (m model) viewLibrary() string {
 	} else {
 		b.WriteString(subtleStyle.Render("No scan has run yet.\n"))
 	}
+	b.WriteString("\n" + m.viewVolumes())
 	return strings.TrimRight(b.String(), "\n")
+}
+
+// viewVolumes renders the media-folder list and its editor.
+func (m model) viewVolumes() string {
+	var b strings.Builder
+	b.WriteString(titleStyle.Render("Media folders") + "\n")
+
+	if !m.local {
+		// We never loaded that server's folders -- our config.toml describes
+		// this box. Saying "none configured" here would be a claim about a
+		// machine we have not read.
+		b.WriteString(subtleStyle.Render(
+			"Configured on " + m.addr + " itself. Run `northrou admin` there to see or\n" +
+				"change them: the paths are on that server's own disks.\n"))
+		return b.String()
+	}
+
+	if len(m.volumes) == 0 {
+		b.WriteString(subtleStyle.Render("None configured. Nothing will be scanned until you add one.\n"))
+	}
+	for i, v := range m.volumes {
+		marker := "  "
+		line := fmt.Sprintf("%-9s %s", v.Label(), v.Path)
+		// Don't mark a selection while the cursor is parked and typing.
+		if i == m.volCur && !m.adding {
+			marker = lipgloss.NewStyle().Foreground(accent).Render("› ")
+			line = lipgloss.NewStyle().Foreground(accent).Render(line)
+		}
+		b.WriteString(marker + line + "\n")
+	}
+
+	if m.adding {
+		label := "movie"
+		if m.addKind == kindShow {
+			label = "TV show"
+		}
+		b.WriteString("\nAdd a " + label + " folder (absolute path):\n")
+		b.WriteString(m.volInput.View() + "\n")
+	}
+	if m.volErr != "" {
+		b.WriteString(lipgloss.NewStyle().Foreground(warn).Render(m.volErr) + "\n")
+	}
+	if m.volMsg != "" && !m.adding {
+		b.WriteString(subtleStyle.Render(m.volMsg) + "\n")
+	}
+	return b.String()
+}
+
+// volumeHelp is the Library tab's key legend, which differs from every other
+// tab because this is the one place the TUI writes anything.
+func (m model) volumeHelp() string {
+	if !m.local {
+		return "tab: switch view • r: refresh • q: quit"
+	}
+	if m.adding {
+		return "enter: save • esc: cancel"
+	}
+	return "m: add movies • t: add shows • d: remove • ↑/↓: select • tab: switch view • q: quit"
 }
 
 func modeBadge(mode string) string {

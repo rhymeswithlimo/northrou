@@ -23,54 +23,15 @@
     color: hsl(from var(--muted) h s l / .8);
 }
 
-/* ==================== FOLDER LIST ==================== */
-
-.setup__group {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+/* Setup centres its logo, where login keeps it left with the form. This page is
+   a standalone card with nothing beside it, so a left-aligned mark reads as
+   drifting. Scoped here so login is untouched. */
+.setup .auth__logo {
+    width: 37px;
+    margin-inline: auto;
 }
 
-.setup__paths {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.setup__path {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-
-    & .auth__input { flex: 1; min-width: 0; }
-}
-
-.setup__path-remove {
-    width: 34px;
-    height: 34px;
-    flex: none;
-
-    display: grid;
-    place-items: center;
-
-    border-radius: 6px;
-    color: var(--muted);
-
-    transition: background-color .2s ease, color .2s ease;
-
-    & span { font-size: 18px; line-height: 1; }
-
-    @media (hover: hover) {
-        &:hover {
-            background-color: hsl(from var(--red) h s l / .12);
-            color: var(--red);
-        }
-    }
-}
-
-.setup__add { align-self: flex-start; }
-
-/* ==================== SMTP ==================== */
+/* ==================== DISCLOSURE ==================== */
 
 .setup__details {
     border-top: 1px solid hsl(from var(--muted) h s l / .2);
@@ -98,7 +59,8 @@
     }
 }
 
-.setup__smtp {
+/* A stack of labelled fields inside a <details>. */
+.setup__fields {
     display: flex;
     flex-direction: column;
     gap: 8px;

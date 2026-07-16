@@ -69,9 +69,9 @@ media, libraries, tokens, or which box (if any) that address belongs to.
 Pins are 6 digits, valid for 10 minutes, single-use, and limited to 5 wrong
 guesses before invalidation. Repeat requests within 60 seconds reuse the
 outstanding pin instead of sending another. A `profile` object is
-`{id, name, avatar?}`. Delivery goes through the hosted relay by default (no
-setup required), or a household's own SMTP if configured; failing both, the pin
-is logged for local single-box use. See [configuration](configuration.md).
+`{id, name, avatar?}`. Delivery goes through the coordination relay by default
+(no setup required); if the relay is disabled the pin is logged for local
+single-box use. See [configuration](configuration.md).
 
 ### Profiles
 
@@ -106,13 +106,14 @@ Only usable while no account exists.
 | Method | Path | Body |
 |---|---|---|
 | GET | `/api/setup/status` | → `{needs_setup}` |
-| POST | `/api/setup/complete` | `{email, profile_name?, movie_dirs, show_dirs, tmdb_api_key, enable_remote, smtp_host, smtp_port, smtp_username, smtp_password, from_address, from_name}` → `{account, profile, connection_code, access_token, refresh_token}` |
+| POST | `/api/setup/complete` | `{email, profile_name?, tmdb_api_key, enable_remote}` → `{account, profile, connection_code, access_token, refresh_token}` |
 
 Setup establishes the account email and its first profile (named `profile_name`,
 or derived from the email local-part if omitted) and signs the operator straight
-in with a session **elevated for the setup window**, so they can add media and
-scan immediately without an email round-trip. The SMTP fields are optional;
-provide them so the account can receive pins on subsequent logins.
+in with a session **elevated for the setup window**, so they can administer and
+scan immediately without an email round-trip. Media folders are not part of
+setup: they are configured on the server itself (`northrou admin` → Library),
+since the paths describe the server's own filesystem.
 
 ## Library
 
@@ -228,30 +229,33 @@ it they return `403 admin elevation required`.
 | GET | `/api/admin/hardware` | no | Detected acceleration + estimated capacity |
 | GET | `/api/admin/update` | no | Check for a newer release |
 | PATCH | `/api/admin/config` | **yes** | Partial configuration update |
-| POST | `/api/admin/scan` | **yes** | Start a library scan |
+| POST | `/api/admin/scan` | **yes** | Start a library scan of the server-configured folders |
 | POST | `/api/admin/update` | **yes** | Download and install the latest release |
 
 ### Configuration
 
 `/api/admin/config` exposes the subset of `config.toml` the settings screen edits:
-`movie_dirs`, `show_dirs`, `prefer_system_ffmpeg`, `max_transcodes` (0 = auto),
-`allow_software_4k`, `tonemap`, `remote_enabled`, `connection_code`, and the mail
-setup (`mail_mode` of `relay`/`smtp`/`log`, plus SMTP host/port/username/from).
+`prefer_system_ffmpeg`, `max_transcodes` (0 = auto), `allow_software_4k`,
+`tonemap`, `remote_enabled`, and `connection_code`.
 
-**Secrets are never returned.** The TMDB key and SMTP password come back only as
-`has_tmdb_key` / `has_smtp_password` booleans, so a leaked elevated token cannot
-also leak the household's mail credentials. Both can be written.
+**Media folders are not here, in either direction.** A folder is a path on the
+server's own filesystem, so it is set on the server (`northrou admin` → Library),
+never over the API: a client that could rewrite it could point the scanner at any
+directory the daemon can read. `POST /api/admin/scan` still triggers a scan of
+whatever folders are configured there; it just does not choose them.
+
+**The TMDB key is never returned**, only a `has_tmdb_key` boolean, so a leaked
+elevated token cannot also read it back. It can be written.
 
 Bind address, port and `data_dir` are deliberately not editable here: changing
 them through the very connection you are using is how you lock yourself out of
 your own server.
 
 `PATCH` is a true partial update. Every field is optional and only what you send
-changes; omitting a field leaves it alone rather than zeroing it. Setting
-`mail_mode` to `relay` clears `smtp_host` (SMTP otherwise takes precedence and
-the setting would appear to do nothing); `smtp` requires `smtp_host`.
+changes; omitting a field leaves it alone rather than zeroing it.
 `max_transcodes` applies to the running server immediately. Invalid values return
-`400` with the validation error.
+`400` with the validation error. `POST /api/admin/scan` returns `400` when no
+media folders are configured yet.
 
 ## Health
 

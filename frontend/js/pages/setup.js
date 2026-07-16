@@ -2,8 +2,11 @@
 //
 // This one talks to the real API already: /api/setup/status and
 // /api/setup/complete both exist. Setup signs the operator straight in with a
-// session elevated for the setup window, so they can add media and scan without
-// an email round-trip.
+// session elevated for the setup window, so they can scan and administer
+// without an email round-trip.
+//
+// Two steps, and neither collects a path: media folders are added on the box
+// with `northrou admin`, where they can be checked against the real filesystem.
 
 import { $, $$, show, hide, setError } from '../lib/dom.js';
 import { toast } from '../components/states.js';
@@ -12,7 +15,6 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 const steps = {
     account: $('#step-account'),
-    media: $('#step-media'),
     meta: $('#step-meta'),
     done: $('#step-done'),
 };
@@ -41,52 +43,10 @@ validateEmail();
 $('#account-form').addEventListener('submit', (e) => {
     e.preventDefault();
     if (accountNext.disabled) return;
-    goTo(steps.media);
-});
-
-/* ---------- step 2: media folders ---------- */
-
-function addPathRow(hostId, value = '') {
-    const host = $(`#${hostId}`);
-    const node = $('#tpl-path-row').content.firstElementChild.cloneNode(true);
-    const input = $('input', node);
-    input.value = value;
-    input.addEventListener('input', validateMedia);
-
-    $('[data-remove]', node).addEventListener('click', () => {
-        node.remove();
-        // Always leave one row: an empty list with no input is a dead end.
-        if (!$$('.setup__path', host).length) addPathRow(hostId);
-        validateMedia();
-    });
-
-    host.append(node);
-    return input;
-}
-
-const paths = (hostId) =>
-    $$(`#${hostId} input`).map((i) => i.value.trim()).filter(Boolean);
-
-function validateMedia() {
-    // At least one folder somewhere, or there is nothing to scan.
-    $('#media-next').disabled = paths('movie-dirs').length + paths('show-dirs').length === 0;
-}
-
-$$('[data-add]').forEach((btn) => {
-    btn.addEventListener('click', () => addPathRow(btn.dataset.add).focus());
-});
-
-addPathRow('movie-dirs');
-addPathRow('show-dirs');
-validateMedia();
-
-$('#media-form').addEventListener('submit', (e) => {
-    e.preventDefault();
-    if ($('#media-next').disabled) return;
     goTo(steps.meta);
 });
 
-/* ---------- step 3: finish ---------- */
+/* ---------- step 2: finish ---------- */
 
 const finishBtn = $('#finish');
 const setupError = $('#setup-error');
@@ -99,15 +59,8 @@ $('#meta-form').addEventListener('submit', async (e) => {
 
     const body = {
         email: emailInput.value.trim(),
-        movie_dirs: paths('movie-dirs'),
-        show_dirs: paths('show-dirs'),
         tmdb_api_key: $('#tmdb').value.trim(),
         enable_remote: true,
-        smtp_host: $('#smtp_host').value.trim(),
-        smtp_port: parseInt($('#smtp_port').value, 10) || 0,
-        smtp_username: $('#smtp_username').value.trim(),
-        smtp_password: $('#smtp_password').value,
-        from_address: $('#from_address').value.trim(),
     };
 
     try {

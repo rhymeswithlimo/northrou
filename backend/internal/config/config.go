@@ -100,43 +100,26 @@ type TMDBConfig struct {
 // household does not have to run its own mail server. See internal/email.
 const DefaultRelayURL = "https://relay.northrou.app"
 
-// EmailConfig controls how one-time login pins are delivered. By default they
-// are sent through the hosted relay (RelayURL). Set SMTPHost to send directly
-// through your own mail server instead (that takes precedence). If neither is
-// available, pins are logged to the server log for local single-box use.
+// EmailConfig controls how one-time login pins are delivered. Delivery is the
+// coordination relay's job: it owns the mail infrastructure and the template,
+// so a household never runs a mail server to sign in. If the relay is turned
+// off or unreachable, pins are logged to the server log for local single-box
+// use.
+//
+// There is deliberately no SMTP option here. Running mail is the one piece of
+// self-hosting that reliably fails (SPF/DKIM/DMARC, IP reputation, port 25
+// blocked by most ISPs), and a sign-in code that silently lands in spam locks
+// you out of your own server. The relay carries only an address and a pin.
 type EmailConfig struct {
 	// RelayURL is the hosted pin-delivery service. Defaults to DefaultRelayURL.
-	// Ignored when SMTPHost is set or RelayDisabled is true.
+	// Ignored when RelayDisabled is true.
 	RelayURL string `toml:"relay_url"`
 	// RelayToken is an optional bearer token presented to the relay.
 	RelayToken string `toml:"relay_token"`
-	// RelayDisabled turns the hosted relay off (for fully self-contained setups
-	// that use their own SMTP, or that accept the log fallback).
+	// RelayDisabled turns the hosted relay off, falling back to logging pins.
+	// For an air-gapped box, or a household that would rather read the pin out
+	// of the server log than have it touch anyone else's infrastructure.
 	RelayDisabled bool `toml:"relay_disabled"`
-
-	// SMTPHost is your own mail server hostname. When set, pins are sent
-	// directly through it instead of the relay.
-	SMTPHost string `toml:"smtp_host"`
-	// SMTPPort is the mail server port (typically 587 for STARTTLS, 465 for
-	// implicit TLS, 25 for plain).
-	SMTPPort int `toml:"smtp_port"`
-	// SMTPUsername / SMTPPassword authenticate to the mail server. Leave both
-	// empty for an unauthenticated relay.
-	SMTPUsername string `toml:"smtp_username"`
-	SMTPPassword string `toml:"smtp_password"`
-	// FromAddress is the envelope/From address pins are sent from. Defaults to
-	// SMTPUsername when empty.
-	FromAddress string `toml:"from_address"`
-	// FromName is the display name on the From header (optional).
-	FromName string `toml:"from_name"`
-}
-
-// From returns the effective from address (FromAddress, or SMTPUsername).
-func (e EmailConfig) From() string {
-	if e.FromAddress != "" {
-		return e.FromAddress
-	}
-	return e.SMTPUsername
 }
 
 // Default returns a fully-populated Config with defaults applied. It does not
@@ -160,9 +143,6 @@ func (c *Config) ApplyDefaults() {
 	}
 	if c.TMDB.Language == "" {
 		c.TMDB.Language = "en-US"
-	}
-	if c.Email.SMTPHost != "" && c.Email.SMTPPort == 0 {
-		c.Email.SMTPPort = 587 // STARTTLS submission
 	}
 	if c.Email.RelayURL == "" && !c.Email.RelayDisabled {
 		c.Email.RelayURL = DefaultRelayURL

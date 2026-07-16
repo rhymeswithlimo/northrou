@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/rhymeswithlimo/northrou/backend/internal/auth"
+	"github.com/rhymeswithlimo/northrou/backend/internal/config"
 )
 
 // validEmail reports whether s parses as a single RFC 5322 address.
@@ -32,22 +33,16 @@ func (a *API) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, setupStatusResponse{NeedsSetup: !exists})
 }
 
+// setupCompleteRequest is the first-run payload.
+//
+// It carries no media folders and no mail settings. Folders are added on the
+// box with `northrou admin` -> Library, and sign-in pins are delivered by the
+// coordination relay, which needs no configuration here.
 type setupCompleteRequest struct {
-	Email        string   `json:"email"`
-	ProfileName  string   `json:"profile_name"` // first profile; optional
-	MovieDirs    []string `json:"movie_dirs"`
-	ShowDirs     []string `json:"show_dirs"`
-	TMDBAPIKey   string   `json:"tmdb_api_key"`
-	EnableRemote bool     `json:"enable_remote"`
-
-	// Optional SMTP settings so the admin can receive sign-in pins after setup.
-	// If omitted, pins are logged to the server log until email is configured.
-	SMTPHost     string `json:"smtp_host"`
-	SMTPPort     int    `json:"smtp_port"`
-	SMTPUsername string `json:"smtp_username"`
-	SMTPPassword string `json:"smtp_password"`
-	FromAddress  string `json:"from_address"`
-	FromName     string `json:"from_name"`
+	Email        string `json:"email"`
+	ProfileName  string `json:"profile_name"` // first profile; optional
+	TMDBAPIKey   string `json:"tmdb_api_key"`
+	EnableRemote bool   `json:"enable_remote"`
 }
 
 type setupCompleteResponse struct {
@@ -59,9 +54,9 @@ type setupCompleteResponse struct {
 }
 
 // handleSetupComplete performs first-run setup: establishes the account email
-// and its first profile, persists media folders and TMDB key to config, issues
-// a remote connection code, and returns a signed-in token pair elevated for the
-// setup window. It is only allowed while no account exists.
+// and its first profile, persists the TMDB key to config, issues a remote
+// connection code, and returns a signed-in token pair elevated for the setup
+// window. It is only allowed while no account exists.
 func (a *API) handleSetupComplete(w http.ResponseWriter, r *http.Request) {
 	exists, err := a.DB.AccountExists(r.Context())
 	if err != nil {
@@ -98,17 +93,16 @@ func (a *API) handleSetupComplete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Persist config.
-	a.Cfg.Media.MovieDirs = req.MovieDirs
-	a.Cfg.Media.ShowDirs = req.ShowDirs
+	// Persist config. Media folders are owned by the TUI, which may have
+	// written some to disk (`northrou admin`) before this browser setup ran,
+	// while the daemon's in-memory a.Cfg.Media stayed empty from boot. Pull
+	// them back from disk so saving here does not erase them. Same reload the
+	// config PATCH and scan paths do, for the same reason.
+	if onDisk, err := config.Load(a.ConfigPath); err == nil {
+		a.Cfg.Media = onDisk.Media
+	}
 	a.Cfg.TMDB.APIKey = req.TMDBAPIKey
 	a.Cfg.Remote.Enabled = req.EnableRemote
-	a.Cfg.Email.SMTPHost = req.SMTPHost
-	a.Cfg.Email.SMTPPort = req.SMTPPort
-	a.Cfg.Email.SMTPUsername = req.SMTPUsername
-	a.Cfg.Email.SMTPPassword = req.SMTPPassword
-	a.Cfg.Email.FromAddress = req.FromAddress
-	a.Cfg.Email.FromName = req.FromName
 	if a.Cfg.Remote.ServerID == "" {
 		a.Cfg.Remote.ServerID = randomHex(16)
 	}

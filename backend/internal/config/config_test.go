@@ -24,9 +24,6 @@ func TestDefaultsApplied(t *testing.T) {
 	if c.Email.RelayDisabled {
 		t.Error("relay should be enabled by default")
 	}
-	if c.Email.SMTPHost != "" {
-		t.Error("no SMTP should be configured by default")
-	}
 }
 
 func TestSaveLoadRoundTrip(t *testing.T) {

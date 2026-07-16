@@ -5,6 +5,12 @@ README.md
 /dist/
 /bin/
 *.exe
+
+# Release tooling and output. The release builder is the maintainer's local
+# tool (signing identities, mobile toolchains) and is not distributed; the
+# release/ tree it fills with per-version artifacts is generated, never tracked.
+/scripts/release.sh
+/release/
 # Anchored, and they must stay that way. Unanchored, these matched any path
 # segment with those names and silently swallowed the cmd/ directories named
 # after the binaries they build: backend/cmd/northrou/main.go and
