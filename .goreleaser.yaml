@@ -97,5 +97,6 @@ release:
   github:
     owner: rhymeswithlimo
     name: northrou
+  name_template: "Northrou {{ .Tag }}"
   draft: false
   prerelease: auto

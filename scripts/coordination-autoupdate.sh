@@ -10,7 +10,7 @@ GH_REPO="rhymeswithlimo/northrou"
 
 cd "$REPO_DIR"
 
-latest="$(curl -fsSL "https://api.github.com/repos/${GH_REPO}/releases/latest" | jq -r '.tag_name // empty')"
+latest="$(curl -sSL "https://api.github.com/repos/${GH_REPO}/releases/latest" | jq -r '.tag_name // empty')"
 if [ -z "$latest" ]; then
     echo "coordination-autoupdate: no published release yet, nothing to do"
     exit 0
