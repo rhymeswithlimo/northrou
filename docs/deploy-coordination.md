@@ -155,13 +155,21 @@ docker compose -f deploy.yml logs -f   # watch for "oauth broker enabled" and ce
 
 ```sh
 curl https://app.northrou.sh/healthz         # -> ok
-curl https://app.northrou.sh/oauth/jwks      # -> JWKS JSON with your ES256 public key
-curl -i -N -H "Connection: Upgrade" -H "Upgrade: websocket" \
+curl https://app.northrou.sh/oauth/jwks      # -> 404 until OAuth is configured (step 9b); JWKS JSON once it is
+
+# --http1.1 matters: curl negotiates HTTP/2 over TLS by default, and h2 doesn't
+# do the old Connection:Upgrade handshake, so you'd see a 426 instead of 101.
+# --max-time matters too: a successful upgrade leaves the connection open, so
+# without it curl just hangs after printing the response.
+curl -i -N --http1.1 --max-time 5 -H "Connection: Upgrade" -H "Upgrade: websocket" \
   -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: x3JJHMbDL1EzLkh9GBhXDw==" \
   https://app.northrou.sh/ws                 # -> 101
 
-# relay's own /healthz is under the catch-all route, so check it inside the box:
-docker compose -f deploy.yml exec relay wget -qO- localhost:9100/healthz   # -> ok
+# relay's own /healthz is under the catch-all route, so check it inside the
+# box -- but not via `exec relay`: the relay image is distroless (no shell, no
+# wget/curl, nothing but the binary itself), so route through caddy's
+# container instead, which has both, over the internal Docker network:
+docker compose -f deploy.yml exec caddy wget -qO- http://relay:9100/healthz   # -> ok
 ```
 
 ## 10. Auto-update on release (optional)
