@@ -164,6 +164,30 @@ curl -i -N -H "Connection: Upgrade" -H "Upgrade: websocket" \
 docker compose -f deploy.yml exec relay wget -qO- localhost:9100/healthz   # -> ok
 ```
 
+## 10. Auto-update on release (optional)
+
+By default the box just sits on whatever commit you cloned — nothing pulls on
+its own. `scripts/coordination-autoupdate.sh` + its systemd timer make it
+track **published GitHub releases only**, never every push to `main`: it polls
+`api.github.com/repos/rhymeswithlimo/northrou/releases/latest`, and only when
+that tag differs from what's checked out does it `git checkout` the new tag
+and `docker compose up -d --build`. Since `deploy.yml` and
+`oauth-signing.pem` are gitignored (never tracked in any commit), switching
+tags never touches them.
+
+```sh
+apt install -y jq   # the script parses the GitHub API response with it
+cp scripts/coordination-autoupdate.service scripts/coordination-autoupdate.timer /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now coordination-autoupdate.timer
+systemctl list-timers coordination-autoupdate.timer   # confirm it's scheduled
+journalctl -u coordination-autoupdate.service -n 20    # check a run's output
+```
+
+Until you cut the first release, the script's every run is a no-op ("no
+published release yet"). To trigger an update check on demand rather than
+waiting for the timer: `systemctl start coordination-autoupdate.service`.
+
 ## Things to know
 
 - **No TURN server.** Both sides use only public STUN

@@ -1,0 +1,9 @@
+[Unit]
+Description=Check for a new Northrou release and redeploy the coordination stack
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/northrou
+ExecStart=/root/northrou/scripts/coordination-autoupdate.sh
