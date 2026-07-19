@@ -13,7 +13,7 @@ const KEY = 'northrou.server';
  *            mode?: 'tunnel'}} Server
  */
 
-export const DEFAULT_COORD_URL = 'wss://coord.northrou.app/ws';
+export const DEFAULT_COORD_URL = 'wss://app.northrou.sh/ws';
 
 /** Served from the box itself: same-origin, no bootstrap needed. */
 export const isSameOrigin = () =>

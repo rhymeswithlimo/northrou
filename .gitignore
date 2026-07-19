@@ -11,6 +11,13 @@ README.md
 # release/ tree it fills with per-version artifacts is generated, never tracked.
 /scripts/release.sh
 /release/
+
+# Coordination stack deployment secrets (see docs/deploy-coordination.md).
+# deploy.yml.example is the tracked template; deploy.yml is the box's real copy
+# with live OAuth/SMTP credentials and must never be committed.
+/deploy.yml
+/oauth-signing.pem
+*.p8
 # Anchored, and they must stay that way. Unanchored, these matched any path
 # segment with those names and silently swallowed the cmd/ directories named
 # after the binaries they build: backend/cmd/northrou/main.go and

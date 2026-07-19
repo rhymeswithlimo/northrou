@@ -42,7 +42,7 @@ type Peer struct {
 }
 
 // NewPeer builds a Peer that tunnels to handler. coordURL is the ws:// or wss://
-// signaling endpoint (e.g. wss://coord.northrou.app/ws).
+// signaling endpoint (e.g. wss://app.northrou.sh/ws).
 func NewPeer(coordURL, serverID, code string, handler http.Handler) *Peer {
 	se := webrtc.SettingEngine{}
 	se.DetachDataChannels() // use io.ReadWriteCloser data channels

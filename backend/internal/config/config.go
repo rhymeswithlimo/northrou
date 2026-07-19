@@ -98,7 +98,7 @@ type TMDBConfig struct {
 
 // DefaultRelayURL is the hosted pin-delivery relay used out of the box, so a
 // household does not have to run its own mail server. See internal/email.
-const DefaultRelayURL = "https://relay.northrou.app"
+const DefaultRelayURL = "https://app.northrou.sh"
 
 // EmailConfig controls how one-time login pins are delivered. Delivery is the
 // coordination relay's job: it owns the mail infrastructure and the template,
@@ -139,7 +139,7 @@ func (c *Config) ApplyDefaults() {
 		c.Server.DataDir = DefaultDataDir()
 	}
 	if c.Remote.CoordinationURL == "" {
-		c.Remote.CoordinationURL = "https://coord.northrou.app"
+		c.Remote.CoordinationURL = "https://app.northrou.sh"
 	}
 	if c.TMDB.Language == "" {
 		c.TMDB.Language = "en-US"
