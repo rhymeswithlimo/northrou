@@ -8,7 +8,7 @@
 // Kept in the plugin's own package, not in the generated gen/android project,
 // which is regenerated and would lose it.
 
-package sh.northrou.native
+package sh.northrou.chrome
 
 import android.app.Activity
 import android.view.Gravity

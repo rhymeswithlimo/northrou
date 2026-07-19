@@ -134,7 +134,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             #[cfg(target_os = "ios")]
             let handle = _api.register_ios_plugin(init_plugin_northrou_native)?;
             #[cfg(target_os = "android")]
-            let handle = _api.register_android_plugin("sh.northrou.native", "NorthrouNativePlugin")?;
+            let handle = _api.register_android_plugin("sh.northrou.chrome", "NorthrouNativePlugin")?;
 
             #[cfg(mobile)]
             app.manage(NorthrouNative(handle));
