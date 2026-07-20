@@ -6,9 +6,16 @@ import "runtime"
 type asset struct {
 	URL  string
 	Kind archiveKind
-	// SHA256 is the hex checksum of the archive. When non-empty it is
-	// verified after download. These MUST be pinned per Northrou release; an
-	// empty value downloads with a logged warning (dev convenience only).
+	// SHA256 is the hex checksum of the archive. When non-empty it is verified
+	// after download (hard failure on mismatch, see manager.downloadAndExtract).
+	//
+	// It is currently empty for every asset, which downloads over HTTPS with a
+	// logged warning. Do NOT naively pin a hash here against the URLs below:
+	// they are rolling "latest" endpoints whose bytes change whenever upstream
+	// rebuilds, so a static pin would hard-fail every download within days.
+	// Pinning safely requires first switching to immutable versioned URLs, or
+	// verifying against upstream's own published checksum at download time.
+	// See the note above releases.
 	SHA256 string
 }
 
@@ -29,9 +36,14 @@ type release struct {
 //   - Windows amd64:      BtbN win64 GPL static
 //   - macOS amd64/arm64:  evermeet.cx (ffmpeg + ffprobe packaged separately)
 //
-// URLs point at stable "latest" endpoints; checksums are pinned at release
-// time. Extraction matches binaries by base name so exact internal archive
-// layout does not matter.
+// These are rolling "latest"/"getrelease" endpoints: the same URL serves
+// freshly rebuilt bytes over time (BtbN republishes its `latest` tag roughly
+// daily). That is why asset.SHA256 is NOT statically pinned here - a pin
+// against a moving target hard-fails once upstream rebuilds. Proper integrity
+// verification needs immutable versioned URLs or download-time checks against
+// upstream's own published checksums; tracked as a known limitation, not done.
+// Extraction matches binaries by base name so exact internal archive layout
+// does not matter.
 var releases = map[string]release{
 	"linux/amd64": {Bundle: &asset{
 		URL:  "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz",

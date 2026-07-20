@@ -13,7 +13,28 @@ and uses it as the GitHub release body, so an entry needs to exist here
 *before* publishing a version — the release fails otherwise. Write it as you
 land the change, not after the fact.
 
-## v0.1.1 - Unreleased
+## v0.1.2 - 2026-07-20
+
+### Fixed
+- Self-update no longer randomly fails with "northrou not found in archive".
+  The release ships the `coordinator_*` and `relay_*` archives alongside the
+  server, and they share the same `_<os>_<arch>` suffix; the updater matched on
+  that suffix alone against a map of assets (random iteration order), so it
+  picked the wrong archive on roughly a third of runs and then couldn't find
+  the `northrou` binary inside. It now anchors on the `northrou_` archive-name
+  prefix. Affected both `northrou update` and the background auto-updater.
+- Privileged commands (`update`, `install`, `uninstall`) now tell you to
+  re-run with `sudo` when they fail for lack of permission, instead of dumping
+  a raw `permission denied` syscall error. Running `northrou update` as a
+  normal user (the binary lives in root-owned `/usr/local/bin`) previously
+  failed with an opaque `apply update: open /usr/local/bin/.northrou.new:
+  permission denied` and no hint. The guidance is reactive - a non-root
+  install into `~/.local/bin` still self-updates without sudo and is not
+  nagged. The post-update restart hint also now includes `sudo`.
+- CLI errors now print as a plain `Error: <message>` on stderr instead of a
+  developer-facing `level=ERROR msg="command failed" err=...` log line.
+
+## v0.1.1 - 2026-07-20
 
 ### Added
 - Automatic self-update: the server now checks GitHub releases every 6 hours

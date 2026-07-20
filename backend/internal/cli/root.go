@@ -4,6 +4,7 @@
 package cli
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 
@@ -47,10 +48,14 @@ func NewRootCmd() *cobra.Command {
 	return root
 }
 
-// Execute runs the CLI and returns the process exit code.
+// Execute runs the CLI and returns the process exit code. A failing command
+// prints its error plainly to stderr rather than as a structured slog line:
+// these are interactive commands, and "Error: <message>" is what a user
+// expects, not "level=ERROR msg=\"command failed\" err=..." (which would also
+// mangle multi-line guidance like needsRoot's into literal \n).
 func Execute() int {
 	if err := NewRootCmd().Execute(); err != nil {
-		slog.Error("command failed", "err", err)
+		fmt.Fprintln(os.Stderr, "Error:", err)
 		return 1
 	}
 	return 0

@@ -23,7 +23,7 @@ func newInstallCmd() *cobra.Command {
 		Short: "Install Northrou as a system service and start it",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := service.Install(flagConfigPath); err != nil {
-				return err
+				return needsRoot(cmd, err)
 			}
 			fmt.Println("Northrou installed and started as a system service.")
 			return nil
@@ -37,7 +37,7 @@ func newUninstallCmd() *cobra.Command {
 		Short: "Stop and uninstall the Northrou system service",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := service.Uninstall(flagConfigPath); err != nil {
-				return err
+				return needsRoot(cmd, err)
 			}
 			fmt.Println("Northrou service removed.")
 			return nil
@@ -107,9 +107,9 @@ func newUpdateCmd() *cobra.Command {
 			}
 			fmt.Println("Downloading and installing…")
 			if err := u.Apply(cmd.Context(), latest); err != nil {
-				return err
+				return needsRoot(cmd, err)
 			}
-			fmt.Printf("Updated to %s. Restart the service to run the new version:\n  northrou uninstall && northrou install\n", latest.Version)
+			fmt.Printf("Updated to %s. Restart the service to run the new version:\n  sudo northrou uninstall && sudo northrou install\n", latest.Version)
 			return nil
 		},
 	}

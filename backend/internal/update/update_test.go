@@ -99,13 +99,21 @@ func TestLatestAndSelectArchive(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		assetName = fmt.Sprintf("northrou_1.2.0_%s_%s.zip", runtime.GOOS, archSuffix())
 	}
+	// Sibling coordinator_/relay_ archives that share this host's exact
+	// _<os>_<arch> suffix must NOT be selected. Using the host token (not a
+	// hardcoded linux one) reproduces the collision on whatever OS the test
+	// runs on, so `make test` on the dev Mac catches a regression too.
+	coordName := fmt.Sprintf("coordinator_1.2.0_%s_%s.tar.gz", runtime.GOOS, archSuffix())
+	relayName := fmt.Sprintf("relay_1.2.0_%s_%s.tar.gz", runtime.GOOS, archSuffix())
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `{
 			"tag_name":"v1.2.0","body":"release notes here",
 			"assets":[
-				{"name":%q,"browser_download_url":"http://x/%s"},
+				{"name":%[3]q,"browser_download_url":"http://x/coordinator"},
+				{"name":%[4]q,"browser_download_url":"http://x/relay"},
+				{"name":%[1]q,"browser_download_url":"http://x/%[2]s"},
 				{"name":"checksums.txt","browser_download_url":"http://x/checksums.txt"}
-			]}`, assetName, assetName)
+			]}`, assetName, assetName, coordName, relayName)
 	}))
 	defer srv.Close()
 
@@ -119,11 +127,16 @@ func TestLatestAndSelectArchive(t *testing.T) {
 	if rel.Version != "v1.2.0" || rel.Notes != "release notes here" {
 		t.Errorf("unexpected release: %+v", rel)
 	}
-	name, _, err := u.selectArchive(rel)
-	if err != nil {
-		t.Fatalf("selectArchive: %v", err)
-	}
-	if name != assetName {
-		t.Errorf("selected %q, want %q", name, assetName)
+	// assets is a map, so selectArchive ranges in a random order each call.
+	// Repeat enough that a prefix-blind selector would hit a sibling almost
+	// surely at least once, making the regression fail deterministically.
+	for i := range 64 {
+		name, _, err := u.selectArchive(rel)
+		if err != nil {
+			t.Fatalf("selectArchive: %v", err)
+		}
+		if name != assetName {
+			t.Fatalf("selected %q, want %q (iteration %d)", name, assetName, i)
+		}
 	}
 }
