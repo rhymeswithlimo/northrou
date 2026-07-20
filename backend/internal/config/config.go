@@ -113,6 +113,17 @@ type TMDBConfig struct {
 // household does not have to run its own mail server. See internal/email.
 const DefaultRelayURL = "https://app.northrou.sh"
 
+// DefaultRelayToken is the shared bearer token every build presents to the
+// hosted relay (DefaultRelayURL). It is deliberately NOT a secret: the relay
+// itself documents this token as "a weak control that ships in an open-source
+// client" whose only job is to deter trivial scanning of /v1/pin/send. The
+// relay's real anti-abuse protection is its per-recipient rate limiting, not
+// this value, which is why it can live here in the clear. Shipping it is what
+// makes sign-in work out of the box; without it every fresh box got an
+// otherwise-silent HTTP 401 from the relay. A self-hoster running their own
+// relay sets a private relay_token (and matching RELAY_TOKEN) instead.
+const DefaultRelayToken = "northrou-hosted-relay-v1"
+
 // EmailConfig controls how one-time login pins are delivered. Delivery is the
 // coordination relay's job: it owns the mail infrastructure and the template,
 // so a household never runs a mail server to sign in. If the relay is turned
@@ -159,6 +170,14 @@ func (c *Config) ApplyDefaults() {
 	}
 	if c.Email.RelayURL == "" && !c.Email.RelayDisabled {
 		c.Email.RelayURL = DefaultRelayURL
+	}
+	// Present the shared client token to the hosted relay so a fresh box can
+	// deliver pins with no configuration. Only when actually pointed at the
+	// hosted relay: a self-hoster with a custom relay_url keeps whatever token
+	// (or none) they set. Runs after the RelayURL default above so a box that
+	// defaulted its URL is recognized as using the hosted relay here.
+	if c.Email.RelayToken == "" && c.Email.RelayURL == DefaultRelayURL && !c.Email.RelayDisabled {
+		c.Email.RelayToken = DefaultRelayToken
 	}
 }
 

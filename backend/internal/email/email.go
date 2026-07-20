@@ -64,7 +64,11 @@ func (s *Sender) SendPin(_ context.Context, addr, pin string) error {
 	serverID := s.cfg.Remote.ServerID
 	go func() {
 		if err := s.sendRelay(ec.RelayURL, ec.RelayToken, serverID, addr, pin); err != nil {
-			slog.Warn("failed to deliver login pin via relay", "err", err)
+			// Loud (ERROR, not WARN) and actionable: a failed pin send means
+			// nobody can sign in, and it is otherwise invisible to the operator
+			// because request-pin deliberately reveals nothing to the client.
+			slog.Error("login pin NOT delivered; sign-in will not work until this is fixed",
+				"err", err, "relay", ec.RelayURL)
 		}
 	}()
 	return nil
@@ -96,6 +100,12 @@ func (s *Sender) sendRelay(relayURL, token, serverID, addr, pin string) error {
 		return err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusUnauthorized {
+		// The single most common misconfiguration: the box's relay_token does
+		// not match the relay's RELAY_TOKEN. Say exactly how to fix it.
+		return fmt.Errorf("relay rejected the token (HTTP 401): set [email] relay_token " +
+			"in config.toml to match your relay's RELAY_TOKEN, then restart")
+	}
 	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("relay returned HTTP %d", resp.StatusCode)
 	}

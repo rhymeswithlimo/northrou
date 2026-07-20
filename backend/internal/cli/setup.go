@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -37,7 +38,7 @@ func newSetupCmd() *cobra.Command {
 			// the running instance already serves this same wizard, and
 			// trying to bind the same port again would just fail.
 			if alreadyServing(a.Cfg.Server.Port) {
-				fmt.Println("Northrou is already running as a service.")
+				notice("Northrou is already running as a service.")
 				printSetupURLs(a.Cfg.Server.Port)
 				return nil
 			}
@@ -64,11 +65,13 @@ func newSetupCmd() *cobra.Command {
 // are reading this from, so this also lists the machine's LAN addresses -
 // headless/self-hosted is the primary use case here, not an edge case.
 func printSetupURLs(port int) {
-	fmt.Println("Setup wizard ready. Open one of these in a browser:")
-	fmt.Printf("  http://localhost:%d/   (if you are on this machine)\n", port)
+	var b strings.Builder
+	fmt.Fprintln(&b, "Setup wizard ready. Open one of these in a browser:")
+	fmt.Fprintf(&b, "  http://localhost:%d/   (if you are on this machine)", port)
 	for _, ip := range localIPv4s() {
-		fmt.Printf("  http://%s:%d/   (from another device on your network)\n", ip, port)
+		fmt.Fprintf(&b, "\n  http://%s:%d/   (from another device on your network)", ip, port)
 	}
+	notice("%s", b.String())
 }
 
 // localIPv4s lists this machine's non-loopback IPv4 addresses.

@@ -7,7 +7,7 @@ import { posterCard, continueCard, row } from '../components/card.js';
 import { createDetailModal } from '../components/detail.js';
 import { statePanel, skeletonRow, toast, mountOfflineBanner } from '../components/states.js';
 import { getHero, getContinueWatching, getHomeRows, getDetail } from '../data/library.js';
-import { requireServer } from '../api/connect.js';
+import { requireServer, requireReady } from '../api/connect.js';
 import { mountNativeChrome, setNativeChromeVisible } from '../components/native-chrome.js';
 
 const rowsEl = $('#rows');
@@ -111,19 +111,22 @@ document.addEventListener('click', (e) => {
     openDetail(target.dataset.kind, target.dataset.id);
 });
 
-// On mobile the shell puts a real tab bar over the WebView and this hides the
-// web nav; everywhere else this is a no-op and the web nav stays.
-await mountNativeChrome({ current: 'home' });
+// Resolve the server (same-origin or tunnel), then gate on first-run setup and
+// sign-in, before building the shell. An app starts knowing nothing about which
+// box it belongs to; a fresh box needs setup; a second device needs to sign in.
+// Doing this first means a redirect fires ahead of any shell or skeleton flash.
+if (await requireServer() && await requireReady()) {
+    // On mobile the shell puts a real tab bar over the WebView and this hides
+    // the web nav; everywhere else this is a no-op and the web nav stays.
+    await mountNativeChrome({ current: 'home' });
 
-// The native sheet's close button (and its swipe-to-dismiss) drive the web
-// modal on iOS, where the web close button is hidden. Without this the two
-// halves fall out of step: the sheet goes away and the page still thinks it is
-// showing a dialog.
-window.__northrouCloseDetail = () => modal.close();
+    // The native sheet's close button (and its swipe-to-dismiss) drive the web
+    // modal on iOS, where the web close button is hidden. Without this the two
+    // halves fall out of step: the sheet goes away and the page still thinks it
+    // is showing a dialog.
+    window.__northrouCloseDetail = () => modal.close();
 
-mountNavAutoHide($('.nav'));
-mountOfflineBanner();
-
-// Resolve the server (same-origin or tunnel) before asking it anything.
-// An app starts knowing nothing about which box it belongs to.
-if (await requireServer()) render();
+    mountNavAutoHide($('.nav'));
+    mountOfflineBanner();
+    render();
+}

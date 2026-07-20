@@ -5,6 +5,7 @@
 // and a WebRTC tunnel to the house.
 
 import { useDirect, useTunnel } from './transport.js';
+import { isSignedIn } from './session.js';
 import { getServer, setServer, isSameOrigin, DEFAULT_COORD_URL } from '../data/servers.js';
 
 /**
@@ -41,6 +42,45 @@ export async function requireServer() {
     const res = await connect();
     if (!res.ok) {
         window.location.replace('connect.html');
+        return false;
+    }
+    return true;
+}
+
+/**
+ * First-run and sign-in gate for the app's entry page. Call after
+ * requireServer has resolved transport, before rendering anything.
+ *
+ * A fresh box has no account, so the library would 401 on every request and
+ * read as "server unreachable". Instead:
+ *   - On the box (same-origin), a box that still needs setup belongs to the
+ *     setup wizard. setup.html talks to the box with a same-origin fetch, so
+ *     this only applies here; an app reaching the box over the tunnel skips it.
+ *   - A set-up box this device is not signed into goes to the sign-in page.
+ *     This is the common case when opening the LAN address from a second
+ *     device (e.g. a phone) that has no session of its own yet.
+ *
+ * Returns true only when the caller may proceed to render.
+ * @returns {Promise<boolean>}
+ */
+export async function requireReady() {
+    if (isSameOrigin()) {
+        try {
+            const res = await fetch('/api/setup/status');
+            if (res.ok) {
+                const { needs_setup } = await res.json();
+                if (needs_setup) {
+                    window.location.replace('setup.html');
+                    return false;
+                }
+            }
+        } catch {
+            // Status unreachable: don't guess. Let the caller's own render path
+            // report the unreachable server.
+        }
+    }
+    if (!isSignedIn()) {
+        window.location.replace('login.html');
         return false;
     }
     return true;

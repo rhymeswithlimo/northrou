@@ -25,7 +25,7 @@ func newInstallCmd() *cobra.Command {
 			if err := service.Install(flagConfigPath); err != nil {
 				return needsRoot(cmd, err)
 			}
-			fmt.Println("Northrou installed and started as a system service.")
+			notice("Northrou installed and started as a system service.")
 			return nil
 		},
 	}
@@ -39,7 +39,7 @@ func newUninstallCmd() *cobra.Command {
 			if err := service.Uninstall(flagConfigPath); err != nil {
 				return needsRoot(cmd, err)
 			}
-			fmt.Println("Northrou service removed.")
+			notice("Northrou service removed.")
 			return nil
 		},
 	}
@@ -89,10 +89,11 @@ func newUpdateCmd() *cobra.Command {
 				return fmt.Errorf("check for updates: %w", err)
 			}
 			if !u.HasUpdate(latest) {
-				fmt.Printf("Northrou is up to date (%s).\n", buildinfo.Version)
+				notice("Northrou is up to date (%s).", buildinfo.Version)
 				return nil
 			}
-			fmt.Printf("Update available: %s → %s\n\n%s\n\n", buildinfo.Version, latest.Version, latest.Notes)
+			notice("Update available: %s → %s", buildinfo.Version, latest.Version)
+			fmt.Printf("\n%s\n\n", latest.Notes)
 			if checkOnly {
 				return nil
 			}
@@ -109,7 +110,7 @@ func newUpdateCmd() *cobra.Command {
 			if err := u.Apply(cmd.Context(), latest); err != nil {
 				return needsRoot(cmd, err)
 			}
-			fmt.Printf("Updated to %s. Restart the service to run the new version:\n  sudo northrou uninstall && sudo northrou install\n", latest.Version)
+			notice("Updated to %s. Restart the service to run the new version:\n  sudo northrou uninstall && sudo northrou install", latest.Version)
 			return nil
 		},
 	}

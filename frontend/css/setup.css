@@ -139,8 +139,12 @@
 }
 
 /* The finish link is an <a>, so it needs the flex centring the <button>
-   version gets from its own UA styling. */
+   version gets from its own UA styling. It also sits directly under
+   .auth__options (which centres its children), not inside a stretch container
+   like the form buttons, so it needs align-self to fill the width the way the
+   .setup__code-block siblings above it do. */
 #go-home {
+    align-self: stretch;
     display: flex;
     text-decoration: none;
 }

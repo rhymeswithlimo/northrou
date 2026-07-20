@@ -13,6 +13,41 @@ and uses it as the GitHub release body, so an entry needs to exist here
 *before* publishing a version — the release fails otherwise. Write it as you
 land the change, not after the fact.
 
+## v0.1.3 - Unreleased
+
+### Fixed
+- Opening the server's address in a browser on a not-yet-configured box now
+  sends you to the setup wizard instead of loading the app, which failed every
+  request and showed a misleading "Couldn't reach your server". The home page
+  now checks first-run status on boot: a box with no account yet (same-origin)
+  goes to setup, and a configured box this device isn't signed into goes to
+  sign-in. This also fixes the same wrong error when opening the LAN address
+  from a second device (e.g. a phone) that has no session yet.
+- Setup wizard polish: the final "Open my library" button now fills the width
+  of its section instead of shrinking to its label, and the metadata (TMDB API
+  key) step now shows the Northrou logo like the other steps.
+- Desktop app: remote sign-in with a connection code failed with "Could not
+  reach the coordination server: The operation is insecure". The app's Content
+  Security Policy `connect-src` did not allow the coordinator, so the signaling
+  WebSocket (`wss://app.northrou.sh`) was blocked by the webview before it
+  opened. Allowed the coordinator origin. (A self-hoster pointing at a custom
+  coordinator still needs to add its origin to the CSP and rebuild.)
+- Login pins now deliver out of the box. A fresh install talks to the hosted
+  relay with the shared client token it now ships by default, instead of
+  presenting no token and getting a silent HTTP 401 (the relay treats the token
+  as a scan-deterrent, with per-recipient rate limiting as the real anti-abuse
+  control). A self-hoster on their own relay still sets a private `relay_token`.
+- A failed login-pin delivery is no longer silent either. When the relay
+  rejects a send it is now logged at ERROR with the reason and remedy, instead
+  of a single easily-missed WARN.
+
+### Improved
+- Northrou's own operator-facing CLI messages (the setup wizard URLs, service
+  and update status) are now highlighted so they stand out from interleaved log
+  lines instead of blending in. Colour is used only on a real terminal and is
+  suppressed under `NO_COLOR` or when output is piped, so journald/systemd logs
+  stay clean.
+
 ## v0.1.2 - 2026-07-20
 
 ### Fixed

@@ -24,6 +24,31 @@ func TestDefaultsApplied(t *testing.T) {
 	if c.Email.RelayDisabled {
 		t.Error("relay should be enabled by default")
 	}
+	// The shared client token must ship by default so the hosted relay accepts
+	// a fresh box; without it the relay returns 401 and no pin is delivered.
+	if c.Email.RelayToken != DefaultRelayToken {
+		t.Errorf("expected default relay token %q, got %q", DefaultRelayToken, c.Email.RelayToken)
+	}
+}
+
+func TestRelayTokenNotDefaultedForCustomRelay(t *testing.T) {
+	// A self-hoster on their own relay manages their own token; we must not
+	// override it (or inject the shared one) when the URL isn't the hosted one.
+	c := &Config{}
+	c.Email.RelayURL = "https://relay.example.com"
+	c.ApplyDefaults()
+	if c.Email.RelayToken != "" {
+		t.Errorf("custom relay must keep an empty token, got %q", c.Email.RelayToken)
+	}
+
+	// And an explicitly-set token on a custom relay is preserved.
+	c2 := &Config{}
+	c2.Email.RelayURL = "https://relay.example.com"
+	c2.Email.RelayToken = "private-abc"
+	c2.ApplyDefaults()
+	if c2.Email.RelayToken != "private-abc" {
+		t.Errorf("explicit token must be preserved, got %q", c2.Email.RelayToken)
+	}
 }
 
 func TestSaveLoadRoundTrip(t *testing.T) {
