@@ -30,6 +30,17 @@ func New(configPath string) (service.Service, *program, error) {
 		DisplayName: "Northrou Media Server",
 		Description: "Self-hosted media server for your physical collection.",
 		Arguments:   []string{"serve", "--no-browser", "--config", configPath},
+		// Windows only (kardianos ignores these keys elsewhere): an abrupt
+		// process exit (e.g. self-update replacing the binary and exiting to
+		// pick it up) registers with the SCM as a failure, so it needs an
+		// explicit recovery action to come back. systemd (Restart=always) and
+		// launchd (KeepAlive) already restart on any exit by default. Using
+		// plain string keys here, not the service.OnFailure* constants, since
+		// those are only declared in kardianos's Windows-only build file.
+		Option: service.KeyValue{
+			"OnFailure":              "restart",
+			"OnFailureDelayDuration": "5s",
+		},
 	}
 	prog := &program{configPath: configPath, done: make(chan struct{})}
 	svc, err := service.New(prog, cfg)
@@ -62,6 +73,10 @@ func (p *program) run(ctx context.Context) {
 		return
 	}
 	defer a.Close()
+	// Auto-update relies on the service manager restarting the process after
+	// it applies an update and exits; only turn it on for this managed path,
+	// never for a foreground `northrou serve`.
+	a.RunAsService = true
 	if err := a.Run(ctx); err != nil {
 		slog.Error("service run error", "err", err)
 	}

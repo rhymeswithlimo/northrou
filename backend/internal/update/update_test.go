@@ -80,6 +80,20 @@ func TestHasUpdate(t *testing.T) {
 	}
 }
 
+// TestHasUpdateVPrefixMismatch guards against comparing GoReleaser's
+// {{ .Version }} (no leading "v", what buildinfo.Version is stamped with)
+// against GitHub's tag_name (keeps the "v"): the same release must not report
+// itself as an update, or the auto-update watcher would loop forever.
+func TestHasUpdateVPrefixMismatch(t *testing.T) {
+	u := New("owner/repo", "0.1.0")
+	if u.HasUpdate(&Release{Version: "v0.1.0"}) {
+		t.Error("same release with mismatched v-prefix reported as an update")
+	}
+	if !u.HasUpdate(&Release{Version: "v0.2.0"}) {
+		t.Error("expected a genuinely newer release to be reported")
+	}
+}
+
 func TestLatestAndSelectArchive(t *testing.T) {
 	assetName := fmt.Sprintf("northrou_1.2.0_%s_%s.tar.gz", runtime.GOOS, archSuffix())
 	if runtime.GOOS == "windows" {

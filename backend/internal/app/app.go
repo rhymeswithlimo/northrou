@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/rhymeswithlimo/northrou/backend/internal/api"
@@ -29,6 +31,7 @@ import (
 	"github.com/rhymeswithlimo/northrou/backend/internal/subtitles"
 	"github.com/rhymeswithlimo/northrou/backend/internal/transcode"
 	"github.com/rhymeswithlimo/northrou/backend/internal/transcode/hwaccel"
+	"github.com/rhymeswithlimo/northrou/backend/internal/update"
 )
 
 // App holds long-lived runtime dependencies shared across subsystems.
@@ -44,6 +47,19 @@ type App struct {
 	API        *api.API
 	Server     *server.Server
 	FirstRun   bool
+
+	// sessions is set once ensureFFmpeg builds the streamer. Read from
+	// autoUpdate's goroutine to know whether it is safe to apply a pending
+	// update, concurrently with ensureFFmpeg's write, hence atomic. Unset
+	// (before ffmpeg is ready) means nothing can be streaming yet.
+	sessions atomic.Pointer[transcode.SessionManager]
+
+	// RunAsService marks that Run is executing under the OS service manager
+	// (set by internal/service before calling Run) rather than a foreground
+	// `northrou serve`. autoUpdate only runs in the former case: applying an
+	// update and exiting relies on the service manager restarting the
+	// process, which does not happen for a terminal-attached foreground run.
+	RunAsService bool
 }
 
 // New builds an App from the config at configPath, opening and migrating the
@@ -139,6 +155,10 @@ func (a *App) Run(ctx context.Context) error {
 		go a.startRemote(ctx)
 	}
 
+	if a.RunAsService {
+		go a.autoUpdate(ctx)
+	}
+
 	<-ctx.Done()
 	slog.Info("shutting down")
 	shutCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -175,6 +195,52 @@ func coordinatorWSURL(base string) string {
 	}
 }
 
+// autoUpdate checks GitHub for a newer release every few hours and, once no
+// stream is active, downloads, verifies, and applies it, then exits so the
+// service manager restarts into the new binary (see internal/service, which
+// configures each OS's manager to restart on exit). It never runs for dev
+// builds, when disabled in config, or inside a container, where the update
+// path is pulling a new image rather than self-mutating the running one.
+func (a *App) autoUpdate(ctx context.Context) {
+	if buildinfo.Version == "" || buildinfo.Version == "dev" {
+		return
+	}
+	if a.Cfg.Update.AutoUpdateDisabled {
+		slog.Info("auto-update disabled by config")
+		return
+	}
+	if inContainer() {
+		slog.Info("auto-update skipped: running in a container; update by pulling a new image instead")
+		return
+	}
+	u := update.New(update.DefaultRepo, buildinfo.Version)
+	update.NewWatcher(u, a.activeSessions).Run(ctx)
+}
+
+// activeSessions reports the current stream count for autoUpdate's quiet-
+// window check. Before ffmpeg is ready (sessions not yet built) nothing can be
+// streaming, so it reports zero rather than blocking on a subsystem that does
+// not exist yet.
+func (a *App) activeSessions() int {
+	sm := a.sessions.Load()
+	if sm == nil {
+		return 0
+	}
+	return sm.Count()
+}
+
+// inContainer reports whether the process is running inside a Docker/Podman
+// container, where self-replacing the binary would be lost on the next
+// `docker compose up` and updates should instead come from a new image tag.
+func inContainer() bool {
+	for _, p := range []string{"/.dockerenv", "/run/.containerenv"} {
+		if _, err := os.Stat(p); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
 // ensureFFmpeg makes the managed ffmpeg available, logging progress. Failure is
 // non-fatal: the API still serves; streaming just cannot transcode until it is
 // resolved.
@@ -204,6 +270,7 @@ func (a *App) ensureFFmpeg(ctx context.Context) {
 	streamer := transcode.NewStreamer(paths.FFmpeg, a.Cfg.Server.DataDir, hw, sm,
 		a.Cfg.Transcode.Tonemap, a.Cfg.Transcode.AllowSoftware4K, a.Cfg.Transcode.MaxBitrateKbps)
 	a.API.SetStreamer(streamer)
+	a.sessions.Store(sm)
 
 	// Playback is the priority on weak hardware: pause background scan and
 	// subtitle OCR work while any stream is active (they resume when idle).

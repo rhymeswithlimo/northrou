@@ -58,6 +58,9 @@ language = "en-US"
 relay_url = "https://app.northrou.sh"     # hosted pin delivery (default)
 # relay_token = "…"              # optional bearer token, if your relay requires one
 # relay_disabled = true          # turn the relay off; pins are logged instead
+
+[update]
+auto_update_disabled = false   # true turns off background self-update
 ```
 
 ## Fields
@@ -160,6 +163,16 @@ own relay and point `relay_url` at it. Out of the box you configure nothing.
 - **relay_token** - optional bearer token, if your relay requires one.
 - **relay_disabled** - set `true` to never use the relay (pins are logged
   instead).
+
+### `[update]`
+- **auto_update_disabled** - turn off the background self-update check. Off
+  (feature enabled) by default: the server checks GitHub for a newer release
+  every 6 hours and, once nothing is streaming, downloads, verifies, and
+  applies it, then exits so the system service restarts into the new version.
+  Never runs for a dev build or inside a container regardless of this
+  setting; Docker/Podman deployments update by pulling a new image tag
+  instead, since a self-replaced binary would be lost on the next
+  `docker compose up`. `northrou update` still works manually any time.
 
 ## Environment overrides
 

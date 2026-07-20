@@ -80,13 +80,27 @@ case ":$PATH:" in
 esac
 
 # --- register the service ---
+service_started=0
 if [ "${NORTHROU_NO_SERVICE:-}" != "1" ]; then
   info "Registering the system service…"
   if [ "$(id -u)" = "0" ] || [ "$os" = "darwin" ]; then
-    "$bindir/northrou" install || info "Service registration skipped (run 'northrou install' manually if desired)."
+    if "$bindir/northrou" install; then
+      service_started=1
+    else
+      info "Service registration skipped (run 'northrou install' manually if desired)."
+    fi
   else
     info "Run 'sudo ${bindir}/northrou install' to register the background service."
   fi
 fi
 
-info "Done! Run 'northrou setup' to create your account and point at your media."
+# `northrou install` above also starts the service immediately, which binds
+# its HTTP port right now - so `northrou setup` (meant for the not-yet-a-
+# service case) would just fail with the port already taken. Point to the
+# already-running instance instead of telling people to run a command that's
+# about to fail.
+if [ "$service_started" = "1" ]; then
+  info "Done! Northrou is already running. Open http://localhost:8674/ (or this machine's LAN address) in a browser to finish setup."
+else
+  info "Done! Run 'northrou setup' to create your account and point at your media."
+fi

@@ -24,6 +24,7 @@ type Config struct {
 	TMDB      TMDBConfig      `toml:"tmdb"`
 	Email     EmailConfig     `toml:"email"`
 	Auth      AuthConfig      `toml:"auth"`
+	Update    UpdateConfig    `toml:"update"`
 }
 
 // AuthConfig turns on social sign-in. It is off by default: the emailed pin
@@ -88,6 +89,18 @@ type TranscodeConfig struct {
 	// is almost always the right answer; set it to protect a box that shares
 	// its CPU with other work. Cheap stream-copy paths are never counted.
 	MaxTranscodes int `toml:"max_transcodes"`
+}
+
+// UpdateConfig controls the server's self-update behavior.
+type UpdateConfig struct {
+	// AutoUpdateDisabled turns off the background check: the server checks
+	// GitHub for a newer release every few hours and, once no stream is
+	// active, downloads, verifies, and applies it, then exits so the service
+	// manager restarts into the new version. On by default (like
+	// EmailConfig.RelayDisabled, false means the feature is enabled). Always
+	// off for dev builds and inside containers regardless of this setting,
+	// since neither has a meaningful "restart into the new binary" story.
+	AutoUpdateDisabled bool `toml:"auto_update_disabled"`
 }
 
 // TMDBConfig holds credentials for The Movie Database metadata provider.

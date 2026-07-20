@@ -13,6 +13,25 @@ and uses it as the GitHub release body, so an entry needs to exist here
 *before* publishing a version — the release fails otherwise. Write it as you
 land the change, not after the fact.
 
+## v0.1.1 - Unreleased
+
+### Added
+- Automatic self-update: the server now checks GitHub releases every 6 hours
+  and, once nothing is streaming, downloads, verifies, and applies a newer
+  release itself, then restarts into it. Off for dev builds and inside
+  containers (where updates come from a new image instead); disable
+  explicitly with `update.auto_update_disabled` in config.toml. `northrou
+  update` still works as a manual, on-demand check/apply.
+
+### Fixed
+- `northrou setup` no longer crashes with a raw "address already in use"
+  error when the system service installed by `install.sh` (which starts
+  immediately, since the install script runs it as root on Linux) is already
+  running. It now detects the running instance and points you at the browser
+  URL instead. `install.sh`'s final message is also now conditional on
+  whether it actually started the service, instead of always telling you to
+  run a command that would fail.
+
 ## v0.1.0 - 2026-07-19
 
 ### Added

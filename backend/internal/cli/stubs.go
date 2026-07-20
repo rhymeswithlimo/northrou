@@ -83,7 +83,7 @@ func newUpdateCmd() *cobra.Command {
 		Use:   "update",
 		Short: "Check for and apply updates from GitHub releases",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			u := update.New(githubRepo, buildinfo.Version)
+			u := update.New(update.DefaultRepo, buildinfo.Version)
 			latest, err := u.Latest(cmd.Context())
 			if err != nil {
 				return fmt.Errorf("check for updates: %w", err)
@@ -117,6 +117,3 @@ func newUpdateCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&checkOnly, "check", false, "only check; do not install")
 	return cmd
 }
-
-// githubRepo is the source of release binaries for self-update.
-const githubRepo = "rhymeswithlimo/northrou"

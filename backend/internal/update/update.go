@@ -24,11 +24,15 @@ import (
 	"github.com/minio/selfupdate"
 )
 
+// DefaultRepo is the source of official release binaries.
+const DefaultRepo = "rhymeswithlimo/northrou"
+
 // Updater checks for and applies updates from a GitHub repository's releases.
 type Updater struct {
 	repo    string // "owner/name"
 	current string // current version (e.g. "v1.2.3" or "dev")
 	http    *http.Client
+	baseURL string // overridable in tests; empty means the real GitHub API
 }
 
 // New builds an Updater for the given repo and current version.
@@ -54,7 +58,11 @@ type ghRelease struct {
 
 // Latest fetches the newest published release.
 func (u *Updater) Latest(ctx context.Context) (*Release, error) {
-	return u.latestFrom(ctx, fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", u.repo))
+	base := u.baseURL
+	if base == "" {
+		base = fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", u.repo)
+	}
+	return u.latestFrom(ctx, base)
 }
 
 // latestFrom fetches a release from an explicit URL (used by tests).
@@ -82,11 +90,30 @@ func (u *Updater) latestFrom(ctx context.Context, url string) (*Release, error) 
 
 // HasUpdate reports whether the latest release is newer than the current build.
 // Development builds ("dev") never auto-update.
+//
+// Comparison is on the version string with an optional leading "v" stripped
+// from both sides: GitHub's tag_name keeps it ("v1.2.3") but GoReleaser's
+// {{ .Version }}, which stamps buildinfo.Version, does not ("1.2.3"). Without
+// normalizing, the same release never matches itself and every check reports
+// an update, which the auto-update watcher would then "apply" and restart
+// into forever.
 func (u *Updater) HasUpdate(latest *Release) bool {
-	if u.current == "dev" || u.current == "" {
+	if !u.enabled() || latest.Version == "" {
 		return false
 	}
-	return latest.Version != "" && latest.Version != u.current
+	return normalizeVersion(latest.Version) != normalizeVersion(u.current)
+}
+
+// normalizeVersion strips an optional leading "v" for version comparison.
+func normalizeVersion(v string) string {
+	return strings.TrimPrefix(v, "v")
+}
+
+// enabled reports whether this build participates in updates at all. A build
+// with no stamped version (local `go build`/`go run`) or explicitly "dev"
+// never checks or applies updates.
+func (u *Updater) enabled() bool {
+	return u.current != "" && u.current != "dev"
 }
 
 // Apply downloads, verifies, extracts, and installs the update, replacing the
@@ -162,7 +189,7 @@ func archSuffix() string {
 // standard "<hex>  <name>" checksums file.
 func verifyChecksum(archive []byte, archiveName string, sums []byte) error {
 	want := ""
-	for _, line := range strings.Split(string(sums), "\n") {
+	for line := range strings.SplitSeq(string(sums), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) == 2 && fields[1] == archiveName {
 			want = fields[0]
