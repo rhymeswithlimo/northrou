@@ -51,6 +51,19 @@ func TestRelayTokenNotDefaultedForCustomRelay(t *testing.T) {
 	}
 }
 
+func TestHostedRelayTokenIsForced(t *testing.T) {
+	// A box left with a stale token against the hosted relay (e.g. from an
+	// earlier manual edit) must self-heal to the shared token, or it 401s
+	// forever. Forcing it is safe: the hosted relay only accepts the shared one.
+	c := &Config{}
+	c.Email.RelayURL = DefaultRelayURL
+	c.Email.RelayToken = "stale-wrong-value"
+	c.ApplyDefaults()
+	if c.Email.RelayToken != DefaultRelayToken {
+		t.Errorf("hosted relay must force the shared token, got %q", c.Email.RelayToken)
+	}
+}
+
 func TestSaveLoadRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.toml")

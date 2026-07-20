@@ -3,7 +3,7 @@
 // The two steps are sibling <section>s; only one is ever visible. Both are real
 // <form>s, so Enter submits and the browser handles autofill normally.
 
-import { $, show, hide, replay, setError } from '../lib/dom.js';
+import { $, show, hide, replay, setError, reveal } from '../lib/dom.js';
 import { mountAsciiArt } from '../components/ascii-art.js';
 import { createOtpInput } from '../components/otp.js';
 import { requestPin, verifyPin } from '../data/account.js';
@@ -34,8 +34,10 @@ mountAsciiArt($('#ascii'));
 // Pair with a server first; there is nothing to sign in to otherwise.
 if (!(await requireServer())) throw new Error('no server');
 
-// Already signed in: nothing to do here.
+// Already signed in: nothing to do here but move on (stay blank while we go).
+// Otherwise this is the right page, so reveal it.
 if (isSignedIn()) window.location.replace('profiles.html');
+else reveal();
 
 const shake = (el) => replay(el, 'shake');
 

@@ -56,7 +56,7 @@ language = "en-US"
 # Sign-in pins are delivered through the coordination relay, so you do not have
 # to configure anything here or run a mail server.
 relay_url = "https://app.northrou.sh"     # hosted pin delivery (default)
-# relay_token = "…"              # optional bearer token, if your relay requires one
+# relay_token = "…"              # only for a custom relay; the hosted one is automatic
 # relay_disabled = true          # turn the relay off; pins are logged instead
 
 [update]
@@ -160,7 +160,9 @@ own relay and point `relay_url` at it. Out of the box you configure nothing.
   media. Email is readable in transit by any mail hop, so the relay operator can
   technically see codes and recipient addresses. If that matters to you, run your
   own relay and point this at it.
-- **relay_token** - optional bearer token, if your relay requires one.
+- **relay_token** - bearer token for a *custom* relay. Against the hosted
+  default the box presents a built-in shared token automatically, so you leave
+  this unset; a value here is ignored while `relay_url` is the hosted one.
 - **relay_disabled** - set `true` to never use the relay (pins are logged
   instead).
 

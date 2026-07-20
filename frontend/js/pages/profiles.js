@@ -1,6 +1,6 @@
 // Profile picker.
 
-import { $ } from '../lib/dom.js';
+import { $, reveal } from '../lib/dom.js';
 import { statePanel, toast } from '../components/states.js';
 import { listProfiles, createProfile, MAX_PROFILES } from '../data/profiles.js';
 import { selectProfile } from '../data/account.js';
@@ -17,6 +17,7 @@ const listEl = $('#profiles');
 
 if (!(await requireServer())) throw new Error('no server');
 if (!isSignedIn()) window.location.replace('login.html');
+else reveal();
 
 function profileNode(profile) {
     const node = $('#tpl-profile').content.firstElementChild.cloneNode(true);

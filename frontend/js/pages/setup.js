@@ -8,8 +8,12 @@
 // Two steps, and neither collects a path: media folders are added on the box
 // with `northrou admin`, where they can be checked against the real filesystem.
 
-import { $, $$, show, hide, setError } from '../lib/dom.js';
+import { $, $$, show, hide, setError, reveal } from '../lib/dom.js';
 import { toast } from '../components/states.js';
+
+// Setup never redirects away on boot (an already-set-up box shows a message in
+// place), so it always stays: reveal immediately.
+reveal();
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 

@@ -1,6 +1,6 @@
 // Home: featured hero, Continue Watching, and the recommendation rows.
 
-import { $ } from '../lib/dom.js';
+import { $, reveal } from '../lib/dom.js';
 import { heroMeta } from '../lib/format.js';
 import { mountNavAutoHide } from '../components/nav.js';
 import { posterCard, continueCard, row } from '../components/card.js';
@@ -116,6 +116,10 @@ document.addEventListener('click', (e) => {
 // box it belongs to; a fresh box needs setup; a second device needs to sign in.
 // Doing this first means a redirect fires ahead of any shell or skeleton flash.
 if (await requireServer() && await requireReady()) {
+    // Staying here: reveal before building the shell so the home skeleton is
+    // what appears, not a flash on the way to a redirect that isn't happening.
+    reveal();
+
     // On mobile the shell puts a real tab bar over the WebView and this hides
     // the web nav; everywhere else this is a no-op and the web nav stays.
     await mountNativeChrome({ current: 'home' });

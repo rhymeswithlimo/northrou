@@ -168,16 +168,20 @@ func (c *Config) ApplyDefaults() {
 	if c.TMDB.Language == "" {
 		c.TMDB.Language = "en-US"
 	}
-	if c.Email.RelayURL == "" && !c.Email.RelayDisabled {
-		c.Email.RelayURL = DefaultRelayURL
-	}
-	// Present the shared client token to the hosted relay so a fresh box can
-	// deliver pins with no configuration. Only when actually pointed at the
-	// hosted relay: a self-hoster with a custom relay_url keeps whatever token
-	// (or none) they set. Runs after the RelayURL default above so a box that
-	// defaulted its URL is recognized as using the hosted relay here.
-	if c.Email.RelayToken == "" && c.Email.RelayURL == DefaultRelayURL && !c.Email.RelayDisabled {
-		c.Email.RelayToken = DefaultRelayToken
+	if !c.Email.RelayDisabled {
+		if c.Email.RelayURL == "" {
+			c.Email.RelayURL = DefaultRelayURL
+		}
+		// Talking to the hosted relay always means the shared client token, so
+		// force it rather than only defaulting an empty value. A custom token
+		// against the hosted relay is always wrong (it only accepts the shared
+		// one), and forcing here self-heals a box left with a stale relay_token
+		// from earlier manual config, which would otherwise 401 forever with no
+		// pin ever delivered. A self-hoster on their own relay sets a different
+		// relay_url, so their token is left untouched.
+		if c.Email.RelayURL == DefaultRelayURL {
+			c.Email.RelayToken = DefaultRelayToken
+		}
 	}
 }
 

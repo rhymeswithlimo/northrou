@@ -12,6 +12,12 @@ export function createOtpInput(root) {
         if (!chars.length) return;
         chars.forEach((d, i) => { inputs[start + i].value = d; });
         inputs[Math.min(start + chars.length, inputs.length) - 1].focus();
+        // Setting .value in code does not emit 'input', so a pasted or
+        // autofilled code would leave anything gating on completeness stale -
+        // e.g. the Unlock/Verify button, which enables only when all boxes are
+        // filled, would stay disabled even though the code is fully entered.
+        // Emit one bubbling input event so those listeners re-check.
+        root.dispatchEvent(new Event('input', { bubbles: true }));
     }
 
     inputs.forEach((input, index) => {

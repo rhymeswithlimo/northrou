@@ -13,7 +13,34 @@ and uses it as the GitHub release body, so an entry needs to exist here
 *before* publishing a version — the release fails otherwise. Write it as you
 land the change, not after the fact.
 
-## v0.1.3 - Unreleased
+## v0.1.4 - Unreleased
+
+### Fixed
+- Login pins and admin codes now self-heal against a stale relay token. When a
+  box is pointed at the hosted relay it always uses the shared client token, so
+  a box left with a wrong `relay_token` from earlier manual config no longer
+  gets a silent 401 forever with no code ever delivered. Previously the shared
+  token was only filled in when `relay_token` was empty.
+- The client no longer flashes the wrong page before a boot-time redirect
+  (e.g. opening the app URL while signed out briefly showed the home screen
+  before bouncing to sign-in). Every page now starts hidden and reveals itself
+  only once its boot code decides to stay; a redirect happens on a blank screen.
+  No-JS visitors and a missed reveal both degrade gracefully (shown, not stuck
+  blank).
+- `northrou serve` no longer dies with a raw "address already in use" when the
+  system service is already running. Like `northrou setup`, it now detects the
+  running Northrou and prints the URL(s) to open instead. If the port is held
+  by a *different* program, it says so and tells you how to move Northrou off
+  it (set `port` under `[server]` in config.toml, with a free port suggested),
+  rather than surfacing the bind error. `setup` gets the same foreign-port
+  guidance.
+- OTP code entry: pasting or autofilling a 6-digit code (the natural way to
+  enter one) left the Unlock / Verify button disabled, because filling the
+  boxes in code doesn't emit an input event and the button's enable check never
+  re-ran. It now does. Affected admin unlock and could affect sign-in.
+- Settings: the current profile is now marked `(you)` instead of "This profile".
+
+## v0.1.3 - 2026-07-20
 
 ### Fixed
 - Opening the server's address in a browser on a not-yet-configured box now

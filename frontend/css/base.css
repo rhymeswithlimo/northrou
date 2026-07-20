@@ -11,6 +11,17 @@
  * effective, but it fought the CSS instead of expressing the intent.)
  */
 
+/* ==================== BOOT GATE ==================== */
+
+/* Every page starts hidden and is revealed by JS once it decides to stay (see
+ * dom.js `reveal`). This keeps a boot-time redirect - e.g. index -> login when
+ * the visitor isn't signed in - on a blank screen instead of flashing the wrong
+ * page first. The `booting` class is added by a tiny inline <head> script, so a
+ * no-JS visitor (script never runs) is never hidden, and a JS visitor whose
+ * page forgets to reveal is un-hidden by that script's timeout backstop. Only
+ * visibility is toggled, so layout/scrollbar don't shift on reveal. */
+html.booting body { visibility: hidden; }
+
 /* ==================== RESET ==================== */
 
 *,

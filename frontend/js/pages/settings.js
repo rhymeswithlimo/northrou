@@ -1,6 +1,6 @@
 // Settings.
 
-import { $, show, hide, setError } from '../lib/dom.js';
+import { $, show, hide, setError, reveal } from '../lib/dom.js';
 import { segmented, toggle } from '../components/controls.js';
 import { createOtpInput } from '../components/otp.js';
 import { toast, mountOfflineBanner, statePanel } from '../components/states.js';
@@ -311,9 +311,12 @@ async function init() {
         [me, profiles] = await Promise.all([getMe(), listProfiles()]);
     } catch (err) {
         if (err.isAuth) {
+            // Redirecting to sign in: stay blank, don't flash the settings shell.
             window.location.replace('login.html');
             return;
         }
+        // Staying to show the error: reveal so it isn't hidden behind the boot gate.
+        reveal();
         $('.settings').replaceChildren(statePanel({
             variant: 'error',
             title: "Couldn't reach the server",
@@ -323,6 +326,7 @@ async function init() {
         return;
     }
 
+    reveal();
     $('#account-email').textContent = me.account.email;
     $('#current-profile').textContent = me.profile.name;
     $('#unlock-note').textContent =

@@ -3,7 +3,7 @@
 // This runs before auth, because there is nothing to sign in to until the
 // client knows which box it is talking to.
 
-import { $, show, hide, setError } from '../lib/dom.js';
+import { $, show, hide, setError, reveal } from '../lib/dom.js';
 import { useTunnel } from '../api/transport.js';
 import {
     setServer, normalizeCode, isSameOrigin, DEFAULT_COORD_URL,
@@ -18,7 +18,9 @@ const codeError = $('#code-error');
 const status = $('#connect-status');
 
 // Served off the box: it is already right there, and pairing is meaningless.
+// Redirect on a blank screen; otherwise this is the right page, so reveal it.
 if (isSameOrigin()) window.location.replace('index.html');
+else reveal();
 
 /** Format as NR-XXXX-XXXX while typing, without fighting the caret at the end. */
 codeInput.addEventListener('input', () => {

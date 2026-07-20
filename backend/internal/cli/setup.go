@@ -38,8 +38,7 @@ func newSetupCmd() *cobra.Command {
 			// the running instance already serves this same wizard, and
 			// trying to bind the same port again would just fail.
 			if alreadyServing(a.Cfg.Server.Port) {
-				notice("Northrou is already running as a service.")
-				printSetupURLs(a.Cfg.Server.Port)
+				announceAlreadyRunning(a.Cfg.Server.Port)
 				return nil
 			}
 
@@ -48,8 +47,10 @@ func newSetupCmd() *cobra.Command {
 			defer stop()
 
 			// Start server first, then open the browser once it is listening.
+			// If the port is held by another program, portConflict turns the
+			// raw bind error into actionable guidance.
 			if err := a.Server.Start(); err != nil {
-				return err
+				return portConflict(err, a.Cfg.Server.Port)
 			}
 			printSetupURLs(a.Cfg.Server.Port)
 			setup.OpenBrowser(url)

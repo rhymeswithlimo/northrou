@@ -4,6 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
+    <!-- Hide the page until its boot code decides to stay (base.css BOOT GATE),
+         so a redirect lands on a blank screen instead of flashing this page.
+         The timeout is a backstop if a code path forgets to reveal(). -->
+    <script>(function(d){d.classList.add('booting');setTimeout(function(){d.classList.remove('booting');},2000);})(document.documentElement);</script>
+
     <title>Login - Northrou</title>
 
     <link rel="icon" href="assets/favicon-dark.svg" media="(prefers-color-scheme: light)">

@@ -136,8 +136,10 @@ speaks no SMTP itself, deliberately: self-hosted outbound mail is the classic
 way to lock yourself out of your own login.
 
 The relay has no account list and cannot distinguish a real address from a
-fabricated one, so it is protected by input validation and rate limiting rather
-than authentication. The **per-recipient limit is the load-bearing control**: it
+fabricated one, so it is protected by input validation and rate limiting, not
+real authentication. Boxes present a shared client token (shipped in the
+open-source build, so not a secret) that turns away casual scanners of
+`/v1/pin/send`, but the **per-recipient limit is the load-bearing control**: it
 stops the relay from being used to spam a third party's inbox with sign-in
 codes. Per-server and global limits protect the operator's cost and sender
 reputation. Mail is readable in transit like any email, so the relay is a

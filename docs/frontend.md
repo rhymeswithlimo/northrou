@@ -77,6 +77,18 @@ the server reads it as a stream with a 4-byte `io.ReadFull`, and pion returns
 `ErrShortBuffer` if the message is bigger than the read. Frames must therefore be
 sent as **two messages**, header then payload, exactly as Go's `writeFrame` does.
 
+### Page boot: guard, then reveal
+
+Each entry module runs a boot guard before it renders. `requireServer()` resolves
+the transport (redirecting to `connect.html` when no server is paired); the app
+index additionally checks first-run/sign-in state and routes to `setup.html` or
+`login.html` as needed. To avoid flashing the wrong screen before a redirect,
+every page starts hidden - an inline `<head>` script sets a `booting` class that
+`base.css` hides the body on - and calls `reveal()` (`js/lib/dom.js`) only on the
+paths that **stay** (rendered, empty, or error), never before a redirect. A new
+page must call `reveal()` on each of its stay paths; a timeout backstop reveals
+anyway if one is missed, so the failure mode is a flash, not a blank screen.
+
 ### The player is native on every platform
 
 An `<video>` tag will not deliver 4K HEVC / TrueHD Atmos with
