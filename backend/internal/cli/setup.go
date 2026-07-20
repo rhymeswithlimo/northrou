@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -36,7 +37,8 @@ func newSetupCmd() *cobra.Command {
 			// the running instance already serves this same wizard, and
 			// trying to bind the same port again would just fail.
 			if alreadyServing(a.Cfg.Server.Port) {
-				fmt.Printf("Northrou is already running as a service.\nOpen %s in your browser to finish setup.\n", url)
+				fmt.Println("Northrou is already running as a service.")
+				printSetupURLs(a.Cfg.Server.Port)
 				return nil
 			}
 
@@ -48,11 +50,44 @@ func newSetupCmd() *cobra.Command {
 			if err := a.Server.Start(); err != nil {
 				return err
 			}
+			printSetupURLs(a.Cfg.Server.Port)
 			setup.OpenBrowser(url)
 			<-ctx.Done()
 			return a.Close()
 		},
 	}
+}
+
+// printSetupURLs prints every address the setup wizard is reachable at,
+// straight to stdout (not a log line, which can be filtered or missed). On a
+// headless box "localhost" refers to the box itself, not whatever device you
+// are reading this from, so this also lists the machine's LAN addresses -
+// headless/self-hosted is the primary use case here, not an edge case.
+func printSetupURLs(port int) {
+	fmt.Println("Setup wizard ready. Open one of these in a browser:")
+	fmt.Printf("  http://localhost:%d/   (if you are on this machine)\n", port)
+	for _, ip := range localIPv4s() {
+		fmt.Printf("  http://%s:%d/   (from another device on your network)\n", ip, port)
+	}
+}
+
+// localIPv4s lists this machine's non-loopback IPv4 addresses.
+func localIPv4s() []string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return nil
+	}
+	var ips []string
+	for _, addr := range addrs {
+		ipNet, ok := addr.(*net.IPNet)
+		if !ok || ipNet.IP.IsLoopback() {
+			continue
+		}
+		if v4 := ipNet.IP.To4(); v4 != nil {
+			ips = append(ips, v4.String())
+		}
+	}
+	return ips
 }
 
 // alreadyServing reports whether something is already answering health

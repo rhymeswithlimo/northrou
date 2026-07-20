@@ -39,3 +39,11 @@ func TestAlreadyServing(t *testing.T) {
 		t.Error("expected alreadyServing to report false for a closed port")
 	}
 }
+
+func TestLocalIPv4sExcludesLoopback(t *testing.T) {
+	for _, ip := range localIPv4s() {
+		if ip == "127.0.0.1" {
+			t.Errorf("localIPv4s should exclude loopback, got %v", localIPv4s())
+		}
+	}
+}

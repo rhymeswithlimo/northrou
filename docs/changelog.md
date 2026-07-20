@@ -31,6 +31,12 @@ land the change, not after the fact.
   URL instead. `install.sh`'s final message is also now conditional on
   whether it actually started the service, instead of always telling you to
   run a command that would fail.
+- `northrou setup` now prints the wizard's URL(s) plainly to stdout instead of
+  only logging it at WARN level when auto-opening a browser fails (the normal
+  case on a headless box). It also lists the machine's actual LAN addresses,
+  not just `localhost` - which was actively wrong guidance for the headless
+  case, since "localhost" means the server itself, not the device you're
+  reading the message on.
 
 ## v0.1.0 - 2026-07-19
 
