@@ -104,3 +104,4 @@ if [ "$service_started" = "1" ]; then
 else
   info "Done! Run 'northrou setup' to create your account and point at your media."
 fi
+info "Away from home, you and anyone with your connection code can sign in from any device at https://app.northrou.sh."

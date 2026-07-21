@@ -1,12 +1,14 @@
-# Northrou's public coordination stack, on one hostname. Caddy terminates TLS
-# (automatic Let's Encrypt) and routes by path, since the coordinator and relay
-# never overlap:
-#   coordinator: /ws, /oauth/*, /healthz, /stats
+# Northrou's coordination stack. Caddy terminates TLS (automatic Let's Encrypt)
+# and routes by path, since the coordinator and relay never overlap:
+#   coordinator: /ws, /oauth/*, /healthz, /stats  (and the catch-all)
 #   relay:       /v1/pin/send  (and its own /healthz, not reachable from here)
 #
-# See docs/deploy-coordination.md for the full runbook.
+# The web client is NOT served here: it is hosted on Cloudflare Pages at
+# app.northrou.sh (built from GitHub on release; see .github/workflows/
+# deploy-web.yml). Coordination lives at coord.northrou.sh so the two don't
+# collide on one hostname. See docs/deploy-coordination.md.
 
-app.northrou.sh {
+coord.northrou.sh {
 	handle /v1/* {
 		reverse_proxy relay:9100
 	}

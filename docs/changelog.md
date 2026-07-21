@@ -15,6 +15,21 @@ land the change, not after the fact.
 
 ## v0.1.4 - Unreleased
 
+### Added
+- Hosted web client at `app.northrou.sh`. People can sign in and stream from any
+  browser, not just the desktop app - it pairs to a box over the tunnel the same
+  way. It's a static build hosted on Cloudflare Pages and deployed from GitHub on
+  each release (`.github/workflows/deploy-web.yml`). A browser loading the client
+  now correctly reaches the box over the tunnel instead of assuming it was served
+  by the box; setup and install mention the from-anywhere URL.
+
+### Improved
+- The default coordination host moved from `app.northrou.sh` to
+  `coord.northrou.sh`, freeing `app.northrou.sh` for the hosted web client above.
+  Boxes and clients now default to `wss://coord.northrou.sh/ws` for signaling and
+  `https://coord.northrou.sh` for pin delivery. Self-hosters pointing at their own
+  coordinator are unaffected.
+
 ### Fixed
 - Login pins and admin codes now self-heal against a stale relay token. When a
   box is pointed at the hosted relay it always uses the shared client token, so

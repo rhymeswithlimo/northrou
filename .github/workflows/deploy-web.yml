@@ -1,0 +1,47 @@
+# Builds the Vite web client and deploys it to Cloudflare Pages, which serves it
+# at app.northrou.sh. Runs ONLY when a GitHub release is published - not on every
+# push - so the hosted client moves forward in lockstep with releases. Can also
+# be triggered by hand from the Actions tab (workflow_dispatch).
+#
+# Required repo secrets (Settings -> Secrets and variables -> Actions):
+#   CLOUDFLARE_API_TOKEN   - token with the "Cloudflare Pages: Edit" permission
+#   CLOUDFLARE_ACCOUNT_ID  - your Cloudflare account id
+# And a Cloudflare Pages project named below (northrou-web), with app.northrou.sh
+# added as its custom domain. See docs/deploy-coordination.md.
+
+name: Deploy web client
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+# One deploy at a time; a newer release supersedes an in-flight one.
+concurrency:
+  group: deploy-web
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build client
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy frontend/dist --project-name=northrou-web

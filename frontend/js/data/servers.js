@@ -13,11 +13,25 @@ const KEY = 'northrou.server';
  *            mode?: 'tunnel'}} Server
  */
 
-export const DEFAULT_COORD_URL = 'wss://app.northrou.sh/ws';
+export const DEFAULT_COORD_URL = 'wss://coord.northrou.sh/ws';
 
-/** Served from the box itself: same-origin, no bootstrap needed. */
+// Where the official hosted web client is served (Cloudflare Pages). A browser
+// on this host is the standalone client: it has no box API of its own and must
+// reach a box over the tunnel, unlike a browser a box serves at its own address.
+// The coordinator lives on a different host (DEFAULT_COORD_URL) since the client
+// is hosted separately, so this is its own constant, not derived from that URL.
+const HOSTED_CLIENT_HOST = 'app.northrou.sh';
+
+/**
+ * Served from the box itself: same-origin, so talk to it directly with no
+ * bootstrap. True for a browser a box serves (its LAN/local address); false for
+ * the desktop app and for the hosted web client, both of which reach the box
+ * over the tunnel.
+ */
 export const isSameOrigin = () =>
-    typeof window !== 'undefined' && !('__TAURI_INTERNALS__' in window);
+    typeof window !== 'undefined'
+    && !('__TAURI_INTERNALS__' in window)
+    && window.location.host !== HOSTED_CLIENT_HOST;
 
 /** @returns {Server|null} */
 export function getServer() {

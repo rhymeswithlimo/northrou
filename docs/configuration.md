@@ -29,7 +29,7 @@ show_dirs  = ["/media/TV"]
 
 [remote]
 enabled = true
-coordination_url = "https://app.northrou.sh"
+coordination_url = "https://coord.northrou.sh"
 self_hosted_coordinator = false
 server_id = "…"         # generated at setup
 connection_code = "NR-XXXX-XXXX"  # share with your devices
@@ -55,7 +55,7 @@ language = "en-US"
 [email]
 # Sign-in pins are delivered through the coordination relay, so you do not have
 # to configure anything here or run a mail server.
-relay_url = "https://app.northrou.sh"     # hosted pin delivery (default)
+relay_url = "https://coord.northrou.sh"   # hosted pin delivery (default)
 # relay_token = "…"              # only for a custom relay; the hosted one is automatic
 # relay_disabled = true          # turn the relay off; pins are logged instead
 
@@ -95,7 +95,7 @@ names that don't parse as episodes on their own.
   network reaches it directly regardless, since that is just the server serving
   its own pages.
 - **coordination_url** - the signaling broker that lets remote devices find your
-  server. Defaults to the hosted `app.northrou.sh`, so remote access works out
+  server. Defaults to the hosted `coord.northrou.sh`, so remote access works out
   of the box with nothing extra to run. Point it at your own coordinator only if
   you want to self-host the signaling too (advanced).
 - **self_hosted_coordinator** - informational flag noting you run your own
@@ -155,7 +155,7 @@ by most ISPs), and a sign-in code that lands in spam locks you out of your own
 server. Delivery is the relay's job; if you want mail fully in-house, run your
 own relay and point `relay_url` at it. Out of the box you configure nothing.
 
-- **relay_url** - pin-delivery service. Defaults to `https://app.northrou.sh`.
+- **relay_url** - pin-delivery service. Defaults to `https://coord.northrou.sh`.
   The relay delivers the email; it never sees or stores your account, library, or
   media. Email is readable in transit by any mail hop, so the relay operator can
   technically see codes and recipient addresses. If that matters to you, run your

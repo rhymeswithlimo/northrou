@@ -6,10 +6,13 @@ and Caddy in front of both. This is maintainer infrastructure, not something a
 self-hoster needs to run — see [configuration.md](configuration.md) for
 pointing a box at a coordinator (the hosted default or your own).
 
-Everything below assumes one small box and the hostname `app.northrou.sh`. The
-coordinator and relay share that single hostname because their paths never
-collide (`/ws`, `/oauth/*` vs `/v1/pin/send`), so there's one DNS record and
-one TLS cert instead of two.
+Everything below assumes one small box and the hostname `coord.northrou.sh`.
+The coordinator and relay share that single hostname because their paths never
+collide (`/ws`, `/oauth/*` vs `/v1/pin/send`), so there's one DNS record and one
+TLS cert. The web client is hosted separately on Cloudflare Pages at
+`app.northrou.sh` (built from GitHub on release; see "The web client on
+Cloudflare Pages" below), so client and coordination never fight over one
+hostname.
 
 ```
   clients / home servers            Vultr box (Ubuntu LTS)
@@ -24,7 +27,7 @@ one TLS cert instead of two.
 Only Caddy is exposed on 80/443. The coordinator and relay listen on plain
 HTTP inside the Docker network; Caddy terminates TLS. The OAuth broker isn't a
 third service — it's built into the coordinator, served under
-`app.northrou.sh/oauth/*`.
+`coord.northrou.sh/oauth/*`.
 
 ## 1. Accounts to line up first (some have delays)
 
@@ -59,18 +62,19 @@ ufw --force enable
 
 ## 3. DNS
 
-One record, at wherever `northrou.sh` is managed:
+One record for coordination, at wherever `northrou.sh` is managed:
 
 | Type | Name | Value |
 |---|---|---|
-| A | app | box's public IPv4 |
+| A | coord | box's public IPv4 |
 
-(AAAA too if the box has IPv6.) If DNS is on Cloudflare, set it to DNS-only
-(grey cloud) — Caddy's automatic Let's Encrypt needs to answer ACME on port 80
-directly. Verify before continuing:
+(AAAA too if the box has IPv6.) `app` is not a box record — Cloudflare Pages
+owns it as a custom domain (see the web-client section below). If DNS is on
+Cloudflare, set the `coord` record to DNS-only (grey cloud) — Caddy's automatic
+Let's Encrypt needs to answer ACME on port 80 directly. Verify before continuing:
 
 ```sh
-dig +short app.northrou.sh    # must return the box's IP
+dig +short coord.northrou.sh    # must return the box's IP
 ```
 
 ## 4. Get the code and generate the OAuth signing key
@@ -94,7 +98,7 @@ chmod 600 oauth-signing.pem
 2. APIs & Services → OAuth consent screen → External → fill in the basics; add
    your email as a test user, or publish.
 3. Credentials → Create Credentials → OAuth client ID → Web application.
-4. Authorized redirect URI (exact): `https://app.northrou.sh/oauth/google/callback`
+4. Authorized redirect URI (exact): `https://coord.northrou.sh/oauth/google/callback`
 5. Save the Client ID and Client secret.
 
 ## 6. Sign in with Apple
@@ -104,8 +108,8 @@ chmod 600 oauth-signing.pem
 2. Identifiers → + → Services IDs. Create one (e.g. `sh.northrou.signin`) —
    this is `OAUTH_APPLE_SERVICE_ID`.
 3. Edit it → enable Sign in with Apple → Configure:
-   - Domains and Subdomains: `app.northrou.sh`
-   - Return URLs: `https://app.northrou.sh/oauth/apple/callback`
+   - Domains and Subdomains: `coord.northrou.sh`
+   - Return URLs: `https://coord.northrou.sh/oauth/apple/callback`
 4. Keys → + → enable Sign in with Apple → register → download the `.p8`
    (one-time download). Note the Key ID.
 5. Your Team ID is in the top-right of the developer portal.
@@ -133,7 +137,7 @@ chmod 600 deploy.yml   # holds secrets; never commit it (already gitignored)
 
 Fill in `deploy.yml`: the pasted contents of `oauth-signing.pem` and the Apple
 `.p8`, the Google/Apple client credentials, and the SMTP settings. `Caddyfile`
-in the repo root needs no edits — it already routes `app.northrou.sh` by path.
+in the repo root needs no edits — it already routes `coord.northrou.sh` by path.
 
 `OAUTH_ISSUER` is not optional — `coordination/cmd/coordinator/main.go` won't
 build the OAuth broker without it, and the coordinator falls back to being a
@@ -142,9 +146,10 @@ buttons don't appear, check this first.
 
 `OAUTH_REDIRECTS` is the allow-list of client redirect targets the broker will
 honor (a bare entry is an exact match, one ending in `/` is a prefix match).
-`northrou://` covers the native apps; add any fixed web-client origins you
-control. An empty list refuses every redirect — the safe failure, since an
-open redirector would launder a real Google login into any site.
+`northrou://` covers the native apps and `https://app.northrou.sh/` covers the
+hosted web client; add any other fixed web-client origins you control. An empty
+list refuses every redirect — the safe failure, since an open redirector would
+launder a real Google login into any site.
 
 ```sh
 docker compose -f deploy.yml up -d --build
@@ -154,8 +159,8 @@ docker compose -f deploy.yml logs -f   # watch for "oauth broker enabled" and ce
 ## 9. Verify
 
 ```sh
-curl https://app.northrou.sh/healthz         # -> ok
-curl https://app.northrou.sh/oauth/jwks      # -> 404 until OAuth is configured (step 9b); JWKS JSON once it is
+curl https://coord.northrou.sh/healthz       # -> ok
+curl https://coord.northrou.sh/oauth/jwks    # -> 404 until OAuth is configured (step 9b); JWKS JSON once it is
 
 # --http1.1 matters: curl negotiates HTTP/2 over TLS by default, and h2 doesn't
 # do the old Connection:Upgrade handshake, so you'd see a 426 instead of 101.
@@ -163,7 +168,7 @@ curl https://app.northrou.sh/oauth/jwks      # -> 404 until OAuth is configured 
 # without it curl just hangs after printing the response.
 curl -i -N --http1.1 --max-time 5 -H "Connection: Upgrade" -H "Upgrade: websocket" \
   -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: x3JJHMbDL1EzLkh9GBhXDw==" \
-  https://app.northrou.sh/ws                 # -> 101
+  https://coord.northrou.sh/ws               # -> 101
 
 # relay's own /healthz is under the catch-all route, so check it inside the
 # box -- but not via `exec relay`: the relay image is distroless (no shell, no
@@ -196,6 +201,41 @@ Until you cut the first release, the script's every run is a no-op ("no
 published release yet"). To trigger an update check on demand rather than
 waiting for the timer: `systemctl start coordination-autoupdate.service`.
 
+## The web client on Cloudflare Pages
+
+The web client (the Vite app in `frontend/`) is hosted on Cloudflare Pages at
+`app.northrou.sh`, separate from this box. It's a static build that reaches
+boxes over the tunnel, so it needs no server of its own. GitHub Actions builds
+and deploys it **only when a release is published**
+(`.github/workflows/deploy-web.yml`), so `app.northrou.sh` moves in lockstep
+with releases, not on every push.
+
+One-time setup:
+
+1. **Create the Pages project.** Cloudflare dashboard → Workers & Pages →
+   Create → Pages → **Upload assets** (a "Direct Upload" project — the GitHub
+   Action does the building, so you don't connect the Git integration here).
+   Name it `northrou-web` to match `--project-name` in the workflow. Drop in the
+   current `frontend/dist` once to create it, or let the first release populate
+   it.
+2. **Add the custom domain.** Project → Custom domains → Set up a custom domain
+   → `app.northrou.sh`. Cloudflare wires the DNS automatically if `northrou.sh`
+   is on Cloudflare. This is what points `app.northrou.sh` at Pages, so `app`
+   must NOT also be a box A record (see the DNS step — only `coord` is).
+3. **Create an API token.** Dashboard → My Profile → API Tokens → Create Token →
+   "Cloudflare Pages — Edit" template (or a custom token with Account →
+   Cloudflare Pages → Edit). Copy it.
+4. **Add repo secrets.** GitHub repo → Settings → Secrets and variables →
+   Actions → New repository secret:
+   - `CLOUDFLARE_API_TOKEN` — the token from step 3.
+   - `CLOUDFLARE_ACCOUNT_ID` — dashboard → Workers & Pages → the account ID in
+     the right sidebar.
+5. **Deploy.** Publish a GitHub release, or run the "Deploy web client" workflow
+   by hand from the Actions tab.
+
+The client's built-in coordinator URL is `wss://coord.northrou.sh/ws`, so bring
+coordination up there (this box) before shipping a client that points at it.
+
 ## Things to know
 
 - **No TURN server.** Both sides use only public STUN
@@ -205,12 +245,16 @@ waiting for the timer: `systemctl start coordination-autoupdate.service`.
   corporate) fails to hole-punch, with no media-relay fallback. Fixing this
   means running [coturn](https://github.com/coturn/coturn) and making the ICE
   server list configurable — currently hardcoded on both ends.
-- **OAuth on web clients is a known rough edge.** The native apps return via
-  the `northrou://` scheme, which allow-lists cleanly. A web client served by
-  a self-hosted box lives at that box's own address, which can't be
-  pre-allow-listed for arbitrary boxes — inherent to the self-hosted model.
-  The emailed pin always works everywhere; social sign-in is a shortcut where
-  redirects are known in advance.
+- **The web client is not on this box.** It's hosted on Cloudflare Pages at
+  `app.northrou.sh` (see the section below); Caddy here serves only the
+  coordinator and relay. A browser loading the client from `app.northrou.sh`
+  reaches boxes over the tunnel, the same as the desktop app.
+- **OAuth redirect targets must be known in advance.** The native apps return
+  via the `northrou://` scheme and the hosted web client via its fixed
+  `https://app.northrou.sh/` origin — both are in `OAUTH_REDIRECTS` and
+  allow-list cleanly. A client served directly by an individual box lives at
+  that box's own address, which can't be pre-allow-listed for arbitrary boxes;
+  there the emailed pin (which always works everywhere) is the path.
 - **Secrets live in `deploy.yml`.** Keep it `chmod 600`, never commit it, and
   back up `oauth-signing.pem` and the Apple `.p8` somewhere durable — losing
   the signing key invalidates every box's cached JWKS verification.

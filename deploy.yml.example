@@ -9,6 +9,9 @@
 # deploy.yml holds live secrets. It is gitignored — never commit it.
 
 services:
+  # Caddy terminates TLS for coord.northrou.sh and proxies the coordinator and
+  # relay. The web client is hosted separately on Cloudflare Pages (see
+  # .github/workflows/deploy-web.yml), so Caddy serves no static files here.
   caddy:
     image: caddy:2
     restart: unless-stopped
@@ -26,11 +29,12 @@ services:
       # Required: without it the broker refuses to start and social sign-in
       # silently stays disabled (the coordinator itself still runs as a pure
       # signaling relay). See coordination/cmd/coordinator/main.go.
-      OAUTH_ISSUER: "https://app.northrou.sh"
+      OAUTH_ISSUER: "https://coord.northrou.sh"
       # Allow-list of client redirect targets. northrou:// covers the native
-      # apps; add any fixed web-client origins you control, comma-separated.
+      # apps; the prefix entry covers the hosted web client's sign-in origin.
+      # Add any other fixed web-client origins you control, comma-separated.
       # A bare entry is an exact match, one ending in / is a prefix match.
-      OAUTH_REDIRECTS: "northrou://"
+      OAUTH_REDIRECTS: "northrou://,https://app.northrou.sh/"
       OAUTH_GOOGLE_CLIENT_ID: "your-google-client-id"
       OAUTH_GOOGLE_CLIENT_SECRET: "your-google-client-secret"
       OAUTH_APPLE_SERVICE_ID: "sh.northrou.signin"
