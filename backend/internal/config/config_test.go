@@ -51,6 +51,29 @@ func TestRelayTokenNotDefaultedForCustomRelay(t *testing.T) {
 	}
 }
 
+func TestOldHostedURLMigrated(t *testing.T) {
+	// A box set up before the app/coord split wrote app.northrou.sh for both;
+	// that host is now the Pages web client, so remote pairing and pin delivery
+	// break until it's moved to coord.northrou.sh. ApplyDefaults migrates it.
+	c := &Config{}
+	c.Remote.CoordinationURL = "https://app.northrou.sh"
+	c.Email.RelayURL = "https://app.northrou.sh"
+	c.ApplyDefaults()
+	if c.Remote.CoordinationURL != DefaultCoordinationURL {
+		t.Errorf("coordination_url not migrated: %q", c.Remote.CoordinationURL)
+	}
+	if c.Email.RelayURL != DefaultRelayURL {
+		t.Errorf("relay_url not migrated: %q", c.Email.RelayURL)
+	}
+	// A self-hoster's own coordinator must be left alone.
+	c2 := &Config{}
+	c2.Remote.CoordinationURL = "https://coord.example.com"
+	c2.ApplyDefaults()
+	if c2.Remote.CoordinationURL != "https://coord.example.com" {
+		t.Errorf("custom coordinator must be preserved, got %q", c2.Remote.CoordinationURL)
+	}
+}
+
 func TestHostedRelayTokenIsForced(t *testing.T) {
 	// A box left with a stale token against the hosted relay (e.g. from an
 	// earlier manual edit) must self-heal to the shared token, or it 401s

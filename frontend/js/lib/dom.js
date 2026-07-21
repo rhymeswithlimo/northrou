@@ -23,6 +23,21 @@ export function replay(el, className) {
     el.classList.add(className);
 }
 
+/**
+ * Normalize a message for display as an error: capitalize the first letter and
+ * end with a full stop. Idempotent, and leaves an empty or already-punctuated
+ * message alone. Applied by every error-display path (setError, error toasts,
+ * error state panels) so displayed errors read consistently whatever their
+ * source - including raw backend/coordinator strings, which are lowercase and
+ * unpunctuated by Go convention.
+ */
+export function formatError(message) {
+    const s = String(message ?? '').trim();
+    if (!s) return s;
+    const out = s.charAt(0).toUpperCase() + s.slice(1);
+    return /[.!?]$/.test(out) ? out : out + '.';
+}
+
 /** Show a message in an element wired as an aria-live region. */
 export function setError(el, message) {
     if (!el) return;
@@ -31,7 +46,7 @@ export function setError(el, message) {
         hide(el);
         return;
     }
-    el.textContent = message;
+    el.textContent = formatError(message);
     show(el);
 }
 

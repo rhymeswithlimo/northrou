@@ -23,6 +23,16 @@ land the change, not after the fact.
   `code`, `connection-code`. On a box running the system service (as root), run
   it with `sudo`.
 
+### Fixed
+- A box set up before the hosting split kept dialing the old coordinator host,
+  so remote pairing failed with "no server registered for that code" and pins
+  stopped delivering. A stale `coordination_url`/`relay_url` pointing at the old
+  single host is now migrated to the current coordinator automatically on load
+  (a custom self-hosted coordinator is left untouched).
+- Displayed error messages now read consistently - capitalized and ending in a
+  full stop - whatever their source, including raw coordinator/backend strings
+  that are lowercase by Go convention.
+
 ## v0.1.5 - 2026-07-21
 
 ### Added

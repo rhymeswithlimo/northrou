@@ -125,6 +125,17 @@ type TMDBConfig struct {
 // household does not have to run its own mail server. See internal/email.
 const DefaultRelayURL = "https://coord.northrou.sh"
 
+// DefaultCoordinationURL is the hosted signaling coordinator used out of the box.
+const DefaultCoordinationURL = "https://coord.northrou.sh"
+
+// oldHostedURL is the pre-v0.1.4 single-host hosted default. app.northrou.sh has
+// since moved to the web client (Cloudflare Pages), and coordination + the relay
+// live at coord.northrou.sh. A box that wrote the old value during its first
+// setup would otherwise stay pointed at a host that no longer speaks the
+// coordinator/relay protocol (so remote pairing fails with "no server registered
+// for that code"), so ApplyDefaults migrates it.
+const oldHostedURL = "https://app.northrou.sh"
+
 // DefaultRelayToken is the shared bearer token every build presents to the
 // hosted relay (DefaultRelayURL). It is deliberately NOT a secret: the relay
 // itself documents this token as "a weak control that ships in an open-source
@@ -174,8 +185,8 @@ func (c *Config) ApplyDefaults() {
 	if c.Server.DataDir == "" {
 		c.Server.DataDir = DefaultDataDir()
 	}
-	if c.Remote.CoordinationURL == "" {
-		c.Remote.CoordinationURL = "https://coord.northrou.sh"
+	if c.Remote.CoordinationURL == "" || c.Remote.CoordinationURL == oldHostedURL {
+		c.Remote.CoordinationURL = DefaultCoordinationURL
 	}
 	if c.TMDB.Language == "" {
 		c.TMDB.Language = "en-US"
@@ -187,7 +198,7 @@ func (c *Config) ApplyDefaults() {
 		c.Media.PreferredSubtitleLangs = []string{"en"}
 	}
 	if !c.Email.RelayDisabled {
-		if c.Email.RelayURL == "" {
+		if c.Email.RelayURL == "" || c.Email.RelayURL == oldHostedURL {
 			c.Email.RelayURL = DefaultRelayURL
 		}
 		// Talking to the hosted relay always means the shared client token, so

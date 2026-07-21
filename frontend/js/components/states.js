@@ -3,7 +3,7 @@
 // Every screen that fetches uses these, so "no media yet", "the server went
 // away" and "saved" look the same everywhere instead of each page inventing it.
 
-import { $ } from '../lib/dom.js';
+import { $, formatError } from '../lib/dom.js';
 
 /**
  * An empty / error / loading panel.
@@ -23,7 +23,7 @@ export function statePanel({ title, body, action, variant = 'empty' }) {
     if (body) {
         const p = document.createElement('p');
         p.className = 'state__body';
-        p.textContent = body;
+        p.textContent = variant === 'error' ? formatError(body) : body;
         el.append(p);
     }
 
@@ -88,7 +88,7 @@ export function toast(message, { variant = 'success', duration = 3200 } = {}) {
     const dot = document.createElement('span');
     dot.className = 'toast__dot';
     dot.setAttribute('aria-hidden', 'true');
-    el.append(dot, document.createTextNode(message));
+    el.append(dot, document.createTextNode(variant === 'error' ? formatError(message) : message));
 
     toastHost().append(el);
 
