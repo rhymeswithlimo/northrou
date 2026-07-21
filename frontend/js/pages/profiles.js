@@ -6,6 +6,7 @@ import { listProfiles, createProfile, MAX_PROFILES } from '../data/profiles.js';
 import { selectProfile } from '../data/account.js';
 import { isSignedIn } from '../api/session.js';
 import { requireServer } from '../api/connect.js';
+import { watchingGreeting } from '../lib/greeting.js';
 
 // Tile colours were hand-assigned per profile in the mockup. Profiles carry no
 // colour of their own, so derive one deterministically from the id: the same
@@ -14,6 +15,7 @@ const TILES = ['#3c89e0', '#19ad31', '#d4412e', '#da3ce0', '#e0a13c', '#3cd6e0']
 const tileFor = (id) => TILES[(id - 1) % TILES.length];
 
 const listEl = $('#profiles');
+$('.profiles__title').textContent = watchingGreeting();
 
 if (!(await requireServer())) throw new Error('no server');
 if (!isSignedIn()) window.location.replace('login.html');
