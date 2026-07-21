@@ -13,7 +13,7 @@ and uses it as the GitHub release body, so an entry needs to exist here
 *before* publishing a version — the release fails otherwise. Write it as you
 land the change, not after the fact.
 
-## v0.1.5 (in progress)
+## v0.1.5 - 2026-07-21
 
 ### Added
 - **External subtitles.** Northrou now discovers subtitle files that sit next to
@@ -31,24 +31,6 @@ land the change, not after the fact.
   `POST /api/admin/match` endpoint force a file to a specific TMDB title when it
   will not auto-match or matched wrong, so a stubborn filename is never a dead
   end.
-
-### Fixed
-- Files with embedded cover art (a poster image muxed as a video stream) could
-  have the thumbnail chosen as the main video and trigger a pointless transcode.
-  The real video stream is now always selected.
-- Duplicate copies of one title (the same movie as `.mkv` and `.mp4`, or in two
-  folders) collapsed to a nondeterministic winner and left orphaned rows behind.
-  Northrou now keeps the best copy deterministically (resolution, then bitrate,
-  then container) and prunes the rest.
-
-### Improved
-- Episode detection is more forgiving of real-world layouts: `S01`/`Season 1`/
-  `Series 1`/`Specials` folders, an intermediate `MKV/`-style folder between the
-  season and the files, the show name taken from a parent folder, a loose
-  `E07`/`Episode 7`, single-digit `1x5`, and a movie year found only in a parent
-  folder. 10-bit vs 8-bit video is now captured from ffprobe.
-
-### Added (continued)
 - **Per-profile language.** Each viewer sets their own preferred audio and
   subtitle language in Settings (Netflix-style); it drives which audio track
   plays and which subtitle turns on by default, overriding the server default.
@@ -65,11 +47,25 @@ land the change, not after the fact.
 - **Fix match UI.** The settings page lists titles the scanner couldn't identify
   and lets you search TMDB by name and link the right one, right from the app.
 
-### Fixed (continued)
+### Fixed
+- Files with embedded cover art (a poster image muxed as a video stream) could
+  have the thumbnail chosen as the main video and trigger a pointless transcode.
+  The real video stream is now always selected.
+- Duplicate copies of one title (the same movie as `.mkv` and `.mp4`, or in two
+  folders) collapsed to a nondeterministic winner and left orphaned rows behind.
+  Northrou now keeps the best copy deterministically (resolution, then bitrate,
+  then container) and prunes the rest.
 - Deleting a media file now removes its title on the next scan, and deleting the
   better of two duplicate copies promotes the remaining one instead of leaving a
   dead entry. (Also fixed a bug where orphaned media-file rows were never pruned
   because the cleanup ran with an already-cancelled context.)
+
+### Improved
+- Episode detection is more forgiving of real-world layouts: `S01`/`Season 1`/
+  `Series 1`/`Specials` folders, an intermediate `MKV/`-style folder between the
+  season and the files, the show name taken from a parent folder, a loose
+  `E07`/`Episode 7`, single-digit `1x5`, and a movie year found only in a parent
+  folder. 10-bit vs 8-bit video is now captured from ffprobe.
 
 ## v0.1.4 - 2026-07-21
 
