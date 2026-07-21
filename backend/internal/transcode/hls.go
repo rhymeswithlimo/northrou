@@ -99,13 +99,17 @@ func (s *Streamer) hlsArgs(dec Decision, inputPath, dir string, rung Rung) []str
 	args = append(args, "-map", "0:v:0", "-map", "0:a:0")
 
 	// Video encode.
-	args = append(args, "-c:v", videoEncoder(dec.HWBackend))
+	args = append(args, "-c:v", videoEncoder(dec.VideoCodec, dec.HWBackend))
 	if vf := videoFilter(dec, rung.Height); vf != "" {
 		args = append(args, "-vf", vf)
 	}
 	args = append(args, "-b:v", strconv.Itoa(rung.BitrateKbps)+"k")
 	if dec.HWBackend == "software" || dec.HWBackend == "" {
-		args = append(args, "-preset", "veryfast")
+		if dec.VideoCodec == "av1" {
+			args = append(args, "-preset", "8") // libsvtav1 speed/quality balance
+		} else {
+			args = append(args, "-preset", "veryfast")
+		}
 	}
 	// Force a keyframe at each segment boundary so segments are actually
 	// hlsSegmentSeconds long (and independently seekable) rather than following

@@ -53,10 +53,17 @@ type ServerConfig struct {
 	DataDir string `toml:"data_dir"`
 }
 
-// MediaConfig lists the on-disk libraries to scan.
+// MediaConfig lists the on-disk libraries to scan and the household's language
+// preferences for playback track selection.
 type MediaConfig struct {
 	MovieDirs []string `toml:"movie_dirs"`
 	ShowDirs  []string `toml:"show_dirs"`
+	// PreferredAudioLangs / PreferredSubtitleLangs are ordered ISO-639 language
+	// codes used to pick which audio track and default subtitle to serve when a
+	// file has several. They default to ["en"] and are set from the settings
+	// page, deliberately independent of TMDB.Language (which is metadata-only).
+	PreferredAudioLangs    []string `toml:"preferred_audio_langs"`
+	PreferredSubtitleLangs []string `toml:"preferred_subtitle_langs"`
 }
 
 // RemoteConfig controls peer-to-peer remote access via the coordination server.
@@ -81,6 +88,11 @@ type TranscodeConfig struct {
 	MaxBitrateKbps int `toml:"max_bitrate_kbps"`
 	// Tonemap enables HDR->SDR tone mapping when transcoding for SDR clients.
 	Tonemap bool `toml:"tonemap"`
+	// ProbeDolbyVision runs a second, frame-level ffprobe to recover the Dolby
+	// Vision profile when it is not in the stream side-data. Off by default (it
+	// reads a frame per file); worth enabling for DV-heavy libraries so profile
+	// 7 (dual-layer) is transcoded rather than mistaken for plain HDR.
+	ProbeDolbyVision bool `toml:"probe_dolby_vision"`
 	// PreferSystemFFmpeg uses a system-installed ffmpeg (if new enough)
 	// instead of the managed download.
 	PreferSystemFFmpeg bool `toml:"prefer_system_ffmpeg"`
@@ -167,6 +179,12 @@ func (c *Config) ApplyDefaults() {
 	}
 	if c.TMDB.Language == "" {
 		c.TMDB.Language = "en-US"
+	}
+	if len(c.Media.PreferredAudioLangs) == 0 {
+		c.Media.PreferredAudioLangs = []string{"en"}
+	}
+	if len(c.Media.PreferredSubtitleLangs) == 0 {
+		c.Media.PreferredSubtitleLangs = []string{"en"}
 	}
 	if !c.Email.RelayDisabled {
 		if c.Email.RelayURL == "" {

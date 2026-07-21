@@ -12,6 +12,11 @@ export async function getMe() {
     return get('/api/me');
 }
 
+/** Set the current profile's preferred audio/subtitle languages. */
+export async function setMyLanguage({ audio, subtitle }) {
+    return post('/api/me/language', { audio, subtitle });
+}
+
 export async function requestPin(email) {
     // Always 200, even for a wrong address: the server refuses to confirm which
     // email an install belongs to.

@@ -30,6 +30,7 @@ and remember which profile the device is using.
 | POST | `/api/auth/refresh` | `{refresh_token}` | Rotates and returns a new token pair for the same profile |
 | POST | `/api/auth/logout` | `{refresh_token}` | Revokes the refresh token |
 | GET | `/api/me` | - | `{account:{email}, profile, profiles[], admin}` for the current session |
+| POST | `/api/me/language` | `{audio, subtitle}` | Set the current profile's preferred audio/subtitle language (ISO-639; empty clears it) |
 
 > **`admin` is not "may this profile administer".** Every profile may
 > administer (admin is gated on an emailed OTP, not identity), so the client
@@ -127,6 +128,7 @@ since the paths describe the server's own filesystem.
 | GET | `/api/shows/{id}/similar` | Related shows from your own library |
 | GET | `/api/search?q=&limit=` | Search movie and show titles |
 | GET | `/api/unmatched` | Files needing manual correction |
+| GET | `/api/admin/tmdb-search?q=&kind=movie\|episode` | Search TMDB by title for the Fix-match UI (server-side; the key never leaves the box) |
 | GET | `/api/images/{path}` | Cached poster/backdrop/still/headshot images (served `immutable`, long `max-age`) |
 
 Detail responses carry `rating` (TMDB vote average), `tagline`, `certification`
@@ -163,7 +165,7 @@ or binary).
 **Client capabilities** are passed as query parameters on `/stream` and `/plan`:
 
 ```
-?video=h264,hevc&audio=aac,eac3&containers=mp4&max_resolution=2160&hdr=1&atmos=1&remote=0
+?video=h264,hevc,av1&audio=aac,eac3&containers=mp4&max_resolution=2160&hdr=1&dolby_vision=1&atmos=1&remote=0
 ```
 
 Absent parameters fall back to a conservative default (H.264 + AAC in MP4, 1080p).
@@ -230,13 +232,26 @@ it they return `403 admin elevation required`.
 | GET | `/api/admin/update` | no | Check for a newer release |
 | PATCH | `/api/admin/config` | **yes** | Partial configuration update |
 | POST | `/api/admin/scan` | **yes** | Start a library scan of the server-configured folders |
+| POST | `/api/admin/match` | **yes** | Force a file to a specific TMDB title (manual correction) |
 | POST | `/api/admin/update` | **yes** | Download and install the latest release |
 
 ### Configuration
 
 `/api/admin/config` exposes the subset of `config.toml` the settings screen edits:
 `prefer_system_ffmpeg`, `max_transcodes` (0 = auto), `allow_software_4k`,
-`tonemap`, `remote_enabled`, and `connection_code`.
+`tonemap`, `remote_enabled`, `connection_code`, and the language preferences
+`preferred_audio_lang` / `preferred_subtitle_lang` (ISO-639 codes, default
+`en`), which drive audio/subtitle track selection independently of the TMDB
+metadata language.
+
+### Manual match
+
+`POST /api/admin/match` is the escape hatch for files that the scanner cannot
+place (they appear under `GET /unmatched`) or placed wrong. Body:
+`{path, kind, tmdb_id, season?, episode?}` where `kind` is `"movie"` or
+`"episode"` (`season`/`episode` required for episodes). It links the file to the
+given TMDB id, fetches full metadata, extracts subtitles, and clears the
+unmatched flag. The `northrou match` CLI command does the same on the server.
 
 **Media folders are not here, in either direction.** A folder is a path on the
 server's own filesystem, so it is set on the server (`northrou admin` → Library),

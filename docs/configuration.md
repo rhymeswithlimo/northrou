@@ -74,8 +74,51 @@ auto_update_disabled = false   # true turns off background self-update
 
 ### `[media]`
 - **movie_dirs** / **show_dirs** - folders the daemon scans automatically and
-  that `northrou scan` uses when you give it no path. TV shows should follow a
-  `Show Name/Season 01/Show.S01E01…` layout.
+  that `northrou scan` uses when you give it no path.
+- **preferred_audio_langs** / **preferred_subtitle_langs** - ordered lists of
+  ISO-639 language codes (e.g. `["en"]`) that decide which audio track is played
+  and which subtitle is turned on by default when a file has several. These are
+  the **household default**; each viewer can override them per profile from the
+  **Language** section of the settings page (their choice wins). Both default to
+  English and are independent of `tmdb.language` (which only affects fetched
+  metadata).
+
+#### Recommended library layout
+
+Northrou finds files at any nesting depth, but it reads titles, years, and
+episode numbers most reliably when you follow these conventions:
+
+```
+Movies/
+  Movie Title (2020)/
+    Movie Title (2020).mkv
+TV/
+  Show Name/
+    Season 01/
+      Show Name - S01E01 - Episode Title.mkv
+```
+
+What the scanner recovers automatically:
+
+- **Episodes** from `S01E01`, `s01e01`, `S01E01E02` (multi-episode), and `1x05`
+  in the filename. If the filename has no marker, it falls back to a season
+  folder (`Season 01`, `Season 1`, `S01`, `Series 1`, `Specials`), takes the
+  show name from the folder above it (skipping container folders like `MKV/` or
+  `Subs/`), and reads a loose `E07`/`Episode 7` from the name.
+- **Movies** from `Title (Year)` or `Title.Year` in the filename; if the year is
+  only in a parent folder (`2001 - Sorcerers Stone/…`), that is used too.
+- **Duplicates** (the same title as both `.mkv` and `.mp4`, or in two folders)
+  collapse to the single best copy, ranked by resolution, then bitrate, then
+  container (mkv > mp4).
+- **Subtitles** next to the video: a matching `.srt`/`.ass`, a `Subs/` folder
+  (including per-episode subfolders), and language/`SDH`/`forced` tags in the
+  subtitle filename.
+
+If a file still will not match, correct it with
+`northrou match <file> --tmdb-id <id>` (add `--tv --season N --episode N` for an
+episode) or the admin `POST /api/admin/match` endpoint, rather than renaming by
+trial and error. Add `--tv` to `northrou scan` to force everything under a path
+to be treated as episodes.
 
 These are the server's own filesystem paths, so they are set on the server, not
 from a client: edit this file directly, or use the Library tab in
@@ -111,6 +154,12 @@ names that don't parse as episodes on their own.
 - **max_bitrate_kbps** - cap the highest adaptive-streaming rung for remote
   playback. `0` is uncapped.
 - **tonemap** - apply HDR→SDR tone mapping when transcoding for SDR clients.
+- **probe_dolby_vision** - run a second, frame-level ffprobe during scanning to
+  recover the Dolby Vision profile when it is not in the stream metadata. Off by
+  default (it reads a frame per file, so scans are a little slower); turn it on
+  for DV-heavy libraries so dual-layer profile 7 is transcoded rather than
+  mistaken for plain HDR. When a client supports AV1 and the box has a hardware
+  AV1 encoder, transcodes automatically target AV1 (no setting needed).
 - **prefer_system_ffmpeg** - use a system-installed FFmpeg instead of the managed
   download (recommended in Docker and on Apple Silicon with a native Homebrew
   FFmpeg).

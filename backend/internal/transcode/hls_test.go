@@ -14,7 +14,7 @@ import (
 // instead of waiting a full default GOP.
 func TestHLSArgs_FastStartupSegments(t *testing.T) {
 	sm := NewSessionManager(hwaccel.Capabilities{Backend: hwaccel.Software})
-	s := NewStreamer("ffmpeg", t.TempDir(), hwaccel.Capabilities{Backend: hwaccel.Software}, sm, false, false, 0)
+	s := NewStreamer("ffmpeg", t.TempDir(), hwaccel.Capabilities{Backend: hwaccel.Software}, sm, false, false, 0, nil)
 
 	dec := Decision{Mode: ModeVideoTranscode, VideoCodec: "h264", HWBackend: "software", sourceHeight: 1080}
 	args := s.hlsArgs(dec, "/media/movie.mkv", t.TempDir(), topRung(dec, 0))

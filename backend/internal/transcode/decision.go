@@ -2,6 +2,7 @@ package transcode
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/rhymeswithlimo/northrou/backend/internal/model"
 )
@@ -38,12 +39,20 @@ type Decision struct {
 type Options struct {
 	HWBackend       string // detected/overridden acceleration backend
 	AllowSoftware4K bool
-	Tonemap         bool // config toggle enabling HDR tone mapping
+	Tonemap         bool     // config toggle enabling HDR tone mapping
+	PreferredLangs  []string // ordered audio language preferences (ISO-639)
+	AV1Encode       bool     // a hardware AV1 encoder is available for the target
 }
 
 // Decide runs the layered cascade and returns the cheapest viable plan.
 func Decide(mf *model.MediaFile, caps ClientCapabilities, opt Options) Decision {
-	audio, hasAudio := pickAudio(mf)
+	// The viewer's own language preference (from their profile) wins; the server
+	// default applies when they have not set one.
+	audioLangs := caps.PreferredAudioLangs
+	if len(audioLangs) == 0 {
+		audioLangs = opt.PreferredLangs
+	}
+	audio, hasAudio := pickAudio(mf, audioLangs)
 	container := canonicalContainer(mf.Container)
 
 	videoOK, videoReason := videoCompatible(mf.Video, caps)
@@ -85,7 +94,13 @@ func Decide(mf *model.MediaFile, caps ClientCapabilities, opt Options) Decision 
 		d.Mode = ModeVideoTranscode
 		d.Container = "hls"
 		d.TranscodeVideo = true
-		d.VideoCodec = "h264" // most compatible target
+		// Prefer AV1 when the client can play it and a hardware AV1 encoder is
+		// available (far better quality-per-bitrate, notably for remote streams);
+		// otherwise H.264, the universally compatible target.
+		d.VideoCodec = "h264"
+		if opt.AV1Encode && supports(caps.VideoCodecs, "av1") {
+			d.VideoCodec = "av1"
+		}
 		d.HWBackend = opt.HWBackend
 		if d.HWBackend == "" {
 			d.HWBackend = "software"
@@ -99,7 +114,7 @@ func Decide(mf *model.MediaFile, caps ClientCapabilities, opt Options) Decision 
 		if mf.Video.Height >= 2160 && d.HWBackend == "software" && !opt.AllowSoftware4K {
 			d.Realtime = false
 		}
-		d.Reason = "video " + videoReason + "; full transcode to H.264"
+		d.Reason = "video " + videoReason + "; full transcode to " + strings.ToUpper(d.VideoCodec)
 		return d
 	}
 }
@@ -112,6 +127,20 @@ func videoCompatible(v model.VideoStream, caps ClientCapabilities) (bool, string
 	}
 	if caps.MaxResolution > 0 && v.Height > caps.MaxResolution {
 		return false, fmt.Sprintf("resolution %dp exceeds client max %dp", v.Height, caps.MaxResolution)
+	}
+	if v.HDR == model.HDRDolbyVision {
+		switch {
+		case caps.DolbyVision:
+			return true, "" // native Dolby Vision, any profile
+		case v.DVDualLayer():
+			return false, "Dolby Vision profile 7 (dual-layer) needs a DV player"
+		case v.DVCrossCompatible() && caps.HDR:
+			return true, "" // profile 8 base layer plays as HDR10/HLG
+		case caps.HDR:
+			return false, "Dolby Vision (DV-only) unsupported by HDR10 client"
+		default:
+			return false, "Dolby Vision unsupported by SDR client"
+		}
 	}
 	if v.HDR != model.HDRNone && !caps.HDR {
 		return false, fmt.Sprintf("HDR (%s) unsupported by SDR client", v.HDR)

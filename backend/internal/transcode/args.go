@@ -70,8 +70,22 @@ func inputArgs(backend string) []string {
 	}
 }
 
-// videoEncoder returns the ffmpeg encoder name for H.264 on the backend.
-func videoEncoder(backend string) string {
+// videoEncoder returns the ffmpeg encoder name for a target codec on a backend.
+func videoEncoder(codec, backend string) string {
+	if codec == "av1" {
+		switch hwaccel.Backend(backend) {
+		case hwaccel.NVENC:
+			return "av1_nvenc"
+		case hwaccel.QSV:
+			return "av1_qsv"
+		case hwaccel.AMF:
+			return "av1_amf"
+		case hwaccel.VAAPI:
+			return "av1_vaapi"
+		default:
+			return "libsvtav1"
+		}
+	}
 	switch hwaccel.Backend(backend) {
 	case hwaccel.NVENC:
 		return "h264_nvenc"

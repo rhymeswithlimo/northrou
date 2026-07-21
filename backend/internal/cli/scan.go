@@ -65,7 +65,7 @@ func newScanCmd() *cobra.Command {
 			// Ensure ffprobe is available so technical metadata is captured,
 			// and wire the subtitle pipeline for extraction/OCR.
 			if paths, err := a.FFmpeg.EnsureInstalled(ctx); err == nil {
-				a.Scanner.SetProber(mediainfo.New(paths.FFprobe))
+				a.Scanner.SetProber(mediainfo.New(paths.FFprobe, mediainfo.WithDeepDolbyVision(a.Cfg.Transcode.ProbeDolbyVision)))
 				tess := subtitles.DetectTesseract(filepath.Join(a.Cfg.Server.DataDir, "bin"))
 				ex := subtitles.New(a.DB, paths.FFmpeg, tess, a.Cfg.Server.DataDir)
 				ex.Start(ctx)

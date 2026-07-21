@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/rhymeswithlimo/northrou/backend/internal/db"
@@ -244,6 +245,75 @@ func (a *API) handleListUnmatched(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, list)
+}
+
+// handleTMDBSearch proxies a TMDB title search for the manual-match UI, so the
+// operator can pick a title by name rather than look up a numeric id. The TMDB
+// key stays on the server. Open to any signed-in profile (a read).
+func (a *API) handleTMDBSearch(w http.ResponseWriter, r *http.Request) {
+	if a.Scanner == nil {
+		writeError(w, http.StatusServiceUnavailable, "scanner unavailable")
+		return
+	}
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	if q == "" {
+		writeError(w, http.StatusBadRequest, "query is required")
+		return
+	}
+	kind := model.KindMovie
+	if r.URL.Query().Get("kind") == string(model.KindEpisode) {
+		kind = model.KindEpisode
+	}
+	results, err := a.Scanner.SearchTMDB(r.Context(), q, kind)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "search failed: "+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, results)
+}
+
+// manualMatchRequest forces a file to a specific TMDB title. It is the operator
+// escape hatch for files that would not auto-match (or matched wrong).
+type manualMatchRequest struct {
+	Path    string `json:"path"`
+	Kind    string `json:"kind"`  // "movie" or "episode"
+	TMDBID  int64  `json:"tmdb_id"`
+	Season  int    `json:"season"`  // required for episodes
+	Episode int    `json:"episode"` // required for episodes
+}
+
+// handleManualMatch (admin) links a scanned file to an operator-chosen TMDB id,
+// bypassing filename parsing. Clears the file's unmatched flag on success.
+func (a *API) handleManualMatch(w http.ResponseWriter, r *http.Request) {
+	if a.Scanner == nil {
+		writeError(w, http.StatusServiceUnavailable, "scanner unavailable")
+		return
+	}
+	var req manualMatchRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.Path == "" || req.TMDBID == 0 {
+		writeError(w, http.StatusBadRequest, "path and tmdb_id are required")
+		return
+	}
+	kind := model.KindMovie
+	if req.Kind == string(model.KindEpisode) {
+		kind = model.KindEpisode
+		if req.Season == 0 || req.Episode == 0 {
+			writeError(w, http.StatusBadRequest, "season and episode are required for episodes")
+			return
+		}
+	}
+	if err := a.Scanner.ForceMatch(r.Context(), req.Path, kind, req.TMDBID, req.Season, req.Episode); err != nil {
+		writeError(w, http.StatusBadRequest, "match failed: "+err.Error())
+		return
+	}
+	if a.Recommend != nil {
+		a.Recommend.InvalidateAll()
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "matched"})
 }
 
 // --- Scan control (admin) ---

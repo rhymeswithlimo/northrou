@@ -5,7 +5,9 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/rhymeswithlimo/northrou/backend/internal/auth"
 	"github.com/rhymeswithlimo/northrou/backend/internal/db"
+	"github.com/rhymeswithlimo/northrou/backend/internal/language"
 )
 
 type subtitleDTO struct {
@@ -14,7 +16,9 @@ type subtitleDTO struct {
 	Label    string `json:"label"`
 	Format   string `json:"format"`
 	Forced   bool   `json:"forced"`
-	Status   string `json:"status"` // ready|processing|queued|unavailable
+	SDH      bool   `json:"sdh"`
+	Default  bool   `json:"default"` // preselect this track (preferred language)
+	Status   string `json:"status"`  // ready|processing|queued|unavailable
 	URL      string `json:"url,omitempty"`
 }
 
@@ -46,37 +50,58 @@ func (a *API) handleListSubtitles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Choose the best track per language (forced tracks kept separately).
+	// Choose the best regular track per language (canonicalized so "eng" and
+	// "en" merge). Forced and SDH tracks are kept as separate selectable picks.
 	best := map[string]db.SubtitleTrack{}
-	var forced []db.SubtitleTrack
+	var extra []db.SubtitleTrack
 	for _, t := range tracks {
-		if t.Forced {
-			forced = append(forced, t)
+		if t.Forced || t.SDH {
+			extra = append(extra, t)
 			continue
 		}
-		key := t.Language
+		key := language.Code(t.Language)
 		if cur, exists := best[key]; !exists || formatPriority(t.Format) > formatPriority(cur.Format) {
 			best[key] = t
 		}
 	}
 
+	// Preselect the regular track whose language matches the viewer's preferred
+	// subtitle language (their profile's choice first, else the server default).
+	defaultKey := ""
+	for _, want := range a.subtitleLangPrefs(r) {
+		if _, ok := best[language.Code(want)]; ok {
+			defaultKey = language.Code(want)
+			break
+		}
+	}
+
 	var out []subtitleDTO
-	emit := func(t db.SubtitleTrack) {
+	for key, t := range best {
+		dto := subtitleToDTO(fileID, t)
+		dto.Default = key == defaultKey
+		out = append(out, dto)
+	}
+	for _, t := range extra {
 		out = append(out, subtitleToDTO(fileID, t))
 	}
-	for _, t := range best {
-		emit(t)
-	}
-	for _, t := range forced {
-		emit(t)
-	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// subtitleLangPrefs returns the viewer's subtitle language preference order: the
+// profile's own choice first (if set), then the server default.
+func (a *API) subtitleLangPrefs(r *http.Request) []string {
+	if claims, ok := auth.ClaimsFrom(r.Context()); ok {
+		if prof, err := a.DB.GetProfile(r.Context(), claims.ProfileID); err == nil && prof.PreferredSubtitleLang != "" {
+			return append([]string{prof.PreferredSubtitleLang}, a.Cfg.Media.PreferredSubtitleLangs...)
+		}
+	}
+	return a.Cfg.Media.PreferredSubtitleLangs
 }
 
 func subtitleToDTO(fileID int64, t db.SubtitleTrack) subtitleDTO {
 	dto := subtitleDTO{
 		ID: t.ID, Language: t.Language, Label: subtitleLabel(t),
-		Format: t.Format, Forced: t.Forced,
+		Format: t.Format, Forced: t.Forced, SDH: t.SDH,
 	}
 	switch {
 	case t.VTTPath != "":
@@ -94,14 +119,18 @@ func subtitleLabel(t db.SubtitleTrack) string {
 	if t.Title != "" {
 		return t.Title
 	}
-	lang := t.Language
-	if lang == "" {
-		lang = "Unknown"
+	lang := "Unknown"
+	if t.Language != "" {
+		lang = language.Name(t.Language)
 	}
-	if t.Forced {
+	switch {
+	case t.Forced:
 		return lang + " (Forced)"
+	case t.SDH:
+		return lang + " (SDH)"
+	default:
+		return lang
 	}
-	return lang
 }
 
 // handleGetSubtitleVTT serves the generated WebVTT for a track via the HTML5

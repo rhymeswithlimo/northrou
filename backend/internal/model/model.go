@@ -43,6 +43,10 @@ type Profile struct {
 	Name      string
 	Avatar    string // optional; empty when unset
 	CreatedAt time.Time
+	// Preferred audio/subtitle languages (ISO-639). Empty means "use the server
+	// default"; each viewer sets their own, Netflix-style.
+	PreferredAudioLang    string
+	PreferredSubtitleLang string
 }
 
 // Library is a configured root folder of a given kind.
@@ -140,13 +144,34 @@ type MediaFile struct {
 
 // VideoStream describes the primary video track.
 type VideoStream struct {
-	Index   int
-	Codec   string // "hevc", "h264", "av1", ...
-	Width   int
-	Height  int
-	HDR     HDRType
-	BitRate int64
-	Profile string
+	Index    int
+	Codec    string // "hevc", "h264", "av1", ...
+	Width    int
+	Height   int
+	HDR      HDRType
+	BitRate  int64
+	Profile  string
+	PixFmt   string // ffprobe pix_fmt, e.g. "yuv420p10le"
+	BitDepth int    // luma bit depth (8, 10, 12); 0 if unknown
+	// Dolby Vision. DVProfile is the DV profile number (5, 7, 8, ...); 0 if not
+	// DV. DVBLCompat is the base-layer signal compatibility id: 1 = HDR10, 4 =
+	// HLG, 2/0 = DV-only. Together they say whether a non-DV player can still
+	// show the stream as ordinary HDR.
+	DVProfile  int
+	DVBLCompat int
+}
+
+// DVCrossCompatible reports whether a Dolby Vision stream carries a standard HDR
+// base layer (profile 8 with HDR10 or HLG compatibility) that a non-DV but
+// HDR-capable client can play directly.
+func (v VideoStream) DVCrossCompatible() bool {
+	return v.HDR == HDRDolbyVision && (v.DVBLCompat == 1 || v.DVBLCompat == 4)
+}
+
+// DVDualLayer reports whether a Dolby Vision stream is dual-layer (profile 7),
+// which most players and all browsers cannot handle without transcoding.
+func (v VideoStream) DVDualLayer() bool {
+	return v.HDR == HDRDolbyVision && v.DVProfile == 7
 }
 
 // AudioStream describes one audio track.
@@ -157,7 +182,9 @@ type AudioStream struct {
 	Channels      int
 	ChannelLayout string
 	Language      string
-	Atmos         bool // Dolby Atmos / object audio present
+	Title         string // stream title tag, e.g. "Commentary by Director"
+	Atmos         bool   // Dolby Atmos / object audio present
+	Commentary    bool   // director/cast commentary track (demoted in selection)
 	Default       bool
 	BitRate       int64
 }
@@ -169,6 +196,7 @@ type SubtitleStream struct {
 	Language string
 	Title    string
 	Forced   bool
+	SDH      bool // hearing-impaired / SDH track
 	Default  bool
 }
 
@@ -209,11 +237,11 @@ func (w WatchEvent) Completion() float64 {
 // UnmatchedFile is a scanned file the scanner could not confidently match to
 // TMDB, surfaced in the UI for manual correction.
 type UnmatchedFile struct {
-	ID          int64
-	Path        string
-	Kind        MediaKind
-	Reason      string
-	ParsedTitle string
-	ParsedYear  int
-	FoundAt     time.Time
+	ID          int64     `json:"id"`
+	Path        string    `json:"path"`
+	Kind        MediaKind `json:"kind"`
+	Reason      string    `json:"reason"`
+	ParsedTitle string    `json:"parsed_title"`
+	ParsedYear  int       `json:"parsed_year"`
+	FoundAt     time.Time `json:"found_at"`
 }

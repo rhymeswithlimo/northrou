@@ -7,7 +7,9 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/rhymeswithlimo/northrou/backend/internal/auth"
 	"github.com/rhymeswithlimo/northrou/backend/internal/db"
+	"github.com/rhymeswithlimo/northrou/backend/internal/language"
 )
 
 // handleListProfiles returns every profile on the account. Any signed-in
@@ -24,6 +26,60 @@ func (a *API) handleListProfiles(w http.ResponseWriter, r *http.Request) {
 type profileRequest struct {
 	Name   string `json:"name"`
 	Avatar string `json:"avatar"`
+}
+
+// languageRequest sets the current viewer's preferred audio/subtitle languages.
+// An empty string clears a preference (falls back to the server default).
+type languageRequest struct {
+	Audio    string `json:"audio"`
+	Subtitle string `json:"subtitle"`
+}
+
+// handleSetMyLanguage updates the signed-in profile's own language preferences.
+// Each viewer controls their own, so this is not admin-gated.
+func (a *API) handleSetMyLanguage(w http.ResponseWriter, r *http.Request) {
+	claims, ok := auth.ClaimsFrom(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthenticated")
+		return
+	}
+	var req languageRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	audio, ok := normalizeLangPref(w, req.Audio, "audio")
+	if !ok {
+		return
+	}
+	subtitle, ok := normalizeLangPref(w, req.Subtitle, "subtitle")
+	if !ok {
+		return
+	}
+	if err := a.DB.SetProfileLanguages(r.Context(), claims.ProfileID, audio, subtitle); err != nil {
+		writeError(w, http.StatusInternalServerError, "update failed")
+		return
+	}
+	prof, err := a.DB.GetProfile(r.Context(), claims.ProfileID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "lookup failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, toProfileDTO(*prof))
+}
+
+// normalizeLangPref validates and canonicalizes a language preference. Empty is
+// allowed (clears the preference); an unknown code is rejected.
+func normalizeLangPref(w http.ResponseWriter, v, field string) (string, bool) {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return "", true
+	}
+	if !language.Known(v) {
+		writeError(w, http.StatusBadRequest, "unknown "+field+" language")
+		return "", false
+	}
+	return language.Code(v), true
 }
 
 // handleCreateProfile adds a new viewer profile. Household management is not an

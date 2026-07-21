@@ -43,6 +43,7 @@ func NewRootCmd() *cobra.Command {
 		newUninstallCmd(),
 		newAdminCmd(),
 		newScanCmd(),
+		newMatchCmd(),
 		newUpdateCmd(),
 	)
 	return root

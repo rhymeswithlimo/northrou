@@ -20,32 +20,44 @@ func (d *DB) CreateProfile(ctx context.Context, name, avatar string) (int64, err
 	return res.LastInsertId()
 }
 
+const profileCols = `id, name, avatar, created_at, preferred_audio_lang, preferred_subtitle_lang`
+
 // GetProfile looks up a profile by id.
 func (d *DB) GetProfile(ctx context.Context, id int64) (*model.Profile, error) {
 	row := d.QueryRowContext(ctx,
-		`SELECT id, name, avatar, created_at FROM profiles WHERE id = ?`, id)
+		`SELECT `+profileCols+` FROM profiles WHERE id = ?`, id)
 	return scanProfile(row)
 }
 
 // ListProfiles returns all profiles, oldest first (creation order).
 func (d *DB) ListProfiles(ctx context.Context) ([]model.Profile, error) {
 	rows, err := d.QueryContext(ctx,
-		`SELECT id, name, avatar, created_at FROM profiles ORDER BY id`)
+		`SELECT `+profileCols+` FROM profiles ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var out []model.Profile
 	for rows.Next() {
-		var p model.Profile
-		var avatar sql.NullString
-		if err := rows.Scan(&p.ID, &p.Name, &avatar, &p.CreatedAt); err != nil {
+		p, err := scanProfileRow(rows)
+		if err != nil {
 			return nil, err
 		}
-		p.Avatar = avatar.String
-		out = append(out, p)
+		out = append(out, *p)
 	}
 	return out, rows.Err()
+}
+
+// SetProfileLanguages updates a profile's preferred audio/subtitle languages.
+// An empty string clears the preference (falls back to the server default).
+func (d *DB) SetProfileLanguages(ctx context.Context, id int64, audio, subtitle string) error {
+	res, err := d.ExecContext(ctx,
+		`UPDATE profiles SET preferred_audio_lang = ?, preferred_subtitle_lang = ? WHERE id = ?`,
+		nullIfEmpty(audio), nullIfEmpty(subtitle), id)
+	if err != nil {
+		return err
+	}
+	return requireRow(res)
 }
 
 // RenameProfile updates a profile's display name and avatar.
@@ -89,18 +101,26 @@ func (d *DB) CountProfiles(ctx context.Context) (int, error) {
 // ErrLastProfile is returned when a delete would remove the only profile.
 var ErrLastProfile = errors.New("cannot delete the last profile")
 
-func scanProfile(row *sql.Row) (*model.Profile, error) {
+type scanner interface{ Scan(...any) error }
+
+func scanProfileRow(sc scanner) (*model.Profile, error) {
 	var p model.Profile
-	var avatar sql.NullString
-	err := row.Scan(&p.ID, &p.Name, &avatar, &p.CreatedAt)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrNotFound
-	}
-	if err != nil {
+	var avatar, audio, subtitle sql.NullString
+	if err := sc.Scan(&p.ID, &p.Name, &avatar, &p.CreatedAt, &audio, &subtitle); err != nil {
 		return nil, err
 	}
 	p.Avatar = avatar.String
+	p.PreferredAudioLang = audio.String
+	p.PreferredSubtitleLang = subtitle.String
 	return &p, nil
+}
+
+func scanProfile(row *sql.Row) (*model.Profile, error) {
+	p, err := scanProfileRow(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	return p, err
 }
 
 func requireRow(res sql.Result) error {

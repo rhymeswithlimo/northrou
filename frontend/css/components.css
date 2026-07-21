@@ -46,30 +46,6 @@
 /* ==================== BRACKET BUTTON ==================== */
 
 /* The `[ label ]` terminal-style control used on profiles and settings. */
-.btn-bracket {
-    font-family: 'Geist Mono', monospace;
-    font-size: 14px;
-
-    -webkit-user-select: none;
-    -ms-user-select: none;
-    user-select: none;
-
-    padding: 1px;
-    width: fit-content;
-
-    transition: opacity .3s ease;
-
-    @media (hover: hover) {
-        &:hover { text-decoration: underline; opacity: .84; }
-    }
-
-    &:focus-visible {
-        outline: none;
-        background-color: var(--contrast);
-        color: var(--strong) !important;
-    }
-}
-
 /* ==================== FORM ERROR ==================== */
 
 .form-error {

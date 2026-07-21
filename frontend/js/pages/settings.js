@@ -4,7 +4,7 @@ import { $, show, hide, setError, reveal } from '../lib/dom.js';
 import { segmented, toggle } from '../components/controls.js';
 import { createOtpInput } from '../components/otp.js';
 import { toast, mountOfflineBanner, statePanel } from '../components/states.js';
-import { getMe, signOut } from '../data/account.js';
+import { getMe, signOut, setMyLanguage } from '../data/account.js';
 import { listProfiles, createProfile, renameProfile, deleteProfile, MAX_PROFILES } from '../data/profiles.js';
 import { getPrefs, setPref, QUALITY_OPTIONS, CELLULAR_OPTIONS } from '../data/prefs.js';
 import * as admin from '../data/admin.js';
@@ -13,6 +13,30 @@ import { requireServer } from '../api/connect.js';
 
 const TILES = ['#3c89e0', '#19ad31', '#d4412e', '#da3ce0', '#e0a13c', '#3cd6e0'];
 const tileFor = (id) => TILES[(id - 1) % TILES.length];
+
+// Languages offered for audio/subtitle preference. Codes mirror the server's
+// internal/language table; English leads because it is the default.
+const LANGUAGES = [
+    ['en', 'English'], ['es', 'Spanish'], ['fr', 'French'], ['de', 'German'],
+    ['it', 'Italian'], ['pt', 'Portuguese'], ['nl', 'Dutch'], ['sv', 'Swedish'],
+    ['no', 'Norwegian'], ['da', 'Danish'], ['fi', 'Finnish'], ['pl', 'Polish'],
+    ['cs', 'Czech'], ['ru', 'Russian'], ['uk', 'Ukrainian'], ['tr', 'Turkish'],
+    ['ar', 'Arabic'], ['he', 'Hebrew'], ['hi', 'Hindi'], ['th', 'Thai'],
+    ['ja', 'Japanese'], ['ko', 'Korean'], ['zh', 'Chinese'],
+];
+
+/** Populate a <select> with the language list and wire a save-on-change. */
+function languageSelect(el, value, onChange) {
+    el.replaceChildren();
+    for (const [code, name] of LANGUAGES) {
+        const opt = document.createElement('option');
+        opt.value = code;
+        opt.textContent = name;
+        el.appendChild(opt);
+    }
+    el.value = LANGUAGES.some(([c]) => c === value) ? value : 'en';
+    el.addEventListener('change', () => onChange(el.value));
+}
 
 $('#back').addEventListener('click', () => history.back());
 mountOfflineBanner();
@@ -118,6 +142,25 @@ function renderPlayback() {
         setPref('directPlay', v);
         toast(v ? 'Direct play on.' : 'Direct play off.');
     });
+}
+
+/* ==================== language (per profile) ==================== */
+
+function renderLanguage() {
+    const prof = me?.profile ?? {};
+    const save = async () => {
+        try {
+            await setMyLanguage({
+                audio: $('#audio-lang').value,
+                subtitle: $('#subtitle-lang').value,
+            });
+            toast('Language saved.');
+        } catch (err) {
+            toast(err.body?.error ?? 'Could not save language.', { variant: 'error' });
+        }
+    };
+    languageSelect($('#audio-lang'), prof.preferred_audio_lang ?? 'en', save);
+    languageSelect($('#subtitle-lang'), prof.preferred_subtitle_lang ?? 'en', save);
 }
 
 /* ==================== about ==================== */
@@ -247,6 +290,8 @@ async function renderAdmin() {
         ? 'Scanning now...'
         : (scan?.last_scan ? `Last scan: ${scan.last_scan}.` : 'No scan has run yet.');
 
+    renderUnmatched(node);
+
     $('#scan-now', node).addEventListener('click', async (e) => {
         e.target.disabled = true;
         try {
@@ -294,6 +339,134 @@ async function renderAdmin() {
     });
 }
 
+/* ==================== unmatched files (fix match) ==================== */
+
+async function renderUnmatched(root) {
+    const section = $('#unmatched-section', root);
+    const list = $('#unmatched-list', root);
+    let items = [];
+    try {
+        items = await admin.getUnmatched();
+    } catch {
+        return; // non-critical; leave the section hidden
+    }
+    if (!Array.isArray(items) || items.length === 0) {
+        section.hidden = true;
+        return;
+    }
+    section.hidden = false;
+    $('#unmatched-note', root).textContent =
+        `${items.length} file${items.length === 1 ? '' : 's'} the scanner couldn't identify. Search and pick the right title.`;
+    list.replaceChildren(...items.map(fixRow));
+}
+
+// fixRow builds one unmatched-file row with an inline TMDB search + match form.
+function fixRow(item) {
+    const li = document.createElement('li');
+    li.className = 'unmatched__row';
+
+    const head = document.createElement('div');
+    head.className = 'unmatched__head';
+    const name = document.createElement('span');
+    name.className = 'unmatched__name';
+    name.textContent = item.parsed_title || basename(item.path);
+    const kind = document.createElement('span');
+    kind.className = 'unmatched__kind';
+    kind.textContent = item.kind === 'episode' ? 'TV' : 'Movie';
+    head.append(name, kind);
+
+    const form = document.createElement('div');
+    form.className = 'unmatched__form';
+
+    const search = document.createElement('input');
+    search.type = 'text';
+    search.className = 'settings__input';
+    search.placeholder = 'Search TMDB by title';
+    search.value = item.parsed_title || '';
+
+    // Season/episode inputs only for episodes.
+    let season, episode;
+    if (item.kind === 'episode') {
+        season = numberInput('Season');
+        episode = numberInput('Ep');
+    }
+
+    const go = document.createElement('button');
+    go.type = 'button';
+    go.className = 'btn btn--quiet';
+    go.textContent = 'Search';
+
+    const results = document.createElement('div');
+    results.className = 'unmatched__results';
+
+    const runSearch = async () => {
+        const q = search.value.trim();
+        if (!q) return;
+        results.textContent = 'Searching…';
+        let found = [];
+        try {
+            found = await admin.searchTMDB(q, item.kind);
+        } catch (err) {
+            results.textContent = err.body?.error ?? 'Search failed.';
+            return;
+        }
+        if (!found.length) {
+            results.textContent = 'No matches.';
+            return;
+        }
+        results.replaceChildren(...found.slice(0, 6).map((r) =>
+            resultButton(r, item, season, episode, li)));
+    };
+    go.addEventListener('click', runSearch);
+    search.addEventListener('keydown', (e) => { if (e.key === 'Enter') runSearch(); });
+
+    form.append(search);
+    if (season) form.append(season, episode);
+    form.append(go);
+    li.append(head, form, results);
+    return li;
+}
+
+function resultButton(r, item, season, episode, row) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'unmatched__result';
+    b.textContent = r.year ? `${r.title} (${r.year})` : r.title;
+    b.addEventListener('click', async () => {
+        const body = { path: item.path, kind: item.kind, tmdb_id: r.tmdb_id };
+        if (item.kind === 'episode') {
+            body.season = Number(season.value);
+            body.episode = Number(episode.value);
+            if (!body.season || !body.episode) {
+                toast('Enter the season and episode numbers first.', { variant: 'error' });
+                return;
+            }
+        }
+        try {
+            await admin.manualMatch(body);
+            toast('Matched.');
+            row.remove();
+        } catch (err) {
+            if (err.isForbidden) toast('Admin elevation expired. Unlock again.', { variant: 'error' });
+            else toast(err.body?.error ?? 'Match failed.', { variant: 'error' });
+        }
+    });
+    return b;
+}
+
+function numberInput(placeholder) {
+    const i = document.createElement('input');
+    i.type = 'number';
+    i.min = '0';
+    i.className = 'settings__input settings__input--num';
+    i.placeholder = placeholder;
+    return i;
+}
+
+function basename(p) {
+    return p.split(/[\\/]/).pop();
+}
+
 async function saveConfig(patch) {
     try {
         config = await admin.patchConfig(patch);
@@ -335,6 +508,7 @@ async function init() {
 
     renderProfiles();
     renderPlayback();
+    renderLanguage();
     renderAbout();
 
     // `admin: true` means this token is ALREADY elevated, so the OTP round trip

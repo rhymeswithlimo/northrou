@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/rhymeswithlimo/northrou/backend/internal/metadata"
@@ -44,7 +43,56 @@ func (s *Scanner) matchMovie(ctx context.Context, p ParsedInfo, mf *model.MediaF
 	if best == nil {
 		return fmt.Errorf("no TMDB match for %q (%d)", p.Title, p.Year)
 	}
-	details, err := s.tmdb.MovieDetails(ctx, best.ID)
+	return s.storeMovieByID(ctx, best.ID, mf)
+}
+
+// SearchTMDBResult is a candidate title for the manual-match UI.
+type SearchTMDBResult struct {
+	TMDBID int64  `json:"tmdb_id"`
+	Title  string `json:"title"`
+	Year   int    `json:"year"`
+}
+
+// SearchTMDB searches TMDB by free-text query for the manual-match flow. kind
+// selects movie vs TV search.
+func (s *Scanner) SearchTMDB(ctx context.Context, query string, kind model.MediaKind) ([]SearchTMDBResult, error) {
+	if !s.tmdb.Enabled() {
+		return nil, errors.New("no TMDB API key configured")
+	}
+	var items []metadata.SearchItem
+	var err error
+	if kind == model.KindEpisode {
+		items, err = s.tmdb.SearchTV(ctx, query, 0)
+	} else {
+		items, err = s.tmdb.SearchMovie(ctx, query, 0)
+	}
+	if err != nil {
+		return nil, err
+	}
+	out := make([]SearchTMDBResult, 0, len(items))
+	for _, it := range items {
+		title, date := it.Title, it.ReleaseDate
+		if kind == model.KindEpisode {
+			title, date = it.Name, it.FirstAirDate
+		}
+		out = append(out, SearchTMDBResult{TMDBID: it.ID, Title: title, Year: metadata.ReleaseYear(date)})
+	}
+	return out, nil
+}
+
+// MatchMovieByID forces a file to a specific TMDB movie, bypassing the
+// filename-based search. Used by the manual-correction ("fix match") flow.
+func (s *Scanner) MatchMovieByID(ctx context.Context, mf *model.MediaFile, tmdbID int64) error {
+	if !s.tmdb.Enabled() {
+		return errors.New("no TMDB API key configured")
+	}
+	return s.storeMovieByID(ctx, tmdbID, mf)
+}
+
+// storeMovieByID fetches full TMDB details for a movie id and persists it linked
+// to mf.
+func (s *Scanner) storeMovieByID(ctx context.Context, tmdbID int64, mf *model.MediaFile) error {
+	details, err := s.tmdb.MovieDetails(ctx, tmdbID)
 	if err != nil {
 		return fmt.Errorf("tmdb details: %w", err)
 	}
@@ -123,6 +171,41 @@ func (s *Scanner) matchEpisode(ctx context.Context, p ParsedInfo, mf *model.Medi
 	return nil
 }
 
+// MatchEpisodeByID forces a file to a specific TMDB show + season/episode,
+// bypassing the filename-based search. Used by the manual-correction flow.
+func (s *Scanner) MatchEpisodeByID(ctx context.Context, mf *model.MediaFile, showTMDBID int64, season, episode int) error {
+	if !s.tmdb.Enabled() {
+		return errors.New("no TMDB API key configured")
+	}
+	if season == 0 || episode == 0 {
+		return errors.New("season and episode are required")
+	}
+	s.showLock.Lock()
+	showID, err := s.resolveShowByTMDB(ctx, showTMDBID)
+	s.showLock.Unlock()
+	if err != nil {
+		return err
+	}
+	seasonID, err := s.db.UpsertSeason(ctx, showID, season)
+	if err != nil {
+		return fmt.Errorf("store season: %w", err)
+	}
+	ep := &model.Episode{ShowID: showID, SeasonID: seasonID, Season: season, Number: episode, File: mf}
+	if show, e := s.db.GetShow(ctx, showID); e == nil {
+		if det, e := s.tmdb.EpisodeDetails(ctx, show.TMDBID, season, episode); e == nil {
+			ep.Title = det.Name
+			ep.Overview = det.Overview
+			ep.Runtime = det.Runtime
+			ep.AirDate = det.AirDate
+			ep.StillPath = s.cacheImage(ctx, det.StillPath, stillSize)
+		}
+	}
+	if _, err := s.db.UpsertEpisode(ctx, ep); err != nil {
+		return fmt.Errorf("store episode: %w", err)
+	}
+	return nil
+}
+
 // resolveShow finds-or-creates the show for a title/year, serialized so
 // concurrent episodes of the same show don't each hit TMDB.
 func (s *Scanner) resolveShow(ctx context.Context, title string, year int) (int64, error) {
@@ -137,11 +220,16 @@ func (s *Scanner) resolveShow(ctx context.Context, title string, year int) (int6
 	if best == nil {
 		return 0, fmt.Errorf("no TMDB show match for %q", title)
 	}
-	// Already stored?
-	if id, err := s.db.FindShowByTMDB(ctx, best.ID); err == nil {
+	return s.resolveShowByTMDB(ctx, best.ID)
+}
+
+// resolveShowByTMDB finds-or-creates a show by its TMDB id. The caller must hold
+// showLock (both resolveShow and MatchEpisodeByID do).
+func (s *Scanner) resolveShowByTMDB(ctx context.Context, tmdbID int64) (int64, error) {
+	if id, err := s.db.FindShowByTMDB(ctx, tmdbID); err == nil {
 		return id, nil
 	}
-	details, err := s.tmdb.TVDetails(ctx, best.ID)
+	details, err := s.tmdb.TVDetails(ctx, tmdbID)
 	if err != nil {
 		return 0, fmt.Errorf("tmdb tv details: %w", err)
 	}
@@ -253,9 +341,4 @@ func (s *Scanner) keyCrew(ctx context.Context, crew []metadata.CrewMember) []mod
 		}
 	}
 	return out
-}
-
-func atoiSafe(s string) int {
-	n, _ := strconv.Atoi(strings.TrimSpace(s))
-	return n
 }

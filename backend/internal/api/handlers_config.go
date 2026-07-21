@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/rhymeswithlimo/northrou/backend/internal/config"
+	"github.com/rhymeswithlimo/northrou/backend/internal/language"
 )
 
 // configDTO is the settings-page view of config.toml.
@@ -30,19 +31,32 @@ type configDTO struct {
 	RemoteEnabled  bool   `json:"remote_enabled"`
 	ConnectionCode string `json:"connection_code,omitempty"`
 
+	// Household language preferences for audio/subtitle track selection.
+	PreferredAudioLang    string `json:"preferred_audio_lang"`
+	PreferredSubtitleLang string `json:"preferred_subtitle_lang"`
+
 	HasTMDBKey bool `json:"has_tmdb_key"`
 }
 
 func toConfigDTO(c *config.Config) configDTO {
 	return configDTO{
-		PreferSystemFFmpeg: c.Transcode.PreferSystemFFmpeg,
-		MaxTranscodes:      c.Transcode.MaxTranscodes,
-		AllowSoftware4K:    c.Transcode.AllowSoftware4K,
-		Tonemap:            c.Transcode.Tonemap,
-		RemoteEnabled:      c.Remote.Enabled,
-		ConnectionCode:     c.Remote.ConnectionCode,
-		HasTMDBKey:         c.TMDB.APIKey != "",
+		PreferSystemFFmpeg:    c.Transcode.PreferSystemFFmpeg,
+		MaxTranscodes:         c.Transcode.MaxTranscodes,
+		AllowSoftware4K:       c.Transcode.AllowSoftware4K,
+		Tonemap:               c.Transcode.Tonemap,
+		RemoteEnabled:         c.Remote.Enabled,
+		ConnectionCode:        c.Remote.ConnectionCode,
+		PreferredAudioLang:    firstOr(c.Media.PreferredAudioLangs, "en"),
+		PreferredSubtitleLang: firstOr(c.Media.PreferredSubtitleLangs, "en"),
+		HasTMDBKey:            c.TMDB.APIKey != "",
 	}
+}
+
+func firstOr(list []string, fallback string) string {
+	if len(list) > 0 && list[0] != "" {
+		return list[0]
+	}
+	return fallback
 }
 
 // handleGetConfig returns the editable configuration. Open to any signed-in
@@ -61,6 +75,9 @@ type configPatch struct {
 	Tonemap            *bool `json:"tonemap"`
 
 	RemoteEnabled *bool `json:"remote_enabled"`
+
+	PreferredAudioLang    *string `json:"preferred_audio_lang"`
+	PreferredSubtitleLang *string `json:"preferred_subtitle_lang"`
 
 	TMDBAPIKey *string `json:"tmdb_api_key"`
 }
@@ -106,6 +123,20 @@ func (a *API) handlePatchConfig(w http.ResponseWriter, r *http.Request) {
 	if p.RemoteEnabled != nil {
 		cfg.Remote.Enabled = *p.RemoteEnabled
 	}
+	if p.PreferredAudioLang != nil {
+		if !language.Known(*p.PreferredAudioLang) {
+			writeError(w, http.StatusBadRequest, "unknown audio language")
+			return
+		}
+		cfg.Media.PreferredAudioLangs = []string{language.Code(*p.PreferredAudioLang)}
+	}
+	if p.PreferredSubtitleLang != nil {
+		if !language.Known(*p.PreferredSubtitleLang) {
+			writeError(w, http.StatusBadRequest, "unknown subtitle language")
+			return
+		}
+		cfg.Media.PreferredSubtitleLangs = []string{language.Code(*p.PreferredSubtitleLang)}
+	}
 	if p.TMDBAPIKey != nil {
 		cfg.TMDB.APIKey = *p.TMDBAPIKey
 	}
@@ -147,5 +178,6 @@ func (a *API) applyConfig() {
 	// When it does arrive it is built from the live config, so nothing is lost.
 	if s := a.getStreamer(); s != nil {
 		s.Sessions().SetMaxTranscodes(a.Cfg.Transcode.MaxTranscodes)
+		s.SetPreferredLangs(a.Cfg.Media.PreferredAudioLangs)
 	}
 }

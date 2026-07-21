@@ -18,13 +18,19 @@ type accountDTO struct {
 
 // profileDTO is a viewer profile as exposed to clients.
 type profileDTO struct {
-	ID     int64  `json:"id"`
-	Name   string `json:"name"`
-	Avatar string `json:"avatar,omitempty"`
+	ID                    int64  `json:"id"`
+	Name                  string `json:"name"`
+	Avatar                string `json:"avatar,omitempty"`
+	PreferredAudioLang    string `json:"preferred_audio_lang,omitempty"`
+	PreferredSubtitleLang string `json:"preferred_subtitle_lang,omitempty"`
 }
 
 func toProfileDTO(p model.Profile) profileDTO {
-	return profileDTO{ID: p.ID, Name: p.Name, Avatar: p.Avatar}
+	return profileDTO{
+		ID: p.ID, Name: p.Name, Avatar: p.Avatar,
+		PreferredAudioLang:    p.PreferredAudioLang,
+		PreferredSubtitleLang: p.PreferredSubtitleLang,
+	}
 }
 
 func toProfileDTOs(ps []model.Profile) []profileDTO {

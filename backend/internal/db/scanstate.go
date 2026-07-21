@@ -34,6 +34,17 @@ func (d *DB) MarkScanned(ctx context.Context, path string, size int64, modTime t
 	return err
 }
 
+// ClearScanStateForPrefix forgets the scan state of every file whose path begins
+// with prefix, so they are re-evaluated on the next scan. Used when a file was
+// deleted, so a duplicate copy beside it can be promoted to the linked one. The
+// caller passes a separator-terminated directory prefix. A substring match (not
+// LIKE) avoids `_`/`%` in real paths acting as wildcards.
+func (d *DB) ClearScanStateForPrefix(ctx context.Context, prefix string) error {
+	_, err := d.ExecContext(ctx,
+		`DELETE FROM scan_state WHERE substr(path, 1, ?) = ?`, len(prefix), prefix)
+	return err
+}
+
 // InsertUnmatched records a file the scanner could not confidently match.
 func (d *DB) InsertUnmatched(ctx context.Context, u *model.UnmatchedFile) error {
 	_, err := d.ExecContext(ctx, `

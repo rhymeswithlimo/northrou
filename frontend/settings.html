@@ -103,6 +103,27 @@
             </div>
         </section>
 
+        <!-- ---------- language (per profile) ---------- -->
+        <section class="settings__group" aria-labelledby="h-language">
+            <h2 class="settings__heading" id="h-language">Language</h2>
+
+            <div class="setting">
+                <div class="setting__text">
+                    <p class="setting__name">Preferred audio</p>
+                    <p class="setting__desc">Which audio track to play when a title has more than one.</p>
+                </div>
+                <select class="settings__select" id="audio-lang" aria-label="Preferred audio language"></select>
+            </div>
+
+            <div class="setting">
+                <div class="setting__text">
+                    <p class="setting__name">Preferred subtitles</p>
+                    <p class="setting__desc">Which subtitle language to turn on by default.</p>
+                </div>
+                <select class="settings__select" id="subtitle-lang" aria-label="Preferred subtitle language"></select>
+            </div>
+        </section>
+
         <!-- ---------- about ---------- -->
         <section class="settings__group" aria-labelledby="h-about">
             <h2 class="settings__heading" id="h-about">About</h2>
@@ -239,6 +260,12 @@
                     Media folders are set on the server itself. Run
                     <code class="u-mono">northrou admin</code> there and open the Library tab.
                 </p>
+
+                <div class="settings__unmatched" id="unmatched-section" hidden>
+                    <p class="setting__name">Couldn't be identified</p>
+                    <p class="setting__desc" id="unmatched-note"></p>
+                    <ul class="unmatched" id="unmatched-list"></ul>
+                </div>
             </section>
 
             <section class="settings__group" aria-labelledby="h-streaming">

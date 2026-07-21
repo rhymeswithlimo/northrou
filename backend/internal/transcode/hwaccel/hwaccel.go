@@ -29,6 +29,7 @@ type Capabilities struct {
 	Available []Backend `json:"available"`
 	H264      string    `json:"h264_encoder"` // ffmpeg encoder name for H.264
 	HEVC      string    `json:"hevc_encoder"` // ffmpeg encoder name for HEVC
+	AV1       string    `json:"av1_encoder"`  // ffmpeg AV1 encoder name, "" if none
 }
 
 // encoderFor maps a backend to its ffmpeg H.264/HEVC encoder names.
@@ -39,6 +40,18 @@ var encoderFor = map[Backend][2]string{
 	AMF:          {"h264_amf", "hevc_amf"},
 	VAAPI:        {"h264_vaapi", "hevc_vaapi"},
 	Software:     {"libx264", "libx265"},
+}
+
+// av1EncoderFor maps a backend to its ffmpeg AV1 encoder name. Only newer GPUs
+// (NVIDIA 40-series, Intel Arc/Xe QSV, recent AMD/VA-API) have AV1 encode, so
+// the name is only used when Detect confirms it is present. VideoToolbox has no
+// AV1 encoder.
+var av1EncoderFor = map[Backend]string{
+	NVENC:    "av1_nvenc",
+	QSV:      "av1_qsv",
+	AMF:      "av1_amf",
+	VAAPI:    "av1_vaapi",
+	Software: "libsvtav1",
 }
 
 // preference orders backends best-first. VideoToolbox is preferred on macOS.
@@ -70,6 +83,11 @@ func Detect(ctx context.Context, ffmpegPath, override string) Capabilities {
 		Available: available,
 		H264:      encoderFor[chosen][0],
 		HEVC:      encoderFor[chosen][1],
+	}
+	// AV1 encode is a per-GPU-generation feature, so confirm the encoder is
+	// actually present (not just implied by the backend).
+	if enc, ok := av1EncoderFor[chosen]; ok && encoders[enc] {
+		caps.AV1 = enc
 	}
 	if chosen == Software {
 		slog.Warn("no hardware video acceleration detected; using software encoding (4K transcoding will not be real-time)",

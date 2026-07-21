@@ -7,6 +7,7 @@ package transcode
 import (
 	"strings"
 
+	"github.com/rhymeswithlimo/northrou/backend/internal/language"
 	"github.com/rhymeswithlimo/northrou/backend/internal/model"
 )
 
@@ -19,9 +20,13 @@ type ClientCapabilities struct {
 	Containers     []string `json:"containers"`      // e.g. ["mp4","mkv"]
 	MaxResolution  int      `json:"max_resolution"`  // max height (0 = unlimited)
 	HDR            bool     `json:"hdr"`             // supports HDR passthrough
+	DolbyVision    bool     `json:"dolby_vision"`    // renders Dolby Vision natively (incl. profile 7)
 	Atmos          bool     `json:"atmos"`           // supports Dolby Atmos (E-AC3 JOC/TrueHD)
 	MaxBitrateKbps int      `json:"max_bitrate_kbps"` // 0 = unlimited (remote adaptive)
 	Remote         bool     `json:"remote"`          // stream is over the remote tunnel
+	// PreferredAudioLangs is the viewer's per-request audio language preference
+	// (from their profile). When empty the server default applies.
+	PreferredAudioLangs []string `json:"-"`
 }
 
 // canonicalContainer maps an ffprobe format_name to a short canonical name
@@ -53,14 +58,31 @@ func supports(list []string, item string) bool {
 	return false
 }
 
-// pickAudio returns the audio stream to serve: the default track if flagged,
-// else the first. Returns a zero AudioStream and false when there is none.
-func pickAudio(mf *model.MediaFile) (model.AudioStream, bool) {
+// pickAudio returns the audio stream to serve. Preference order: a
+// non-commentary track in the household's preferred language (earlier codes
+// win), then the container's default track, then the first non-commentary
+// track, then the first track. Returns false when there is no audio.
+func pickAudio(mf *model.MediaFile, preferredLangs []string) (model.AudioStream, bool) {
 	if len(mf.Audio) == 0 {
 		return model.AudioStream{}, false
 	}
+	// Preferred language, honoring the order of the preference list.
+	for _, want := range preferredLangs {
+		for _, a := range mf.Audio {
+			if !a.Commentary && language.Match(a.Language, want) {
+				return a, true
+			}
+		}
+	}
+	// Default-flagged, non-commentary.
 	for _, a := range mf.Audio {
-		if a.Default {
+		if a.Default && !a.Commentary {
+			return a, true
+		}
+	}
+	// First non-commentary track.
+	for _, a := range mf.Audio {
+		if !a.Commentary {
 			return a, true
 		}
 	}

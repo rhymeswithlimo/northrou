@@ -90,6 +90,7 @@ func (a *API) Mount(r chi.Router) {
 		r.Group(func(r chi.Router) {
 			r.Use(a.Auth.Middleware)
 			r.Get("/me", a.handleMe)
+			r.Post("/me/language", a.handleSetMyLanguage)
 
 			// Profiles: any signed-in profile may list, add, or rename.
 			// Deleting a profile is destructive (it wipes that viewer's watch
@@ -114,6 +115,7 @@ func (a *API) Mount(r chi.Router) {
 			r.Get("/shows/{id}/similar", a.handleSimilarShows)
 			r.Get("/search", a.handleSearch)
 			r.Get("/unmatched", a.handleListUnmatched)
+			r.Get("/admin/tmdb-search", a.handleTMDBSearch)
 
 			// Streaming.
 			r.Get("/media/{id}/stream", a.handleStream)
@@ -146,6 +148,7 @@ func (a *API) Mount(r chi.Router) {
 				r.Use(a.Auth.RequireAdmin)
 				r.Patch("/admin/config", a.handlePatchConfig)
 				r.Post("/admin/scan", a.handleStartScan)
+				r.Post("/admin/match", a.handleManualMatch)
 				r.Post("/admin/update", a.handleUpdateApply)
 				r.Delete("/profiles/{id}", a.handleDeleteProfile)
 			})

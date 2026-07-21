@@ -61,6 +61,7 @@ frontend/swift/**/DerivedData/
 .vscode/
 
 CLAUDE.md
+.claude/
 # Rust build output, wherever it appears (src-tauri, plugins, future crates).
 target/
 # Tauri's generated platform projects: regenerated, never edited by hand.

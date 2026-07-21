@@ -251,7 +251,7 @@ func (a *App) ensureFFmpeg(ctx context.Context) {
 		return
 	}
 	// ffprobe is now available: attach it to the scanner for technical metadata.
-	a.Scanner.SetProber(mediainfo.New(paths.FFprobe))
+	a.Scanner.SetProber(mediainfo.New(paths.FFprobe, mediainfo.WithDeepDolbyVision(a.Cfg.Transcode.ProbeDolbyVision)))
 
 	// Wire the subtitle pipeline now that ffmpeg exists. Tesseract is optional;
 	// without it, PGS tracks are marked "skipped".
@@ -268,7 +268,8 @@ func (a *App) ensureFFmpeg(ctx context.Context) {
 	hw := hwaccel.Detect(ctx, paths.FFmpeg, a.Cfg.Transcode.HWAccel)
 	sm := transcode.NewSessionManager(hw)
 	streamer := transcode.NewStreamer(paths.FFmpeg, a.Cfg.Server.DataDir, hw, sm,
-		a.Cfg.Transcode.Tonemap, a.Cfg.Transcode.AllowSoftware4K, a.Cfg.Transcode.MaxBitrateKbps)
+		a.Cfg.Transcode.Tonemap, a.Cfg.Transcode.AllowSoftware4K, a.Cfg.Transcode.MaxBitrateKbps,
+		a.Cfg.Media.PreferredAudioLangs)
 	a.API.SetStreamer(streamer)
 	a.sessions.Store(sm)
 

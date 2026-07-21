@@ -34,6 +34,7 @@ type Streamer struct {
 	tonemap        bool
 	allowSoft4K    bool
 	maxBitrateKbps int
+	preferredLangs []string // preferred audio languages (ISO-639), in order
 	sessions       *SessionManager
 
 	mu       sync.Mutex
@@ -41,7 +42,7 @@ type Streamer struct {
 }
 
 // NewStreamer builds a Streamer. dataDir/hls holds transcode scratch space.
-func NewStreamer(ffmpegPath, dataDir string, hw hwaccel.Capabilities, sm *SessionManager, tonemap, allowSoft4K bool, maxBitrateKbps int) *Streamer {
+func NewStreamer(ffmpegPath, dataDir string, hw hwaccel.Capabilities, sm *SessionManager, tonemap, allowSoft4K bool, maxBitrateKbps int, preferredLangs []string) *Streamer {
 	s := &Streamer{
 		ffmpegPath:     ffmpegPath,
 		hlsDir:         filepath.Join(dataDir, "hls"),
@@ -49,6 +50,7 @@ func NewStreamer(ffmpegPath, dataDir string, hw hwaccel.Capabilities, sm *Sessio
 		tonemap:        tonemap,
 		allowSoft4K:    allowSoft4K,
 		maxBitrateKbps: maxBitrateKbps,
+		preferredLangs: preferredLangs,
 		sessions:       sm,
 		hlsSess:        map[string]*hlsSession{},
 	}
@@ -59,12 +61,27 @@ func NewStreamer(ffmpegPath, dataDir string, hw hwaccel.Capabilities, sm *Sessio
 // Sessions exposes the session manager (for the admin API/TUI).
 func (s *Streamer) Sessions() *SessionManager { return s.sessions }
 
+// SetPreferredLangs updates the audio-language preference at runtime (from a
+// settings change) so it takes effect without a restart.
+func (s *Streamer) SetPreferredLangs(langs []string) {
+	s.mu.Lock()
+	s.preferredLangs = langs
+	s.mu.Unlock()
+}
+
 // Plan computes the delivery decision for a media file and client.
 func (s *Streamer) Plan(mf *model.MediaFile, caps ClientCapabilities) Decision {
+	s.mu.Lock()
+	langs := s.preferredLangs
+	s.mu.Unlock()
 	return Decide(mf, caps, Options{
 		HWBackend:       string(s.hw.Backend),
 		AllowSoftware4K: s.allowSoft4K,
 		Tonemap:         s.tonemap,
+		PreferredLangs:  langs,
+		// Only offer AV1 as a target when a hardware AV1 encoder exists; software
+		// AV1 is far too slow to transcode in real time.
+		AV1Encode: s.hw.AV1 != "" && s.hw.Backend != hwaccel.Software,
 	})
 }
 

@@ -31,7 +31,7 @@ func TestServeStream_DirectPlay(t *testing.T) {
 
 	sm := NewSessionManager(hwaccel.Capabilities{Backend: hwaccel.Software})
 	// ffmpegPath empty is fine for direct play (no processing).
-	s := NewStreamer("", dir, hwaccel.Capabilities{Backend: hwaccel.Software}, sm, false, false, 0)
+	s := NewStreamer("", dir, hwaccel.Capabilities{Backend: hwaccel.Software}, sm, false, false, 0, nil)
 
 	// Confirm the plan is direct play.
 	if d := s.Plan(mf, caps); d.Mode != ModeDirectPlay {
@@ -67,7 +67,7 @@ func TestServeStream_RangeRequest(t *testing.T) {
 	}
 	caps := ClientCapabilities{VideoCodecs: []string{"h264"}, AudioCodecs: []string{"aac"}, Containers: []string{"mp4"}}
 	sm := NewSessionManager(hwaccel.Capabilities{Backend: hwaccel.Software})
-	s := NewStreamer("", dir, hwaccel.Capabilities{Backend: hwaccel.Software}, sm, false, false, 0)
+	s := NewStreamer("", dir, hwaccel.Capabilities{Backend: hwaccel.Software}, sm, false, false, 0, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/media/2/stream", nil)
 	req.Header.Set("Range", "bytes=0-3")

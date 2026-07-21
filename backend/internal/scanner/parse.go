@@ -23,13 +23,67 @@ type ParsedInfo struct {
 var (
 	// SxxEyy (with optional additional Eyy for multi-episode files).
 	reSeasonEp = regexp.MustCompile(`(?i)\bS(\d{1,2})[\s._-]?E(\d{1,3})((?:[\s._-]?E\d{1,3})*)\b`)
-	// 1x05 style.
-	reAltEp = regexp.MustCompile(`(?i)\b(\d{1,2})x(\d{2,3})\b`)
+	// 1x05 style (episode may be a single digit: 1x5).
+	reAltEp = regexp.MustCompile(`(?i)\b(\d{1,2})x(\d{1,3})\b`)
 	// Standalone episode E-numbers within a multi-episode suffix.
 	reEpNum = regexp.MustCompile(`(?i)E(\d{1,3})`)
 	// A 4-digit year in a plausible range.
 	reYear = regexp.MustCompile(`\b(19\d{2}|20\d{2})\b`)
+	// "Season 1", "Season 01", "Season.1", "S01", "S1", "Series 1".
+	reSeasonFolder = regexp.MustCompile(`(?i)^(?:season|series|s)[\s._-]*0*(\d{1,3})\b`)
+	// A bare episode number in a marker-less filename: "E07", "Episode 7", "- 07 -".
+	reEpisodeLoose = regexp.MustCompile(`(?i)(?:^|[\s._-])(?:e|ep|episode)[\s._-]*0*(\d{1,3})\b`)
+	// A 4-digit year embedded in a folder name, e.g. "2001 - Sorcerers Stone".
+	reFolderYear = regexp.MustCompile(`(?:^|[\s._(\[-])(19\d{2}|20\d{2})(?:[\s._)\]-]|$)`)
 )
+
+// genericFolder names never identify a show; they are containers, so title
+// recovery walks past them to the real show folder.
+var genericFolder = map[string]bool{
+	"mkv": true, "mp4": true, "subs": true, "subtitles": true, "sub": true,
+	"video": true, "videos": true, "media": true, "proxies": true, "extras": true,
+}
+
+// seasonFromFolder parses a season number from a folder name in the common
+// layouts. "Specials"/"Season 0" yield 0 with ok=true (a valid special season).
+func seasonFromFolder(name string) (int, bool) {
+	low := strings.ToLower(strings.TrimSpace(name))
+	if low == "specials" || low == "special" {
+		return 0, true
+	}
+	if m := reSeasonFolder.FindStringSubmatch(name); m != nil {
+		n, _ := strconv.Atoi(m[1])
+		return n, true
+	}
+	return 0, false
+}
+
+// episodeFromName extracts a loose episode number from a marker-less filename.
+func episodeFromName(base string) (int, bool) {
+	if m := reEpisodeLoose.FindStringSubmatch(normalize(base)); m != nil {
+		n, _ := strconv.Atoi(m[1])
+		return n, true
+	}
+	return 0, false
+}
+
+// yearFromFolder finds a plausible year embedded in a folder name.
+func yearFromFolder(name string) int {
+	if m := reFolderYear.FindStringSubmatch(name); m != nil {
+		y, _ := strconv.Atoi(m[1])
+		return y
+	}
+	return 0
+}
+
+// isGenericFolder reports whether a folder name is a container rather than a
+// title (a season folder, or a known technical grouping like "MKV"/"Subs").
+func isGenericFolder(name string) bool {
+	if _, ok := seasonFromFolder(name); ok {
+		return true
+	}
+	return genericFolder[strings.ToLower(strings.TrimSpace(name))]
+}
 
 // releaseTags are quality/source/codec/audio/HDR/edition tokens. The first one
 // encountered marks the end of the title (and, for movies, the region after

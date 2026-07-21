@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -38,11 +39,21 @@ type Extractor struct {
 // is active.
 const ocrYieldInterval = 500 * time.Millisecond
 
+// ocr job kinds.
+const (
+	ocrPGS           = "pgs"             // embedded PGS via .sup
+	ocrVobSubEmbed   = "vobsub-embedded" // embedded dvd_subtitle, extracted with ffmpeg
+	ocrVobSubExtern  = "vobsub-external" // external .idx/.sub pair
+)
+
 type ocrJob struct {
 	trackID     int64
-	filePath    string
+	kind        string
+	filePath    string // media file (PGS / embedded VobSub)
 	streamIndex int
 	language    string
+	idxPath     string // external VobSub .idx
+	subPath     string // external VobSub .sub
 }
 
 // New builds an Extractor. dataDir/subtitles holds generated WebVTT files.
@@ -94,7 +105,7 @@ func (e *Extractor) Start(ctx context.Context) {
 	e.started = true
 	e.startMu.Unlock()
 
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		go e.ocrWorker(ctx)
 	}
 	go e.requeuePending(ctx)
@@ -139,6 +150,7 @@ func (e *Extractor) ExtractForFile(ctx context.Context, fileID int64, mf *model.
 			Format:     format,
 			Source:     "embedded",
 			Forced:     s.Forced,
+			SDH:        s.SDH,
 			OCRStatus:  "none",
 		}
 
@@ -165,9 +177,23 @@ func (e *Extractor) ExtractForFile(ctx context.Context, fileID int64, mf *model.
 			if err != nil {
 				return err
 			}
-			e.enqueue(ocrJob{trackID: trackID, filePath: mf.Path, streamIndex: s.Index, language: s.Language})
+			e.enqueue(ocrJob{trackID: trackID, kind: ocrPGS, filePath: mf.Path, streamIndex: s.Index, language: s.Language})
+		case format == "dvdsub":
+			// Embedded DVD/VobSub: OCR it when Tesseract is available, else skip.
+			if e.tesseract == "" {
+				track.OCRStatus = "skipped"
+				if _, err := e.db.UpsertSubtitleTrack(ctx, track); err != nil {
+					return err
+				}
+				continue
+			}
+			track.OCRStatus = "queued"
+			trackID, err := e.db.UpsertSubtitleTrack(ctx, track)
+			if err != nil {
+				return err
+			}
+			e.enqueue(ocrJob{trackID: trackID, kind: ocrVobSubEmbed, filePath: mf.Path, streamIndex: s.Index, language: s.Language})
 		default:
-			// Other image formats (dvdsub) are recorded but not OCR'd yet.
 			track.OCRStatus = "skipped"
 			if _, err := e.db.UpsertSubtitleTrack(ctx, track); err != nil {
 				return err
@@ -175,6 +201,95 @@ func (e *Extractor) ExtractForFile(ctx context.Context, fileID int64, mf *model.
 		}
 	}
 	return nil
+}
+
+// ExtractSidecars discovers external subtitle files next to videoPath and
+// converts the text ones to WebVTT. External VobSub (.sub) is recorded but not
+// OCR'd yet, mirroring embedded dvd_subtitle. Idempotent: an already-converted
+// sidecar whose VTT still exists is skipped, so re-scans are cheap even though
+// sidecars are invisible to the video's mtime-based NeedsScan check.
+func (e *Extractor) ExtractSidecars(ctx context.Context, fileID int64, videoPath string) error {
+	for _, sub := range DiscoverSidecars(videoPath) {
+		track := &db.SubtitleTrack{
+			FileID:    fileID,
+			TrackIndex: 0,
+			ExtPath:   sub.Path,
+			Language:  sub.Language,
+			Format:    sub.Format,
+			Source:    "external",
+			Forced:    sub.Forced,
+			SDH:       sub.SDH,
+			OCRStatus: "none",
+		}
+		if sub.Format == "vobsub" {
+			// External VobSub needs its .idx sibling and Tesseract to OCR.
+			idxPath := strings.TrimSuffix(sub.Path, filepath.Ext(sub.Path)) + ".idx"
+			if e.tesseract == "" || !fileExists(idxPath) {
+				track.OCRStatus = "skipped"
+				if _, err := e.db.UpsertSubtitleTrack(ctx, track); err != nil {
+					return err
+				}
+				continue
+			}
+			if existing, err := e.db.GetExternalSubtitle(ctx, fileID, sub.Path); err == nil &&
+				existing.OCRStatus == "done" && fileExists(existing.VTTPath) {
+				continue
+			}
+			track.OCRStatus = "queued"
+			trackID, err := e.db.UpsertSubtitleTrack(ctx, track)
+			if err != nil {
+				return err
+			}
+			e.enqueue(ocrJob{trackID: trackID, kind: ocrVobSubExtern, idxPath: idxPath, subPath: sub.Path, language: sub.Language})
+			continue
+		}
+		if existing, err := e.db.GetExternalSubtitle(ctx, fileID, sub.Path); err == nil &&
+			existing.OCRStatus == "done" && fileExists(existing.VTTPath) {
+			continue
+		}
+		trackID, err := e.db.UpsertSubtitleTrack(ctx, track)
+		if err != nil {
+			return err
+		}
+		if err := e.convertExternalTrack(ctx, trackID, sub.Path); err != nil {
+			slog.Debug("external subtitle conversion failed", "path", sub.Path, "err", err)
+			_ = e.db.SetSubtitleVTT(ctx, trackID, "", "failed")
+		}
+	}
+	return nil
+}
+
+// convertExternalTrack normalizes a sidecar's charset to UTF-8 and transcodes it
+// to WebVTT. ffmpeg assumes UTF-8 input, so cp1252/Latin-1 files (common in
+// scene/YIFY releases) must be transcoded first or they mojibake.
+func (e *Extractor) convertExternalTrack(ctx context.Context, trackID int64, subPath string) error {
+	raw, err := os.ReadFile(subPath)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(e.dir, 0o755); err != nil {
+		return err
+	}
+	tmp := filepath.Join(e.dir, "in-"+strconv.FormatInt(trackID, 10)+strings.ToLower(filepath.Ext(subPath)))
+	if err := os.WriteFile(tmp, toUTF8(raw), 0o644); err != nil {
+		return err
+	}
+	defer os.Remove(tmp)
+
+	out := e.vttPath(trackID)
+	cmd := exec.CommandContext(ctx, e.ffmpegPath, "-y", "-i", tmp, "-c:s", "webvtt", out)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("ffmpeg webvtt: %w: %s", err, lastLine(output))
+	}
+	return e.db.SetSubtitleVTT(ctx, trackID, out, "done")
+}
+
+func fileExists(p string) bool {
+	if p == "" {
+		return false
+	}
+	info, err := os.Stat(p)
+	return err == nil && !info.IsDir()
 }
 
 // convertTextTrack extracts one subtitle stream and transcodes it to WebVTT.
@@ -214,11 +329,20 @@ func (e *Extractor) requeuePending(ctx context.Context) {
 		return
 	}
 	for _, t := range tracks {
+		if t.Source == "external" { // external VobSub .idx/.sub
+			idxPath := strings.TrimSuffix(t.ExtPath, filepath.Ext(t.ExtPath)) + ".idx"
+			e.enqueue(ocrJob{trackID: t.ID, kind: ocrVobSubExtern, idxPath: idxPath, subPath: t.ExtPath, language: t.Language})
+			continue
+		}
 		mf, err := e.db.GetMediaFile(ctx, t.FileID)
 		if err != nil {
 			continue
 		}
-		e.enqueue(ocrJob{trackID: t.ID, filePath: mf.Path, streamIndex: t.TrackIndex, language: t.Language})
+		kind := ocrPGS
+		if t.Format == "dvdsub" {
+			kind = ocrVobSubEmbed
+		}
+		e.enqueue(ocrJob{trackID: t.ID, kind: kind, filePath: mf.Path, streamIndex: t.TrackIndex, language: t.Language})
 	}
 }
 

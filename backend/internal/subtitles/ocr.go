@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/rhymeswithlimo/northrou/backend/internal/ffmpeg"
+	"github.com/rhymeswithlimo/northrou/backend/internal/language"
 )
 
 // ocrWorker consumes OCR jobs: extract the PGS track to a .sup file, decode it
@@ -30,33 +31,20 @@ func (e *Extractor) ocrWorker(ctx context.Context) {
 func (e *Extractor) processOCR(ctx context.Context, j ocrJob) {
 	_ = e.db.SetSubtitleVTT(ctx, j.trackID, "", "processing")
 
-	work, err := os.MkdirTemp("", "northrou-pgs-*")
+	work, err := os.MkdirTemp("", "northrou-ocr-*")
 	if err != nil {
 		e.failOCR(ctx, j.trackID, "tempdir", err)
 		return
 	}
 	defer os.RemoveAll(work)
 
-	sup := filepath.Join(work, "track.sup")
-	// Extract the PGS stream unchanged into a .sup container.
-	cmd := exec.CommandContext(ctx, e.ffmpegPath,
-		"-y", "-i", j.filePath,
-		"-map", "0:"+strconv.Itoa(j.streamIndex),
-		"-c:s", "copy", "-f", "sup", sup,
-	)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		e.failOCR(ctx, j.trackID, "extract sup", err)
-		slog.Debug("pgs extract failed", "err", lastLine(out))
-		return
-	}
-
-	subs, err := ParseSUP(sup)
+	subs, err := e.imagesForJob(ctx, work, j)
 	if err != nil {
-		e.failOCR(ctx, j.trackID, "parse sup", err)
+		e.failOCR(ctx, j.trackID, "decode", err)
 		return
 	}
 
-	lang := ocrLang(j.language)
+	lang := language.Tesseract(j.language)
 	var cues []Cue
 	for i, s := range subs {
 		imgPath := filepath.Join(work, "cue"+strconv.Itoa(i)+".png")
@@ -88,6 +76,50 @@ func (e *Extractor) processOCR(ctx context.Context, j ocrJob) {
 	slog.Info("OCR complete", "track", j.trackID, "cues", len(cues))
 }
 
+// imagesForJob produces the timed subtitle images for an OCR job, decoding
+// whichever source format the job carries.
+func (e *Extractor) imagesForJob(ctx context.Context, work string, j ocrJob) ([]pgsSub, error) {
+	switch j.kind {
+	case ocrVobSubExtern:
+		return ParseVobSub(j.idxPath, j.subPath)
+	case ocrVobSubEmbed:
+		idx, sub, err := e.extractVobSub(ctx, work, j.filePath, j.streamIndex)
+		if err != nil {
+			return nil, err
+		}
+		return ParseVobSub(idx, sub)
+	default: // PGS
+		sup := filepath.Join(work, "track.sup")
+		cmd := exec.CommandContext(ctx, e.ffmpegPath,
+			"-y", "-i", j.filePath,
+			"-map", "0:"+strconv.Itoa(j.streamIndex),
+			"-c:s", "copy", "-f", "sup", sup,
+		)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			slog.Debug("pgs extract failed", "err", lastLine(out))
+			return nil, err
+		}
+		return ParseSUP(sup)
+	}
+}
+
+// extractVobSub uses ffmpeg to demux an embedded dvd_subtitle stream to a
+// .idx/.sub pair, returning both paths.
+func (e *Extractor) extractVobSub(ctx context.Context, work, filePath string, streamIndex int) (idx, sub string, err error) {
+	idx = filepath.Join(work, "track.idx")
+	sub = filepath.Join(work, "track.sub")
+	cmd := exec.CommandContext(ctx, e.ffmpegPath,
+		"-y", "-i", filePath,
+		"-map", "0:"+strconv.Itoa(streamIndex),
+		"-c:s", "copy", idx,
+	)
+	if out, cerr := cmd.CombinedOutput(); cerr != nil {
+		slog.Debug("vobsub extract failed", "err", lastLine(out))
+		return "", "", cerr
+	}
+	return idx, sub, nil
+}
+
 // tesseractOCR runs tesseract on an image and returns recognized text.
 func (e *Extractor) tesseractOCR(ctx context.Context, imgPath, lang string) (string, error) {
 	// tesseract <img> stdout -l <lang> --psm 6  (assume a block of text)
@@ -111,34 +143,6 @@ func writePNG(path string, s pgsSub) error {
 	}
 	defer f.Close()
 	return png.Encode(f, s.Img)
-}
-
-// ocrLang maps an MKV/ISO language code to a Tesseract language, defaulting to
-// English.
-func ocrLang(lang string) string {
-	lang = strings.ToLower(strings.TrimSpace(lang))
-	switch lang {
-	case "", "und":
-		return "eng"
-	case "en":
-		return "eng"
-	case "es":
-		return "spa"
-	case "fr":
-		return "fra"
-	case "de":
-		return "deu"
-	case "it":
-		return "ita"
-	case "pt":
-		return "por"
-	case "ja":
-		return "jpn"
-	case "zh":
-		return "chi_sim"
-	default:
-		return lang // already ISO 639-2 (eng, spa, ...) in most MKVs
-	}
 }
 
 // DetectTesseract returns the path to a usable tesseract binary, or "" if none
