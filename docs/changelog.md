@@ -13,6 +13,16 @@ and uses it as the GitHub release body, so an entry needs to exist here
 *before* publishing a version — the release fails otherwise. Write it as you
 land the change, not after the fact.
 
+## v0.1.6 - Unreleased
+
+### Added
+
+- **App clients** now build and release. APKs and desktop. IOS still needs to be implemented.
+- `northrou cc` prints this server's connection code (the code apps and the web
+  client use to pair), so you don't have to dig it out of config.toml. Aliases:
+  `code`, `connection-code`. On a box running the system service (as root), run
+  it with `sudo`.
+
 ## v0.1.5 - 2026-07-21
 
 ### Added

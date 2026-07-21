@@ -46,6 +46,7 @@ func NewRootCmd() *cobra.Command {
 		newScanCmd(),
 		newMatchCmd(),
 		newUpdateCmd(),
+		newConnectionCodeCmd(),
 	)
 	return root
 }
