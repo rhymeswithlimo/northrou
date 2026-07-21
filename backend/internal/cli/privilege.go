@@ -36,9 +36,23 @@ func elevationHint(err error, commandPath string, euid int, goos string) error {
 		return err
 	}
 	if goos == "windows" {
-		return fmt.Errorf("%w\n\nThis needs administrator privileges. Re-run %q "+
-			"from a terminal opened as Administrator.", err, commandPath)
+		return &rootHintError{err: err, hint: fmt.Sprintf(
+			"This needs administrator privileges. Re-run %q from a terminal "+
+				"opened as Administrator.", commandPath)}
 	}
-	return fmt.Errorf("%w\n\nThis needs root. Re-run it with sudo:\n  sudo %s",
-		err, commandPath)
+	return &rootHintError{err: err, hint: fmt.Sprintf(
+		"This needs root. Re-run it with sudo:\n  sudo %s", commandPath)}
 }
+
+// rootHintError pairs a permission error with the actionable line telling the
+// operator how to re-run elevated. Kept separate from err's own text (rather
+// than baked into a single fmt.Errorf string) so Execute can print the
+// original failure plainly and highlight just the guidance, the same way
+// notice() highlights other operator-facing CLI output.
+type rootHintError struct {
+	err  error
+	hint string
+}
+
+func (e *rootHintError) Error() string { return e.err.Error() + "\n\n" + e.hint }
+func (e *rootHintError) Unwrap() error { return e.err }

@@ -1,9 +1,6 @@
 # Temporary:
 README.md
 
-# Local scratch (sample metadata dumps, etc.), not part of the repo.
-/metadata_example_server.txt
-
 # Build output
 /dist/
 /bin/

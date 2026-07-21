@@ -20,6 +20,11 @@ const (
 // writes to must stay plain, or the escape codes turn into garbage there.
 var useColor = wantColor(os.Stdout, os.LookupEnv)
 
+// useColorErr is useColor's counterpart for stderr, where Execute prints
+// command failures: stdout and stderr can be redirected independently (e.g.
+// `northrou update 2>err.log`), so each stream decides for itself.
+var useColorErr = wantColor(os.Stderr, os.LookupEnv)
+
 // wantColor is the testable core: it takes the output file and an env lookup so
 // the TTY and NO_COLOR branches can be exercised without a real terminal.
 func wantColor(out *os.File, lookupEnv func(string) (string, bool)) bool {
@@ -46,4 +51,14 @@ func notice(format string, args ...any) {
 		msg = ansiBold + ansiCyan + msg + ansiReset
 	}
 	fmt.Println(msg)
+}
+
+// highlightErr applies notice's highlight to text destined for stderr, e.g.
+// the actionable part of an error (see rootHintError in privilege.go), so
+// operator guidance stands out there the same way it does on stdout.
+func highlightErr(s string) string {
+	if !useColorErr {
+		return s
+	}
+	return ansiBold + ansiCyan + s + ansiReset
 }

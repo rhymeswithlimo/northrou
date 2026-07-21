@@ -9,7 +9,7 @@
          The timeout is a backstop if a code path forgets to reveal(). -->
     <script>(function(d){d.classList.add('booting');setTimeout(function(){d.classList.remove('booting');},2000);})(document.documentElement);</script>
 
-    <title>Set up - Northrou</title>
+    <title>Setup - Northrou</title>
 
     <link rel="icon" href="assets/favicon-dark.svg" media="(prefers-color-scheme: light)">
     <link rel="icon" href="assets/favicon-light.svg" media="(prefers-color-scheme: dark)">
@@ -36,17 +36,16 @@
                     </span>
                     <div>
                         <h1 class="auth__title" id="t-account">Welcome to Northrou</h1>
-                        <p class="auth__subtitle">Set up your server. Everything runs on your own hardware.</p>
+                        <p class="auth__subtitle">Setup your server. Everything runs on your own hardware.</p>
                     </div>
                 </header>
 
                 <div class="auth__options">
                     <form class="auth__form" id="account-form" novalidate>
-                        <label for="email" class="auth__label u-mono">Account email:</label>
+                        <label for="email" class="auth__label u-mono">Email Address:</label>
                         <input type="email" id="email" name="email" class="auth__input"
                                placeholder="you@example.com" autocomplete="email" required>
-                        <p class="setup__hint">You sign in with a one-time code sent here. There is no password.</p>
-                        <button type="submit" class="auth__submit" id="account-next" disabled>Continue</button>
+                        <button type="submit" class="auth__submit" id="account-next" disabled>Send me a code</button>
                     </form>
                 </div>
 
@@ -73,17 +72,16 @@
                         </svg>
                     </span>
                     <div>
-                        <h1 class="auth__title" id="t-meta">Posters and descriptions</h1>
-                        <p class="auth__subtitle">Optional. You can add this later.</p>
+                        <h1 class="auth__title" id="t-meta">Posters, descriptions, etc.</h1>
+                        <p class="auth__subtitle">Fetch title info from TMDB with your API key.</p>
                     </div>
                 </header>
 
                 <div class="auth__options">
                     <form class="auth__form" id="meta-form" novalidate>
-                        <label for="tmdb" class="auth__label u-mono">TMDB API key:</label>
+                        <label for="tmdb" class="auth__label u-mono">TMDB API Key:</label>
                         <input type="text" id="tmdb" class="auth__input" placeholder="Optional"
                                autocomplete="off" spellcheck="false">
-                        <p class="setup__hint">Without a key, Northrou still finds your files but can't fetch posters, cast or descriptions.</p>
 
                         <button type="submit" class="auth__submit" id="finish">Create account &amp; finish</button>
                         <p class="form-error u-hidden" id="setup-error" role="alert"></p>
@@ -105,7 +103,7 @@
                         </svg>
                     </span>
                     <div>
-                        <h1 class="auth__title" id="t-done">You're set up</h1>
+                        <h1 class="auth__title" id="t-done">You're all set up!</h1>
                         <p class="auth__subtitle">Your server is running and signed in on this device.</p>
                     </div>
                 </header>
@@ -115,7 +113,7 @@
                          happens on the server. Say so here rather than letting
                          the home screen read as broken. -->
                     <div class="setup__code-block">
-                        <p class="auth__label u-mono">Next: add your media</p>
+                        <p class="auth__label u-mono">Next: Add Your Media</p>
                         <p class="setup__hint">
                             On this machine, run <span class="u-mono">northrou admin</span> and open the
                             Library tab to point Northrou at your movie and TV folders. It scans them
@@ -124,7 +122,7 @@
                     </div>
 
                     <div class="setup__code-block">
-                        <p class="auth__label u-mono">Connection code</p>
+                        <p class="auth__label u-mono">Connection Code</p>
                         <p class="setup__code" id="connection-code"></p>
                         <p class="setup__hint">
                             Enter this on your other devices, or sign in at

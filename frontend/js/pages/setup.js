@@ -10,6 +10,7 @@
 
 import { $, $$, show, hide, setError, reveal } from '../lib/dom.js';
 import { toast } from '../components/states.js';
+import { confetti } from '../lib/confetti.js';
 
 // Setup never redirects away on boot (an already-set-up box shows a message in
 // place), so it always stays: reveal immediately.
@@ -82,6 +83,7 @@ $('#meta-form').addEventListener('submit', async (e) => {
 
         $('#connection-code').textContent = data.connection_code ?? '';
         goTo(steps.done);
+        confetti();
     } catch {
         setError(setupError, 'Could not reach the server. Is it still running?');
     } finally {

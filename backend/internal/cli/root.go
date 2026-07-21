@@ -4,6 +4,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -55,11 +56,21 @@ func NewRootCmd() *cobra.Command {
 // expects, not "level=ERROR msg=\"command failed\" err=..." (which would also
 // mangle multi-line guidance like needsRoot's into literal \n).
 func Execute() int {
-	if err := NewRootCmd().Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, "Error:", err)
+	err := NewRootCmd().Execute()
+	if err == nil {
+		return 0
+	}
+	// needsRoot's sudo/Administrator guidance is operator-facing instruction,
+	// not part of the failure - print it highlighted, same as notice(), so it
+	// reads as "here's what to do" rather than more error text.
+	if hintErr, ok := errors.AsType[*rootHintError](err); ok {
+		fmt.Fprintln(os.Stderr, "Error:", hintErr.err)
+		fmt.Fprintln(os.Stderr)
+		fmt.Fprintln(os.Stderr, highlightErr(hintErr.hint))
 		return 1
 	}
-	return 0
+	fmt.Fprintln(os.Stderr, "Error:", err)
+	return 1
 }
 
 // setupLogger configures the global slog logger.

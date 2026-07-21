@@ -34,7 +34,7 @@
     font-weight: 400;
 }
 
-.auth__subtitle { color: var(--muted); }
+.auth__subtitle { color: var(--muted); font-size: 15px; padding-top: 3px; }
 
 .auth__options {
     display: flex;
