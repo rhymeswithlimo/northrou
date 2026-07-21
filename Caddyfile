@@ -9,6 +9,13 @@
 # collide on one hostname. See docs/deploy-coordination.md.
 
 coord.northrou.sh {
+	# Behind Cloudflare (coord is proxied): serve the Cloudflare Origin
+	# certificate so the Cloudflare<->origin leg validates under "Full (strict)".
+	# Caddy's automatic Let's Encrypt is intentionally not used here - it can't
+	# renew behind the proxy. Cert/key are mounted by deploy.yml. A deployment
+	# NOT fronted by Cloudflare should drop this line to get automatic HTTPS back.
+	tls /etc/caddy/origin-cert.pem /etc/caddy/origin-key.pem
+
 	handle /v1/* {
 		reverse_proxy relay:9100
 	}
