@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
@@ -57,8 +58,15 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c := &conn{ws: ws}
-	ctx := r.Context()
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
 	defer h.cleanup(c)
+
+	// Home servers hold a long-lived registration socket that is silent between
+	// pairings. An idle-timeout proxy in front of the coordinator (Cloudflare
+	// closes idle WebSockets after ~100s) would drop it and silently unregister
+	// the box, so ping to keep it flowing. Ping is safe alongside the read loop.
+	go keepAlive(ctx, ws)
 
 	for {
 		var msg Message
@@ -70,6 +78,34 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 }
+
+// keepAlive pings ws on an interval short enough to beat idle-timeout proxies,
+// closing the connection (which unblocks the read loop) if a ping goes
+// unanswered so a half-dead socket doesn't linger as a stale registration.
+func keepAlive(ctx context.Context, ws *websocket.Conn) {
+	t := time.NewTicker(pingInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			pctx, cancel := context.WithTimeout(ctx, pingTimeout)
+			err := ws.Ping(pctx)
+			cancel()
+			if err != nil {
+				_ = ws.Close(websocket.StatusGoingAway, "keepalive failed")
+				return
+			}
+		}
+	}
+}
+
+const (
+	// pingInterval is well under the ~100s idle window of proxies like Cloudflare.
+	pingInterval = 30 * time.Second
+	pingTimeout  = 10 * time.Second
+)
 
 // handle dispatches one incoming message.
 func (h *Hub) handle(ctx context.Context, c *conn, msg Message) error {

@@ -32,6 +32,10 @@ land the change, not after the fact.
 - Displayed error messages now read consistently - capitalized and ending in a
   full stop - whatever their source, including raw coordinator/backend strings
   that are lowercase by Go convention.
+- Remote signaling now sends WebSocket keepalive pings (both the coordinator and
+  the box), so an idle-timeout proxy in front of the coordinator (e.g. Cloudflare
+  closes idle WebSockets after ~100s) can't silently drop a box's registration
+  while it sits idle between pairings.
 
 ## v0.1.5 - 2026-07-21
 

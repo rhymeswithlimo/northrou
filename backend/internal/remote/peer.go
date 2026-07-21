@@ -96,6 +96,14 @@ func (p *Peer) connectOnce(ctx context.Context) error {
 	}
 	slog.Info("registered with coordination server", "url", p.coordURL, "code", p.code)
 
+	// The registration socket is idle between pairings; an idle-timeout proxy in
+	// front of the coordinator (Cloudflare closes idle WebSockets after ~100s)
+	// would drop it and quietly unregister us. Ping to keep it alive for this
+	// session, on top of the coordinator's own pings, so neither leg goes idle.
+	sessionCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go keepAlive(sessionCtx, ws)
+
 	for {
 		var msg signalMessage
 		if err := wsjson.Read(ctx, ws, &msg); err != nil {
@@ -106,6 +114,35 @@ func (p *Peer) connectOnce(ctx context.Context) error {
 		}
 	}
 }
+
+// keepAlive pings ws on an interval short enough to beat idle-timeout proxies
+// (e.g. Cloudflare's ~100s on WebSockets), closing the socket if a ping goes
+// unanswered so the read loop unblocks and the caller reconnects rather than
+// sitting on a half-dead connection.
+func keepAlive(ctx context.Context, ws *websocket.Conn) {
+	t := time.NewTicker(pingInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			pctx, cancel := context.WithTimeout(ctx, pingTimeout)
+			err := ws.Ping(pctx)
+			cancel()
+			if err != nil {
+				_ = ws.Close(websocket.StatusGoingAway, "keepalive failed")
+				return
+			}
+		}
+	}
+}
+
+const (
+	// pingInterval is well under the ~100s idle window of proxies like Cloudflare.
+	pingInterval = 30 * time.Second
+	pingTimeout  = 10 * time.Second
+)
 
 func (p *Peer) send(ctx context.Context, m signalMessage) error {
 	p.mu.Lock()
