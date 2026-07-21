@@ -26,4 +26,12 @@ echo "coordination-autoupdate: updating ${current:-<untagged>} -> $latest"
 git fetch --tags origin
 git checkout "$latest"
 docker compose -f deploy.yml up -d --build
+
+# The Caddyfile is bind-mounted, so a routing/TLS change in it does NOT recreate
+# the image-based caddy service on `up` above -- Caddy would keep serving the old
+# config until restarted. Reload it explicitly so a Caddyfile change shipped in a
+# release actually takes effect. `reload` is graceful and validates the new config
+# first, so a bad Caddyfile leaves the running server untouched rather than down.
+docker compose -f deploy.yml exec -T caddy caddy reload --config /etc/caddy/Caddyfile
+
 echo "coordination-autoupdate: now running $latest"
