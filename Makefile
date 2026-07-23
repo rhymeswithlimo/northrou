@@ -10,10 +10,10 @@ LDFLAGS := -X github.com/rhymeswithlimo/northrou/backend/internal/buildinfo.Vers
 
 WEB_ASSETS := backend/internal/web/assets
 
-.PHONY: build build-backend build-coord build-relay frontend frontend-dev test vet tidy clean clean-frontend run
+.PHONY: build build-backend build-coord frontend frontend-dev test vet tidy clean clean-frontend run
 
 # The backend embeds the client, so the client has to exist before it compiles.
-build: frontend build-backend build-coord build-relay
+build: frontend build-backend build-coord
 
 # Build the Vite client and stage it where //go:embed can see it.
 # The output is generated, not committed: everything under $(WEB_ASSETS) except
@@ -33,9 +33,6 @@ build-backend:
 
 build-coord:
 	cd coordination && go build -o ../bin/coordinator ./cmd/coordinator
-
-build-relay:
-	cd coordination && go build -o ../bin/relay ./cmd/relay
 
 test:
 	cd backend && go test ./...

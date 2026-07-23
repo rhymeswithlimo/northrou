@@ -93,11 +93,11 @@ async function refreshTokens() {
 
 /**
  * @param {string} path e.g. "/api/home"
- * @param {{method?: string, body?: any, auth?: boolean, elevated?: boolean,
+ * @param {{method?: string, body?: any, auth?: boolean,
  *          signal?: AbortSignal, query?: Record<string, any>}} [opts]
  */
 export async function request(path, opts = {}) {
-    const { method = 'GET', body, auth = true, elevated = false, signal, query } = opts;
+    const { method = 'GET', body, auth = true, signal, query } = opts;
 
     let url = apiUrl(path);
     if (query) {
@@ -126,12 +126,7 @@ export async function request(path, opts = {}) {
     };
 
     let token = null;
-    if (elevated) {
-        // Admin mutations must present the elevated token; the ordinary access
-        // token would come back 403.
-        token = session.elevatedToken();
-        if (!token) throw new ApiError(403, 'admin elevation required');
-    } else if (auth) {
+    if (auth) {
         // Refresh proactively when the token is known to be expired: cheaper
         // than a guaranteed 401 round trip.
         if (session.accessTokenExpired() && session.getSession()?.refresh_token) {
@@ -144,7 +139,7 @@ export async function request(path, opts = {}) {
 
     // Retry once behind a refresh: the token may have expired between our check
     // and the server reading it, or been revoked server-side.
-    if (res.status === 401 && auth && !elevated && session.getSession()?.refresh_token) {
+    if (res.status === 401 && auth && session.getSession()?.refresh_token) {
         const next = await refreshTokens();
         res = await send(next.access_token);
     }

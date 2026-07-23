@@ -26,14 +26,8 @@ import (
 type view int
 
 const (
-	viewLogin view = iota
+	viewConnecting view = iota
 	viewDashboard
-)
-
-// login sub-steps: enter the account email, then the emailed pin.
-const (
-	stepEmail = iota
-	stepPin
 )
 
 var tabs = []string{"Streams", "Hardware", "Library"}
@@ -50,11 +44,8 @@ type model struct {
 	addr   string
 	state  view
 
-	// login
-	inputs    []textinput.Model
-	loginStep int
-	loginErr  string
-	busy      bool
+	// connect
+	loginErr string
 
 	// dashboard
 	tab        int
@@ -77,8 +68,7 @@ type model struct {
 }
 
 // messages
-type pinRequestedMsg struct{ err error }
-type loginResultMsg struct{ err error }
+type pairedMsg struct{ err error }
 type dataMsg struct{ data dashboardData }
 type tickMsg time.Time
 
@@ -95,31 +85,18 @@ func Run(base, configPath string, local bool) error {
 }
 
 func newModel(base, configPath string, local bool) model {
-	emailIn := textinput.New()
-	emailIn.Placeholder = "you@example.com"
-	emailIn.Focus()
-	emailIn.CharLimit = 254
-	emailIn.Prompt = "› "
-
-	pinIn := textinput.New()
-	pinIn.Placeholder = "6-digit code"
-	pinIn.CharLimit = 6
-	pinIn.Prompt = "› "
-
 	volIn := textinput.New()
 	volIn.Placeholder = "/Volumes/Media/Movies"
 	volIn.CharLimit = 4096
 	volIn.Prompt = "› "
 
 	return model{
-		client:    newClient(base),
-		addr:      base,
-		state:     viewLogin,
-		loginStep: stepEmail,
-		inputs:    []textinput.Model{emailIn, pinIn},
-		store:     mediaStore{path: configPath},
-		local:     local,
-		volInput:  volIn,
+		client:   newClient(base),
+		addr:     base,
+		state:    viewConnecting,
+		store:    mediaStore{path: configPath},
+		local:    local,
+		volInput: volIn,
 	}
 }
 
@@ -140,7 +117,7 @@ func (m *model) reloadVolumes() {
 	}
 }
 
-func (m model) Init() tea.Cmd { return textinput.Blink }
+func (m model) Init() tea.Cmd { return m.pairCmd() }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -153,26 +130,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c":
 			return m, tea.Quit
 		}
-		if m.state == viewLogin {
-			return m.updateLogin(msg)
+		if m.state == viewConnecting {
+			// Retry a failed connection on any key.
+			if m.loginErr != "" {
+				m.loginErr = ""
+				return m, m.pairCmd()
+			}
+			return m, nil
 		}
 		return m.updateDashboard(msg)
 
-	case pinRequestedMsg:
-		m.busy = false
-		if msg.err != nil {
-			m.loginErr = msg.err.Error()
-			return m, nil
-		}
-		// Advance to the pin entry step.
-		m.loginStep = stepPin
-		m.loginErr = ""
-		m.inputs[stepEmail].Blur()
-		m.inputs[stepPin].Focus()
-		return m, textinput.Blink
-
-	case loginResultMsg:
-		m.busy = false
+	case pairedMsg:
 		if msg.err != nil {
 			m.loginErr = msg.err.Error()
 			return m, nil
@@ -193,43 +161,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Delegate to the active login input.
-	if m.state == viewLogin {
-		var cmd tea.Cmd
-		m.inputs[m.loginStep], cmd = m.inputs[m.loginStep].Update(msg)
-		return m, cmd
-	}
 	return m, nil
-}
-
-func (m model) updateLogin(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "enter":
-		if m.busy {
-			return m, nil
-		}
-		m.busy = true
-		m.loginErr = ""
-		if m.loginStep == stepEmail {
-			return m, m.requestPinCmd(strings.TrimSpace(m.inputs[stepEmail].Value()))
-		}
-		return m, m.verifyPinCmd(
-			strings.TrimSpace(m.inputs[stepEmail].Value()),
-			strings.TrimSpace(m.inputs[stepPin].Value()))
-	case "esc":
-		// Back to email entry to correct a typo or resend.
-		if m.loginStep == stepPin {
-			m.loginStep = stepEmail
-			m.loginErr = ""
-			m.inputs[stepPin].Blur()
-			m.inputs[stepPin].SetValue("")
-			m.inputs[stepEmail].Focus()
-			return m, textinput.Blink
-		}
-	}
-	var cmd tea.Cmd
-	m.inputs[m.loginStep], cmd = m.inputs[m.loginStep].Update(msg)
-	return m, cmd
 }
 
 func (m model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -333,21 +265,12 @@ func (m model) updateAddVolume(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // commands
 
-func (m model) requestPinCmd(email string) tea.Cmd {
+func (m model) pairCmd() tea.Cmd {
 	c := m.client
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
 		defer cancel()
-		return pinRequestedMsg{err: c.requestPin(ctx, email)}
-	}
-}
-
-func (m model) verifyPinCmd(email, pin string) tea.Cmd {
-	c := m.client
-	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
-		defer cancel()
-		return loginResultMsg{err: c.verifyPin(ctx, email, pin)}
+		return pairedMsg{err: c.pair(ctx)}
 	}
 }
 
@@ -379,37 +302,23 @@ var (
 )
 
 func (m model) View() string {
-	if m.state == viewLogin {
-		return m.viewLogin()
+	if m.state == viewConnecting {
+		return m.viewConnecting()
 	}
 	return m.viewDashboard()
 }
 
-func (m model) viewLogin() string {
+func (m model) viewConnecting() string {
 	var b strings.Builder
 	b.WriteString(titleStyle.Render("Northrou Admin") + "\n")
 	b.WriteString(subtleStyle.Render("Connecting to "+m.addr) + "\n\n")
 
-	if m.loginStep == stepEmail {
-		b.WriteString("Email\n" + m.inputs[stepEmail].View() + "\n\n")
-		if m.busy {
-			b.WriteString(subtleStyle.Render("Sending code…") + "\n")
-		}
-	} else {
-		b.WriteString(subtleStyle.Render("Enter the code sent to "+m.inputs[stepEmail].Value()) + "\n\n")
-		b.WriteString("Sign-in code\n" + m.inputs[stepPin].View() + "\n\n")
-		if m.busy {
-			b.WriteString(subtleStyle.Render("Signing in…") + "\n")
-		}
-	}
-
 	if m.loginErr != "" {
 		b.WriteString(lipgloss.NewStyle().Foreground(warn).Render(m.loginErr) + "\n")
-	}
-	if m.loginStep == stepEmail {
-		b.WriteString(subtleStyle.Render("\nenter: email me a code • ctrl+c: quit"))
+		b.WriteString(subtleStyle.Render("\nany key: retry • ctrl+c: quit"))
 	} else {
-		b.WriteString(subtleStyle.Render("\nenter: sign in • esc: change email • ctrl+c: quit"))
+		b.WriteString(subtleStyle.Render("Signing in…") + "\n")
+		b.WriteString(subtleStyle.Render("\nctrl+c: quit"))
 	}
 	return boxStyle.Render(b.String())
 }

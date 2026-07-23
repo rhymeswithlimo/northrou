@@ -81,8 +81,10 @@ sent as **two messages**, header then payload, exactly as Go's `writeFrame` does
 
 Each entry module runs a boot guard before it renders. `requireServer()` resolves
 the transport (redirecting to `connect.html` when no server is paired); the app
-index additionally checks first-run/sign-in state and routes to `setup.html` or
-`login.html` as needed. To avoid flashing the wrong screen before a redirect,
+index additionally checks first-run/pairing state via `requireReady()` and routes
+to `setup.html` (needs setup) or `connect.html` (a remote client with no session
+yet). A same-origin/LAN browser pairs automatically with no code, since local
+access is trusted. To avoid flashing the wrong screen before a redirect,
 every page starts hidden - an inline `<head>` script sets a `booting` class that
 `base.css` hides the body on - and calls `reveal()` (`js/lib/dom.js`) only on the
 paths that **stay** (rendered, empty, or error), never before a redirect. A new
@@ -180,18 +182,17 @@ suspicion. The real risks for a self-hosted media client:
 
 1. **Reviewers can't test a self-hosted app** (Guideline 2.1). This is the most
    likely rejection cause. The reviewer needs a working backend with media to
-   see anything. Provide a demo server + account, or a built-in demo mode with
-   sample content, in the App Review notes.
+   see anything. Provide a demo server + its connection code, or a built-in demo
+   mode with sample content, in the App Review notes.
 2. **Media/piracy scrutiny** (Guideline 5.2, Intellectual Property). Frame it
    exactly as Infuse/Jellyfin clients do: a player for the user's own
    personal library on their own hardware. The app does not rip discs,
    circumvent DRM, or provide/index content. Keep that crisp in metadata.
 3. **In-App Purchase** (Guideline 3.1.1), only if monetized: any paid tier must
    go through Apple IAP. A free/open-source client is unaffected.
-4. **Sign in with Apple** (Guideline 4.8), if social sign-in ships: offering
-   Google login on iOS requires offering an equivalent privacy-preserving
-   option, which Sign in with Apple satisfies. Both are implemented; enable them
-   together or neither.
+4. **No third-party sign-in to worry about.** Authentication is the server's
+   connection code, not Google/Apple accounts, so Sign in with Apple (Guideline
+   4.8) does not apply.
 5. **Entitlements / background modes.** Declare `UIBackgroundModes` and
    capabilities for background audio, PiP, and AirPlay correctly.
 

@@ -11,13 +11,57 @@ package remote
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 )
+
+type ctxKey int
+
+const tunnelKey ctxKey = iota
+
+// WithTunnel marks a context as belonging to a request that arrived over the
+// WebRTC tunnel (a remote client), as opposed to a direct local/LAN connection.
+func WithTunnel(ctx context.Context) context.Context {
+	return context.WithValue(ctx, tunnelKey, true)
+}
+
+// IsTunnel reports whether r arrived over the tunnel. Direct requests (a
+// same-origin browser on the LAN, or the CLI) return false. The flag is stamped
+// by ServeConn and cannot be set by the remote client.
+func IsTunnel(r *http.Request) bool {
+	v, _ := r.Context().Value(tunnelKey).(bool)
+	return v
+}
+
+// IsLocal reports whether r should be treated as a trusted local request — the
+// basis of the admin gate and code-free pairing. A request is local only when it
+// (1) did NOT arrive over the tunnel, and (2) has a peer address that is loopback
+// or in a private/link-local range. The second condition matters: "not tunneled"
+// alone is not "trusted", because the box's HTTP port can be bound to all
+// interfaces (the default) or published by Docker, so a request straight off the
+// public internet is also non-tunnel. Requiring a private/loopback peer means
+// exposing the port does not hand out admin to the world. The peer is taken from
+// r.RemoteAddr (the real TCP peer), never a client-supplied X-Forwarded-For.
+func IsLocal(r *http.Request) bool {
+	if IsTunnel(r) {
+		return false
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast()
+}
 
 // reqEnvelope is the first frame a client sends on a request data channel.
 type reqEnvelope struct {
@@ -86,6 +130,7 @@ func ServeConn(rwc io.ReadWriteCloser, handler http.Handler) error {
 
 	req := httptest.NewRequest(env.Method, env.URL, bytes.NewReader(env.Body))
 	req.RemoteAddr = "webrtc:0"
+	req = req.WithContext(WithTunnel(req.Context()))
 	for k, vs := range env.Header {
 		for _, v := range vs {
 			req.Header.Add(k, v)

@@ -1,16 +1,16 @@
-# Northrou's public coordination stack: coordinator (signaling + OAuth broker)
-# + relay (pin-delivery mail) + Caddy (TLS termination), all behind
-# app.northrou.sh, routed by path. See docs/deploy-coordination.md.
+# Northrou's public coordination server: the coordinator (WebRTC signaling) with
+# Caddy terminating TLS in front of it, at coord.northrou.sh.
+# See docs/deploy-coordination.md.
 #
-# Copy this to deploy.yml, fill in the real values below, then:
-#   chmod 600 deploy.yml
+# Copy this to deploy.yml, then:
 #   docker compose -f deploy.yml up -d --build
 #
-# deploy.yml holds live secrets. It is gitignored — never commit it.
+# There are no secrets here any more (no OAuth broker, no mail relay), so
+# deploy.yml is essentially the same as this file. It is still gitignored.
 
 services:
-  # Caddy terminates TLS for coord.northrou.sh and proxies the coordinator and
-  # relay. The web client is hosted separately on Cloudflare Pages (see
+  # Caddy terminates TLS for coord.northrou.sh and proxies the coordinator. The
+  # web client is hosted separately on Cloudflare Pages (see
   # .github/workflows/deploy-web.yml), so Caddy serves no static files here.
   caddy:
     image: caddy:2
@@ -19,53 +19,13 @@ services:
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
-    depends_on: [coordinator, relay]
+    depends_on: [coordinator]
 
   coordinator:
     build: { context: ., dockerfile: coordination/Dockerfile }
     restart: unless-stopped
     environment:
       COORD_ADDR: ":9000"
-      # Required: without it the broker refuses to start and social sign-in
-      # silently stays disabled (the coordinator itself still runs as a pure
-      # signaling relay). See coordination/cmd/coordinator/main.go.
-      OAUTH_ISSUER: "https://coord.northrou.sh"
-      # Allow-list of client redirect targets. northrou:// covers the native
-      # apps; the prefix entry covers the hosted web client's sign-in origin.
-      # Add any other fixed web-client origins you control, comma-separated.
-      # A bare entry is an exact match, one ending in / is a prefix match.
-      OAUTH_REDIRECTS: "northrou://,https://app.northrou.sh/"
-      OAUTH_GOOGLE_CLIENT_ID: "your-google-client-id"
-      OAUTH_GOOGLE_CLIENT_SECRET: "your-google-client-secret"
-      OAUTH_APPLE_SERVICE_ID: "sh.northrou.signin"
-      OAUTH_APPLE_TEAM_ID: "YOURTEAMID"
-      OAUTH_APPLE_KEY_ID: "YOURKEYID"
-      # ES256 (P-256) signing key. MUST persist across restarts: regenerating
-      # it invalidates every assertion boxes have already verified against the
-      # published JWKS. Generate once with:
-      #   openssl ecparam -genkey -name prime256v1 -noout -out oauth-signing.pem
-      OAUTH_SIGNING_KEY: |
-        -----BEGIN EC PRIVATE KEY-----
-        ...paste the full contents of oauth-signing.pem...
-        -----END EC PRIVATE KEY-----
-      # Apple's Sign in with Apple key (the downloaded AuthKey_XXXX.p8).
-      OAUTH_APPLE_KEY: |
-        -----BEGIN PRIVATE KEY-----
-        ...paste the full contents of your AuthKey_XXXX.p8...
-        -----END PRIVATE KEY-----
-
-  relay:
-    build: { context: ., dockerfile: coordination/Dockerfile.relay }
-    restart: unless-stopped
-    environment:
-      RELAY_ADDR: ":9100"
-      RELAY_TOKEN: "a-long-random-string"   # optional; boxes must present it if set
-      RELAY_SMTP_HOST: "smtp.your-provider.com"
-      RELAY_SMTP_PORT: "587"
-      RELAY_SMTP_USERNAME: "your-smtp-username"
-      RELAY_SMTP_PASSWORD: "your-smtp-password"
-      RELAY_SMTP_FROM: "no-reply@northrou.sh"
-      RELAY_SMTP_FROM_NAME: "Northrou"
 
 volumes:
   caddy_data:

@@ -29,10 +29,8 @@ show_dirs  = ["/media/TV"]
 
 [remote]
 enabled = true
-coordination_url = "https://coord.northrou.sh"
-self_hosted_coordinator = false
 server_id = "…"         # generated at setup
-connection_code = "NR-XXXX-XXXX"  # share with your devices
+connection_code = "NR-XXXXX-XXXXX"  # the credential; share with your devices
 
 [transcode]
 hw_accel = ""           # "" = auto-detect; or nvenc|qsv|videotoolbox|amf|vaapi|none
@@ -42,22 +40,9 @@ tonemap = true          # HDR -> SDR tone mapping when transcoding for SDR clien
 prefer_system_ffmpeg = false
 max_transcodes = 0      # 0 = auto (derived from detected hardware)
 
-[auth]
-# Optional. Social sign-in is off unless oauth_issuer is set; the emailed pin
-# needs no setup and works with no internet.
-oauth_issuer    = ""            # coordination broker base URL
-oauth_providers = ["google"]    # what to offer on the login screen
-
 [tmdb]
 api_key = "…"           # required for posters and metadata
 language = "en-US"
-
-[email]
-# Sign-in pins are delivered through the coordination relay, so you do not have
-# to configure anything here or run a mail server.
-relay_url = "https://coord.northrou.sh"   # hosted pin delivery (default)
-# relay_token = "…"              # only for a custom relay; the hosted one is automatic
-# relay_disabled = true          # turn the relay off; pins are logged instead
 
 [update]
 auto_update_disabled = false   # true turns off background self-update
@@ -67,6 +52,16 @@ auto_update_disabled = false   # true turns off background self-update
 
 ### `[server]`
 - **bind_addr** - network interface to listen on. Empty binds all interfaces.
+  **Admin actions are allowed only from a local connection** — one from loopback
+  or a private/LAN address that is not the remote tunnel — so a request from a
+  public IP never gets admin and must present the connection code to pair. Still,
+  do not expose this port to the public internet: remote clients are meant to
+  reach the box over the peer-to-peer tunnel, not the HTTP port. On a box with a
+  public interface (a VPS/seedbox), set `bind_addr` to a LAN/private address or
+  loopback. **Docker caveat:** Docker's default userland proxy rewrites the
+  source IP of published-port traffic to the bridge gateway (a private address),
+  which would make internet traffic *look* local; only publish `8674` on a
+  trusted network (a home LAN behind a router), never straight to the internet.
 - **port** - HTTP port (default `8674`).
 - **data_dir** - where Northrou stores everything mutable: the SQLite database,
   cached images, the managed FFmpeg binaries, generated subtitles, and HLS
@@ -137,14 +132,12 @@ names that don't parse as episodes on their own.
   the client apps use; a browser opened against the box's own address on the same
   network reaches it directly regardless, since that is just the server serving
   its own pages.
-- **coordination_url** - the signaling broker that lets remote devices find your
-  server. Defaults to the hosted `coord.northrou.sh`, so remote access works out
-  of the box with nothing extra to run. Point it at your own coordinator only if
-  you want to self-host the signaling too (advanced).
-- **self_hosted_coordinator** - informational flag noting you run your own
-  coordinator instead of the hosted default.
-- **server_id** / **connection_code** - generated during setup. The connection
-  code is what you share with remote devices.
+- **server_id** / **connection_code** - generated during setup. The
+  **connection code is the credential**: sharing it lets a device pair and sign
+  in, so treat it like a password. Rotating it (edit the value and restart) stops
+  new devices from pairing but leaves already-paired devices signed in. Retrieve
+  it any time with `northrou cc`. Remote access always uses Northrou's official
+  coordinator; there is no coordinator URL to configure.
 
 ### `[transcode]`
 - **hw_accel** - force a specific acceleration backend, `none` for software, or
@@ -170,50 +163,11 @@ names that don't parse as episodes on their own.
   lowering this does not restrict cheap playback. Requests over the cap get
   `503` with `Retry-After` rather than queueing. Editable from Server admin.
 
-### `[auth]`
-- **oauth_issuer** - the coordination broker that runs Google/Apple sign-in and
-  signs the assertions this server verifies. Empty (the default) disables social
-  sign-in entirely. The server never holds an OAuth client secret: it only ever
-  verifies the broker's signature against its published JWKS.
-- **oauth_providers** - which buttons the login screen offers, e.g.
-  `["google", "apple"]`. Listing one the broker does not run just means that
-  button fails, so keep it in step with the broker's own configuration.
-
-Social sign-in is a shortcut, not a second way in. It proves control of an email
-address, exactly as the pin does, and an identity that is not this server's
-account address is refused.
-
 ### `[tmdb]`
 - **api_key** - a free [TMDB](https://www.themoviedb.org/settings/api) key.
   Without it, files are scanned and probed but flagged as unmatched (no posters
   or rich metadata).
 - **language** - metadata language, e.g. `en-US`, `de-DE`.
-
-### `[email]`
-Login is passwordless: users receive a one-time pin by email. Delivery has two
-backends:
-
-1. **The coordination relay** at `relay_url` (the default). It owns the mail
-   infrastructure and the template, so you never run a mail server.
-2. **The server log** (WARN level), if the relay is disabled. Local, single-box
-   use only. Never rely on this on a box others can reach.
-
-There is deliberately no SMTP option. Running mail is the one part of
-self-hosting that reliably fails (SPF/DKIM/DMARC, IP reputation, port 25 blocked
-by most ISPs), and a sign-in code that lands in spam locks you out of your own
-server. Delivery is the relay's job; if you want mail fully in-house, run your
-own relay and point `relay_url` at it. Out of the box you configure nothing.
-
-- **relay_url** - pin-delivery service. Defaults to `https://coord.northrou.sh`.
-  The relay delivers the email; it never sees or stores your account, library, or
-  media. Email is readable in transit by any mail hop, so the relay operator can
-  technically see codes and recipient addresses. If that matters to you, run your
-  own relay and point this at it.
-- **relay_token** - bearer token for a *custom* relay. Against the hosted
-  default the box presents a built-in shared token automatically, so you leave
-  this unset; a value here is ignored while `relay_url` is the hosted one.
-- **relay_disabled** - set `true` to never use the relay (pins are logged
-  instead).
 
 ### `[update]`
 - **auto_update_disabled** - turn off the background self-update check. Off

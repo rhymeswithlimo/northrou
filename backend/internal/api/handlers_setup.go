@@ -4,18 +4,11 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"net/http"
-	"net/mail"
 	"strings"
 
-	"github.com/rhymeswithlimo/northrou/backend/internal/auth"
 	"github.com/rhymeswithlimo/northrou/backend/internal/config"
+	"github.com/rhymeswithlimo/northrou/backend/internal/remote"
 )
-
-// validEmail reports whether s parses as a single RFC 5322 address.
-func validEmail(s string) bool {
-	addr, err := mail.ParseAddress(s)
-	return err == nil && addr.Address == s
-}
 
 type setupStatusResponse struct {
 	NeedsSetup bool   `json:"needs_setup"`
@@ -35,29 +28,31 @@ func (a *API) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
 
 // setupCompleteRequest is the first-run payload.
 //
-// It carries no media folders and no mail settings. Folders are added on the
-// box with `northrou admin` -> Library, and sign-in pins are delivered by the
-// coordination relay, which needs no configuration here.
+// It carries no account email (there is no email anywhere in Northrou) and no
+// media folders. Folders are added on the box with `northrou admin` -> Library.
 type setupCompleteRequest struct {
-	Email        string `json:"email"`
 	ProfileName  string `json:"profile_name"` // first profile; optional
 	TMDBAPIKey   string `json:"tmdb_api_key"`
 	EnableRemote bool   `json:"enable_remote"`
 }
 
 type setupCompleteResponse struct {
-	Account        accountDTO `json:"account"`
 	Profile        profileDTO `json:"profile"`
 	ConnectionCode string     `json:"connection_code"`
 	AccessToken    string     `json:"access_token"`
 	RefreshToken   string     `json:"refresh_token"`
 }
 
-// handleSetupComplete performs first-run setup: establishes the account email
-// and its first profile, persists the TMDB key to config, issues a remote
-// connection code, and returns a signed-in token pair elevated for the setup
-// window. It is only allowed while no account exists.
+// handleSetupComplete performs first-run setup: creates the first profile,
+// persists the TMDB key to config, issues the server connection code (the sole
+// credential remote clients use to pair), and returns a signed-in token pair. It
+// is only allowed while no account exists, and only from a local request (setup
+// cannot be driven remotely over the tunnel).
 func (a *API) handleSetupComplete(w http.ResponseWriter, r *http.Request) {
+	if !remote.IsLocal(r) {
+		writeError(w, http.StatusForbidden, "setup must be run locally on the server")
+		return
+	}
 	exists, err := a.DB.AccountExists(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "setup failed")
@@ -73,19 +68,14 @@ func (a *API) handleSetupComplete(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	email := auth.NormalizeEmail(req.Email)
-	if !validEmail(email) {
-		writeError(w, http.StatusBadRequest, "a valid email address is required")
-		return
-	}
 
-	if err := a.DB.SetAccountEmail(r.Context(), email); err != nil {
+	if err := a.DB.CreateAccount(r.Context()); err != nil {
 		writeError(w, http.StatusInternalServerError, "create account failed")
 		return
 	}
 	name := strings.TrimSpace(req.ProfileName)
 	if name == "" {
-		name = defaultProfileName(email)
+		name = "Me"
 	}
 	pid, err := a.DB.CreateProfile(r.Context(), name, "")
 	if err != nil {
@@ -115,8 +105,7 @@ func (a *API) handleSetupComplete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	prof, _ := a.DB.GetProfile(r.Context(), pid)
-	// First run has no mailbox loop yet: sign the operator straight in with a
-	// setup-elevated session instead of sending a pin.
+	// Setup runs locally, so sign the operator straight in.
 	pair, err := a.Auth.IssueSetupSession(r.Context(), pid)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "auto-login failed")
@@ -124,21 +113,11 @@ func (a *API) handleSetupComplete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, setupCompleteResponse{
-		Account:        accountDTO{Email: email},
 		Profile:        profileDTO{ID: prof.ID, Name: prof.Name, Avatar: prof.Avatar},
 		ConnectionCode: a.Cfg.Remote.ConnectionCode,
 		AccessToken:    pair.AccessToken,
 		RefreshToken:   pair.RefreshToken,
 	})
-}
-
-// defaultProfileName derives a friendly first-profile name from the account
-// email's local-part (e.g. "ada@example.com" -> "ada").
-func defaultProfileName(email string) string {
-	if i := strings.IndexByte(email, '@'); i > 0 {
-		return email[:i]
-	}
-	return "Me"
 }
 
 func randomHex(n int) string {
@@ -147,14 +126,22 @@ func randomHex(n int) string {
 	return hex.EncodeToString(b)
 }
 
-// connectionCode returns a human-shareable pairing code like "NR-3F9A-K2X7".
+// connectionCode returns a human-shareable pairing code like "NR-3F9A-K2X7Q".
+// It is the sole credential a remote client uses to pair, so it is drawn from a
+// 10-character (~50-bit) space over an ambiguity-free alphabet; brute force is
+// bounded further by rate limiting on both the box and the coordinator.
 func connectionCode() string {
-	const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789" // no ambiguous chars
-	b := make([]byte, 8)
+	const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789" // 32 chars, no ambiguous ones
+	const n = 10
+	b := make([]byte, n)
 	_, _ = rand.Read(b)
-	out := make([]byte, 8)
+	out := make([]byte, n)
 	for i := range b {
 		out[i] = alphabet[int(b[i])%len(alphabet)]
 	}
-	return "NR-" + string(out[:4]) + "-" + string(out[4:])
+	return "NR-" + string(out[:5]) + "-" + string(out[5:])
 }
+
+// NewConnectionCode generates a fresh connection code. Exported so boot-time
+// migration can mint one for an upgraded server that predates connection codes.
+func NewConnectionCode() string { return connectionCode() }

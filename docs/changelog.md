@@ -15,6 +15,27 @@ land the change, not after the fact.
 
 ## v0.1.6 - Unreleased
 
+### Changed
+
+- **Sign-in is gone. The server connection code is now the only credential.**
+  There are no more accounts, emails, one-time pins, or Google/Apple sign-in.
+  A remote client (the apps and the web client) enters the connection code to
+  pair; each device then keeps its own revocable session. This is a breaking
+  change: on upgrade your household re-pairs with the connection code (find it
+  in setup, in Server admin, or with `northrou cc`), and setup no longer asks
+  for an email.
+- **Admin is now local-only.** Changing server settings, scanning, deleting a
+  profile, and installing updates are allowed only from a local connection to the
+  box — one from your own network (a loopback or private/LAN address) that is not
+  the remote tunnel. The apps, which always reach the box over the tunnel, become
+  pure players; open the server's LAN address in a browser (or use the CLI) to
+  administer it. A request from a public IP is treated like a remote client (no
+  admin, code required), so do not expose the HTTP port to the internet — see the
+  `bind_addr` note in configuration.md. The old emailed admin code is gone.
+- **Self-hosting a coordination server has been removed.** Northrou uses the
+  official coordinator exclusively; the `coordination_url` and
+  `self_hosted_coordinator` settings and the pin-delivery relay are gone.
+
 ### Added
 
 - **App clients** now build and release. APKs and desktop. IOS still needs to be implemented.
@@ -24,11 +45,6 @@ land the change, not after the fact.
   it with `sudo`.
 
 ### Fixed
-- A box set up before the hosting split kept dialing the old coordinator host,
-  so remote pairing failed with "no server registered for that code" and pins
-  stopped delivering. A stale `coordination_url`/`relay_url` pointing at the old
-  single host is now migrated to the current coordinator automatically on load
-  (a custom self-hosted coordinator is left untouched).
 - Displayed error messages now read consistently - capitalized and ending in a
   full stop - whatever their source, including raw coordinator/backend strings
   that are lowercase by Go convention.

@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -23,8 +24,76 @@ func testHandler() http.Handler {
 		w.WriteHeader(http.StatusCreated)
 		_, _ = w.Write(b)
 	})
+	// /tunnel reports whether the handler sees the request as tunneled. This is
+	// the basis of the admin gate: admin actions are refused for tunneled
+	// (remote) requests, allowed for direct (local) ones.
+	mux.HandleFunc("/tunnel", func(w http.ResponseWriter, r *http.Request) {
+		if IsTunnel(r) {
+			_, _ = w.Write([]byte("tunnel"))
+		} else {
+			_, _ = w.Write([]byte("local"))
+		}
+	})
 	// default: 404
 	return mux
+}
+
+// TestIsLocal covers the trust classification behind the admin gate: only a
+// non-tunnel request from a loopback or private/link-local peer is local.
+func TestIsLocal(t *testing.T) {
+	cases := []struct {
+		name       string
+		remoteAddr string
+		tunnel     bool
+		want       bool
+	}{
+		{"loopback v4", "127.0.0.1:5000", false, true},
+		{"loopback v6", "[::1]:5000", false, true},
+		{"rfc1918 10", "10.1.2.3:5000", false, true},
+		{"rfc1918 172", "172.16.5.9:5000", false, true},
+		{"rfc1918 192.168", "192.168.1.42:5000", false, true},
+		{"link-local v4", "169.254.10.20:5000", false, true},
+		{"ula v6", "[fd00::1]:5000", false, true},
+		{"public v4", "203.0.113.5:5000", false, false},
+		{"public v6", "[2606:4700::1]:5000", false, false},
+		{"private but tunneled", "192.168.1.42:5000", true, false},
+		{"unparseable", "webrtc:0", false, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req, _ := http.NewRequest("GET", "/", nil)
+			req.RemoteAddr = tc.remoteAddr
+			if tc.tunnel {
+				req = req.WithContext(WithTunnel(req.Context()))
+			}
+			if got := IsLocal(req); got != tc.want {
+				t.Errorf("IsLocal(%q, tunnel=%v) = %v, want %v", tc.remoteAddr, tc.tunnel, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestServeConnMarksTunnel proves ServeConn stamps every request it serves as
+// tunneled, and that a request built directly (as a same-origin/LAN request is)
+// is not. The stamp is set in-process by ServeConn and is not derived from any
+// client-supplied header, so a remote client cannot forge "local".
+func TestServeConnMarksTunnel(t *testing.T) {
+	// Served through the tunnel: IsTunnel must be true.
+	req, _ := http.NewRequest("GET", "/tunnel", nil)
+	resp := roundTripOverPipe(t, req)
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if string(body) != "tunnel" {
+		t.Errorf("tunneled request: IsTunnel reported %q, want tunnel", body)
+	}
+
+	// A plain request (not through ServeConn) must be seen as local.
+	direct, _ := http.NewRequest("GET", "/tunnel", nil)
+	rec := httptest.NewRecorder()
+	testHandler().ServeHTTP(rec, direct)
+	if got := rec.Body.String(); got != "local" {
+		t.Errorf("direct request: IsTunnel reported %q, want local", got)
+	}
 }
 
 // roundTripOverPipe runs one request through ServeConn/RoundTrip over net.Pipe.

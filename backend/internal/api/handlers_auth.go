@@ -1,20 +1,16 @@
 package api
 
 import (
+	"crypto/subtle"
 	"errors"
-	"log/slog"
 	"net/http"
 	"strings"
 
 	"github.com/rhymeswithlimo/northrou/backend/internal/auth"
 	"github.com/rhymeswithlimo/northrou/backend/internal/db"
 	"github.com/rhymeswithlimo/northrou/backend/internal/model"
+	"github.com/rhymeswithlimo/northrou/backend/internal/remote"
 )
-
-// accountDTO is the household's auth-root email.
-type accountDTO struct {
-	Email string `json:"email"`
-}
 
 // profileDTO is a viewer profile as exposed to clients.
 type profileDTO struct {
@@ -41,41 +37,9 @@ func toProfileDTOs(ps []model.Profile) []profileDTO {
 	return out
 }
 
-type requestPinRequest struct {
-	Email string `json:"email"`
-}
-
-// handleRequestPin emails a one-time sign-in pin to the address if it is the
-// account address. It always returns 200 with the same body so callers cannot
-// use it to discover the account email.
-func (a *API) handleRequestPin(w http.ResponseWriter, r *http.Request) {
-	var req requestPinRequest
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-	if strings.TrimSpace(req.Email) == "" {
-		writeError(w, http.StatusBadRequest, "email required")
-		return
-	}
-	if err := a.Auth.RequestLoginPin(r.Context(), req.Email); err != nil {
-		// Log server-side but do not surface: the response is identical whether
-		// or not the address is the account's.
-		slog.Warn("request pin failed", "err", err)
-	}
-	writeJSON(w, http.StatusOK, map[string]string{
-		"message": "If that email is the account address, a sign-in code has been sent.",
-	})
-}
-
-type verifyPinRequest struct {
-	Email string `json:"email"`
-	Pin   string `json:"pin"`
-}
-
-// loginResponse is returned by verify-pin and select-profile. verify-pin
-// includes the full profile list so the client can show the picker; the tokens
-// are scoped to Profile (the default until the user picks another).
+// loginResponse is returned by pair and select-profile. pair includes the full
+// profile list so the client can show the picker; the tokens are scoped to
+// Profile (the default until the user picks another).
 type loginResponse struct {
 	Profile      profileDTO   `json:"profile"`
 	Profiles     []profileDTO `json:"profiles,omitempty"`
@@ -84,21 +48,43 @@ type loginResponse struct {
 	ExpiresAt    string       `json:"expires_at"`
 }
 
-// handleVerifyPin exchanges a valid sign-in pin for a token pair scoped to the
-// default profile, and returns the profile list for the picker.
-func (a *API) handleVerifyPin(w http.ResponseWriter, r *http.Request) {
-	var req verifyPinRequest
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-	profiles, selected, pair, err := a.Auth.VerifyLoginPin(r.Context(), req.Email, strings.TrimSpace(req.Pin))
-	if err != nil {
-		if errors.Is(err, auth.ErrInvalidCredentials) {
-			writeError(w, http.StatusUnauthorized, "invalid or expired code")
+type pairRequest struct {
+	Code string `json:"code"`
+}
+
+// handlePair exchanges the server connection code for a signed-in session and
+// returns a token pair scoped to the default profile plus the profile list for
+// the picker.
+//
+// A trusted local request (loopback or a private/LAN peer, not tunneled) needs
+// no code. Everything else — a remote client over the tunnel, or a direct
+// request from a public IP — must present the connection code; wrong-code
+// attempts are globally rate-limited to bound guessing (per-IP throttling of the
+// tunnel pairing hop lives upstream at the coordinator, which sees real IPs).
+func (a *API) handlePair(w http.ResponseWriter, r *http.Request) {
+	if !remote.IsLocal(r) {
+		if !a.pairLimiter.allow("*") {
+			writeError(w, http.StatusTooManyRequests, "too many pairing attempts; try again shortly")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "login failed")
+		var req pairRequest
+		if err := decodeJSON(r, &req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		if !a.connectionCodeMatches(req.Code) {
+			writeError(w, http.StatusUnauthorized, "invalid connection code")
+			return
+		}
+	}
+
+	profiles, selected, pair, err := a.Auth.IssueSession(r.Context())
+	if err != nil {
+		if errors.Is(err, auth.ErrInvalidCredentials) {
+			writeError(w, http.StatusConflict, "server has no profiles yet; finish setup first")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "pairing failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, loginResponse{
@@ -110,13 +96,32 @@ func (a *API) handleVerifyPin(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// connectionCodeMatches reports whether the submitted code equals this server's
+// connection code, comparing in constant time and ignoring case, spaces, and
+// dashes so "nr-abcd-efgh" and "NRABCDEFGH" both match.
+func (a *API) connectionCodeMatches(submitted string) bool {
+	want := normalizeConnectionCode(a.Cfg.Remote.ConnectionCode)
+	got := normalizeConnectionCode(submitted)
+	if want == "" || got == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(want), []byte(got)) == 1
+}
+
+func normalizeConnectionCode(s string) string {
+	s = strings.ToUpper(strings.TrimSpace(s))
+	s = strings.ReplaceAll(s, "-", "")
+	s = strings.ReplaceAll(s, " ", "")
+	return s
+}
+
 type selectProfileRequest struct {
 	RefreshToken string `json:"refresh_token"`
 	ProfileID    int64  `json:"profile_id"`
 }
 
 // handleSelectProfile switches the active profile for a signed-in device and
-// returns fresh tokens scoped to it. No pin is required.
+// returns fresh tokens scoped to it. No re-auth is required.
 func (a *API) handleSelectProfile(w http.ResponseWriter, r *http.Request) {
 	var req selectProfileRequest
 	if err := decodeJSON(r, &req); err != nil {
@@ -172,10 +177,11 @@ func (a *API) handleLogout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// meResponse tells the client who it is signed in as: the account email, the
-// current profile, and the full profile list for the switcher.
+// meResponse tells the client who it is signed in as: the current profile, the
+// full profile list for the switcher, and whether this session may administer.
+// Admin is true only for trusted local requests (see remote.IsLocal); a remote
+// client through the tunnel, or a direct request from a public IP, is not admin.
 type meResponse struct {
-	Account  accountDTO   `json:"account"`
 	Profile  profileDTO   `json:"profile"`
 	Profiles []profileDTO `json:"profiles"`
 	Admin    bool         `json:"admin"`
@@ -196,70 +202,14 @@ func (a *API) handleMe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "lookup failed")
 		return
 	}
-	acct, err := a.DB.GetAccount(r.Context())
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "lookup failed")
-		return
-	}
 	profiles, err := a.DB.ListProfiles(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "lookup failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, meResponse{
-		Account:  accountDTO{Email: acct.Email},
 		Profile:  toProfileDTO(*prof),
 		Profiles: toProfileDTOs(profiles),
-		Admin:    claims.Admin,
-	})
-}
-
-// handleRequestAdminOTP emails an admin-elevation code to the account address.
-// Any signed-in profile may request it; whoever has the emailed code can
-// elevate. The response is generic so it reveals nothing.
-func (a *API) handleRequestAdminOTP(w http.ResponseWriter, r *http.Request) {
-	if err := a.Auth.RequestAdminOTP(r.Context()); err != nil {
-		slog.Warn("request admin otp failed", "err", err)
-	}
-	writeJSON(w, http.StatusOK, map[string]string{
-		"message": "An admin code has been sent to the account email.",
-	})
-}
-
-type verifyAdminOTPRequest struct {
-	OTP string `json:"otp"`
-}
-
-type adminElevationResponse struct {
-	AccessToken string `json:"access_token"`
-	ExpiresAt   string `json:"expires_at"`
-}
-
-// handleVerifyAdminOTP exchanges a valid admin code for a short-lived elevated
-// access token, scoped to the calling profile. The client uses it as the bearer
-// for admin mutations until it expires.
-func (a *API) handleVerifyAdminOTP(w http.ResponseWriter, r *http.Request) {
-	claims, ok := auth.ClaimsFrom(r.Context())
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "unauthenticated")
-		return
-	}
-	var req verifyAdminOTPRequest
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-	token, exp, err := a.Auth.VerifyAdminOTP(r.Context(), claims.ProfileID, strings.TrimSpace(req.OTP))
-	if err != nil {
-		if errors.Is(err, auth.ErrInvalidCredentials) {
-			writeError(w, http.StatusUnauthorized, "invalid or expired code")
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "elevation failed")
-		return
-	}
-	writeJSON(w, http.StatusOK, adminElevationResponse{
-		AccessToken: token,
-		ExpiresAt:   exp.UTC().Format(http.TimeFormat),
+		Admin:    remote.IsLocal(r),
 	})
 }

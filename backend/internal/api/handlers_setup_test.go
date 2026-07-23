@@ -37,7 +37,7 @@ func TestSetupPreservesTUIMediaFolders(t *testing.T) {
 	}
 	t.Cleanup(func() { database.Close() })
 
-	authSvc := auth.NewService(database, []byte("test-secret-please-ignore-0123456789"), &recordMailer{})
+	authSvc := auth.NewService(database, []byte("test-secret-please-ignore-0123456789"))
 	a := New(Deps{
 		DB:         database,
 		Auth:       authSvc,
@@ -48,7 +48,7 @@ func TestSetupPreservesTUIMediaFolders(t *testing.T) {
 	a.Mount(r)
 
 	code := do(t, r, http.MethodPost, "/api/setup/complete", "", map[string]any{
-		"email":         "ada@example.com",
+		"profile_name":  "Ada",
 		"enable_remote": true,
 	}, nil)
 	if code != http.StatusCreated {

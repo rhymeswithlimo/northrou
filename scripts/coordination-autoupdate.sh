@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Moves the coordination stack (coordinator + relay) forward to whatever git
+# Moves the coordination server (coordinator + Caddy) forward to whatever git
 # tag GitHub currently reports as the latest published release -- and only
 # then, never on every push to main. Meant to run periodically via
 # coordination-autoupdate.timer (systemd). See docs/deploy-coordination.md.

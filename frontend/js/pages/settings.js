@@ -1,8 +1,7 @@
 // Settings.
 
-import { $, show, hide, setError, reveal } from '../lib/dom.js';
+import { $, show, hide, reveal } from '../lib/dom.js';
 import { segmented, toggle } from '../components/controls.js';
-import { createOtpInput } from '../components/otp.js';
 import { toast, mountOfflineBanner, statePanel } from '../components/states.js';
 import { getMe, signOut, setMyLanguage } from '../data/account.js';
 import { listProfiles, createProfile, renameProfile, deleteProfile, MAX_PROFILES } from '../data/profiles.js';
@@ -10,6 +9,12 @@ import { getPrefs, setPref, QUALITY_OPTIONS, CELLULAR_OPTIONS } from '../data/pr
 import * as admin from '../data/admin.js';
 import { isSignedIn } from '../api/session.js';
 import { requireServer } from '../api/connect.js';
+import { getServer, isSameOrigin } from '../data/servers.js';
+
+// Admin actions are only available from a local connection (a browser on the
+// server's own network, or the CLI); remote apps get reads only. The exact
+// wording shown when locked.
+const ADMIN_LOCAL_ONLY = 'Server settings can only be changed on your home network or with the northrou CLI.';
 
 const TILES = ['#3c89e0', '#19ad31', '#d4412e', '#da3ce0', '#e0a13c', '#3cd6e0'];
 const tileFor = (id) => TILES[(id - 1) % TILES.length];
@@ -42,20 +47,11 @@ $('#back').addEventListener('click', () => history.back());
 mountOfflineBanner();
 
 if (!(await requireServer())) throw new Error('no server');
-if (!isSignedIn()) window.location.replace('login.html');
+if (!isSignedIn()) window.location.replace('connect.html');
 
 let me = null;
 let profiles = [];
 let config = null;
-
-/** Send the viewer to the elevation gate, whichever step it is showing. */
-function focusUnlock() {
-    const verify = $('#unlock-verify');
-    const target = verify.classList.contains('u-hidden') ? $('#request-otp') : verify;
-    target.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    // The six boxes are not focusable as a unit, so aim at the first one.
-    (target === verify ? $('.otp__input', verify) : target).focus();
-}
 
 /* ==================== profiles ==================== */
 
@@ -83,7 +79,7 @@ function renderProfiles() {
     $('#add-profile').disabled = profiles.length >= MAX_PROFILES;
     $('#profiles-note').textContent =
         'Anyone can add or rename a profile. Each has its own watch history and recommendations. '
-        + `Deleting one needs an admin code. Maximum of ${MAX_PROFILES} profiles.`;
+        + `Deleting one is only possible on your home network. Maximum of ${MAX_PROFILES} profiles.`;
 }
 
 async function onRename(profile) {
@@ -104,11 +100,10 @@ async function onRename(profile) {
 }
 
 async function onDelete(profile) {
-    // Deleting takes that viewer's whole history with it, so the API gates it
-    // behind elevation. Say so before the confirm, not after a 403.
-    if (!admin.isElevated()) {
-        toast('Unlock Server admin to delete a profile.', { variant: 'error' });
-        focusUnlock();
+    // Deleting takes that viewer's whole history with it, so it is an admin
+    // action: only allowed on a local connection. Say so before the confirm.
+    if (!me.admin) {
+        toast(ADMIN_LOCAL_ONLY, { variant: 'error' });
         return;
     }
     if (!confirm(`Delete ${profile.name}? Their watch history and recommendations go too.`)) return;
@@ -120,7 +115,7 @@ async function onDelete(profile) {
         toast(`Deleted ${profile.name}.`);
     } catch (err) {
         if (err.isConflict) toast('That is the last profile; there must always be one.', { variant: 'error' });
-        else if (err.isForbidden) toast('Admin elevation expired. Unlock again.', { variant: 'error' });
+        else if (err.isForbidden) toast(ADMIN_LOCAL_ONLY, { variant: 'error' });
         else toast('Could not delete the profile.', { variant: 'error' });
     }
 }
@@ -188,9 +183,8 @@ async function renderAbout() {
 }
 
 async function onApplyUpdate() {
-    if (!admin.isElevated()) {
-        toast('Unlock Server admin to install an update.', { variant: 'error' });
-        focusUnlock();
+    if (!me.admin) {
+        toast(ADMIN_LOCAL_ONLY, { variant: 'error' });
         return;
     }
     if (!confirm('Install the update and restart the server?')) return;
@@ -204,62 +198,21 @@ async function onApplyUpdate() {
 
 /* ==================== server admin ==================== */
 
-const unlockBtn = $('#unlock');
-const unlockError = $('#unlock-error');
-const otp = createOtpInput($('#unlock-verify'));
-
-// The six boxes are one field, so gate Unlock on all of them being filled.
-$('#unlock-verify').addEventListener('input', () => {
-    unlockBtn.disabled = !otp.complete;
-    setError(unlockError, '');
-});
-
-/** Ask for a code and reveal the entry step. Also the resend path. */
-async function requestOtp(btn) {
-    btn.disabled = true;
-    try {
-        await admin.requestOtp();
-        $('#unlock-sent').textContent = `Enter the 6-digit code sent to ${me.account.email}.`;
-        hide($('#unlock-request'));
-        show($('#unlock-verify'));
-        otp.clear();
-        otp.focus();
-        setError(unlockError, '');
-        unlockBtn.disabled = true;
-    } catch {
-        toast('Could not send the code.', { variant: 'error' });
-    } finally {
-        btn.disabled = false;
-    }
+// Shown to a remote (non-local) session in place of the editable controls.
+function renderAdminLocked() {
+    const note = $('#admin-locked-note');
+    note.hidden = false;
+    note.textContent = ADMIN_LOCAL_ONLY;
+    $('#admin-state').dataset.state = 'locked';
+    $('#admin-state').textContent = 'Local only';
 }
-
-$('#request-otp').addEventListener('click', (e) => requestOtp(e.currentTarget));
-$('#resend-otp').addEventListener('click', (e) => requestOtp(e.currentTarget));
-
-$('#unlock-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    if (!otp.complete) return;
-    unlockBtn.disabled = true;
-    try {
-        await admin.verifyOtp(otp.value);
-        setError(unlockError, '');
-        await renderAdmin();
-        toast('Server admin unlocked for 10 minutes.');
-    } catch (err) {
-        setError(unlockError, err.isAuth ? 'Invalid or expired code.' : 'Could not verify the code.');
-        otp.clear();
-        otp.focus();
-    } finally {
-        unlockBtn.disabled = !otp.complete;
-    }
-});
 
 async function renderAdmin() {
     const panel = $('#admin-panel');
     panel.hidden = false;
-    hide($('#unlock-form'));
+    hide($('#admin-locked-note'));
     $('#admin-state').dataset.state = 'unlocked';
-    $('#admin-state').textContent = 'Unlocked';
+    $('#admin-state').textContent = 'On this network';
 
     let hw, scan;
     try {
@@ -298,7 +251,7 @@ async function renderAdmin() {
             await admin.startScan();
             toast('Scan started.');
         } catch (err) {
-            if (err.isForbidden) toast('Admin elevation expired. Unlock again.', { variant: 'error' });
+            if (err.isForbidden) toast(ADMIN_LOCAL_ONLY, { variant: 'error' });
             // The server has no folders configured yet. That is fixed on the
             // server, not here, so pass its instruction through verbatim.
             else if (err.isBadRequest) toast(err.body?.error ?? 'Could not start the scan.', { variant: 'error' });
@@ -447,7 +400,7 @@ function resultButton(r, item, season, episode, row) {
             toast('Matched.');
             row.remove();
         } catch (err) {
-            if (err.isForbidden) toast('Admin elevation expired. Unlock again.', { variant: 'error' });
+            if (err.isForbidden) toast(ADMIN_LOCAL_ONLY, { variant: 'error' });
             else toast(err.body?.error ?? 'Match failed.', { variant: 'error' });
         }
     });
@@ -472,7 +425,7 @@ async function saveConfig(patch) {
         config = await admin.patchConfig(patch);
         toast('Saved.');
     } catch (err) {
-        toast(err.isForbidden ? 'Admin elevation expired. Unlock again.'
+        toast(err.isForbidden ? ADMIN_LOCAL_ONLY
             : (err.body?.error ?? 'Could not save.'), { variant: 'error' });
     }
 }
@@ -484,8 +437,9 @@ async function init() {
         [me, profiles] = await Promise.all([getMe(), listProfiles()]);
     } catch (err) {
         if (err.isAuth) {
-            // Redirecting to sign in: stay blank, don't flash the settings shell.
-            window.location.replace('login.html');
+            // Not paired: send to the connect screen. Stay blank, don't flash
+            // the settings shell.
+            window.location.replace('connect.html');
             return;
         }
         // Staying to show the error: reveal so it isn't hidden behind the boot gate.
@@ -500,20 +454,23 @@ async function init() {
     }
 
     reveal();
-    $('#account-email').textContent = me.account.email;
+    // "Server" row: the box's LAN address when served off it, or the connection
+    // code the app paired with.
+    $('#account-email').textContent = isSameOrigin()
+        ? (window.location.host || 'This server')
+        : (getServer()?.code ?? 'Paired server');
     $('#current-profile').textContent = me.profile.name;
-    $('#unlock-note').textContent =
-        `Changing server settings needs a one-time code emailed to ${me.account.email}. `
-        + 'Anyone signed in can request one.';
 
     renderProfiles();
     renderPlayback();
     renderLanguage();
     renderAbout();
 
-    // `admin: true` means this token is ALREADY elevated, so the OTP round trip
-    // can be skipped. It does not mean "may administer" -- everyone may.
+    // Admin is a property of the connection: `me.admin` is true only for a local
+    // request (a browser on the server's network, or the CLI). Remote apps see a
+    // note instead of the editable controls.
     if (me.admin) await renderAdmin();
+    else renderAdminLocked();
 
     $('#sign-out').addEventListener('click', signOut);
     $('#add-profile').addEventListener('click', async () => {

@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/rhymeswithlimo/northrou/backend/internal/remote"
 )
 
 type ctxKey int
@@ -32,14 +34,16 @@ func (s *Service) Middleware(next http.Handler) http.Handler {
 	})
 }
 
-// RequireAdmin wraps a handler so only OTP-elevated sessions may access it. The
-// admin capability is carried as the "adm" claim, minted by verifying an emailed
-// admin pin (see VerifyAdminOTP) and short-lived. Must be used inside Middleware.
-func (s *Service) RequireAdmin(next http.Handler) http.Handler {
+// RequireLocal wraps a handler so only trusted local requests may proceed: a
+// request that did not arrive over the tunnel and whose peer is loopback or a
+// private/link-local address (see remote.IsLocal). Requests tunneled in from a
+// remote client, or arriving on the direct path from a public IP, are refused.
+// This is the sole admin gate: admin is a property of local access, not a token
+// capability. Must be used inside Middleware.
+func (s *Service) RequireLocal(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		c, ok := ClaimsFrom(r.Context())
-		if !ok || !c.Admin {
-			http.Error(w, "admin elevation required", http.StatusForbidden)
+		if !remote.IsLocal(r) {
+			http.Error(w, "admin actions are only available on the local network or via the CLI", http.StatusForbidden)
 			return
 		}
 		next.ServeHTTP(w, r)

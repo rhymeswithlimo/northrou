@@ -1,7 +1,7 @@
-# Northrou's coordination stack. Caddy terminates TLS (automatic Let's Encrypt)
-# and routes by path, since the coordinator and relay never overlap:
-#   coordinator: /ws, /oauth/*, /healthz, /stats  (and the catch-all)
-#   relay:       /v1/pin/send  (and its own /healthz, not reachable from here)
+# Northrou's coordination server. Caddy terminates TLS and proxies everything to
+# the coordinator, which serves /ws, /healthz, and /stats. The coordinator only
+# relays WebRTC signaling; there is no sign-in broker or pin relay any more
+# (authentication is the server connection code alone).
 #
 # The web client is NOT served here: it is hosted on Cloudflare Pages at
 # app.northrou.sh (built from GitHub on release; see .github/workflows/
@@ -16,10 +16,5 @@ coord.northrou.sh {
 	# NOT fronted by Cloudflare should drop this line to get automatic HTTPS back.
 	tls /etc/caddy/origin-cert.pem /etc/caddy/origin-key.pem
 
-	handle /v1/* {
-		reverse_proxy relay:9100
-	}
-	handle {
-		reverse_proxy coordinator:9000
-	}
+	reverse_proxy coordinator:9000
 }

@@ -29,7 +29,7 @@
    a standalone card with nothing beside it, so a left-aligned mark reads as
    drifting. Scoped here so login is untouched. */
 .setup .auth__logo {
-    width: 37px;
+    width: 40px;
     margin-inline: auto;
 }
 

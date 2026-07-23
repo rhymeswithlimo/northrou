@@ -31,14 +31,7 @@ services:
     # For Intel Quick Sync / VA-API, expose the render node:
     # devices:
     #   - /dev/dri:/dev/dri
-
-  # Optional: self-host the remote-access coordination server. Most users rely
-  # on the public coordinator instead and can leave this commented out.
-  # coordinator:
-  #   build:
-  #     context: .
-  #     dockerfile: coordination/Dockerfile
-  #   container_name: northrou-coordinator
-  #   restart: unless-stopped
-  #   ports:
-  #     - "9000:9000"
+    #
+    # Remote access uses Northrou's official coordination server automatically;
+    # there is nothing to run here for it. Share your connection code (shown in
+    # setup, or `northrou cc`) to pair the apps.

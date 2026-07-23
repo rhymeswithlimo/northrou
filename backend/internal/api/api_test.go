@@ -2,42 +2,21 @@ package api
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
-	"sync"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/rhymeswithlimo/northrou/backend/internal/auth"
 	"github.com/rhymeswithlimo/northrou/backend/internal/config"
 	"github.com/rhymeswithlimo/northrou/backend/internal/db"
+	"github.com/rhymeswithlimo/northrou/backend/internal/remote"
 )
 
-// recordMailer captures the most recent pin so the test can complete flows.
-type recordMailer struct {
-	mu    sync.Mutex
-	email string
-	pin   string
-}
-
-func (m *recordMailer) SendPin(_ context.Context, email, pin string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.email, m.pin = email, pin
-	return nil
-}
-
-func (m *recordMailer) last() (string, string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.email, m.pin
-}
-
 // testAPI wires a real DB + auth service and mounts the full router.
-func testAPI(t *testing.T) (http.Handler, *recordMailer) {
+func testAPI(t *testing.T) http.Handler {
 	t.Helper()
 	dir := t.TempDir()
 	database, err := db.Open(filepath.Join(dir, "api.db"))
@@ -45,8 +24,7 @@ func testAPI(t *testing.T) (http.Handler, *recordMailer) {
 		t.Fatalf("open db: %v", err)
 	}
 	t.Cleanup(func() { database.Close() })
-	mailer := &recordMailer{}
-	authSvc := auth.NewService(database, []byte("test-secret-please-ignore-0123456789"), mailer)
+	authSvc := auth.NewService(database, []byte("test-secret-please-ignore-0123456789"))
 	a := New(Deps{
 		DB:         database,
 		Auth:       authSvc,
@@ -55,11 +33,31 @@ func testAPI(t *testing.T) (http.Handler, *recordMailer) {
 	})
 	r := chi.NewRouter()
 	a.Mount(r)
-	return r, mailer
+	return r
 }
 
-// do issues a request with an optional bearer token and decodes a JSON body.
+// do issues a LOCAL request (a loopback peer, as a same-origin browser / CLI on
+// the box would) with an optional bearer token and decodes a JSON body.
 func do(t *testing.T, h http.Handler, method, path, bearer string, body any, out any) int {
+	return doReq(t, h, method, path, bearer, body, out, "local")
+}
+
+// doTunnel issues a request marked as arriving over the WebRTC tunnel (a remote
+// client), which is how the box tells local from remote for the admin gate.
+func doTunnel(t *testing.T, h http.Handler, method, path, bearer string, body any, out any) int {
+	return doReq(t, h, method, path, bearer, body, out, "tunnel")
+}
+
+// doPublic issues a direct (non-tunnel) request from a PUBLIC peer IP, as would
+// happen if the box's HTTP port were exposed to the internet. Such a request
+// must be treated like a remote client: no code-free pairing, no admin.
+func doPublic(t *testing.T, h http.Handler, method, path, bearer string, body any, out any) int {
+	return doReq(t, h, method, path, bearer, body, out, "public")
+}
+
+// mode is "local" (loopback peer), "tunnel" (marked tunneled), or "public"
+// (a public source IP on the direct path).
+func doReq(t *testing.T, h http.Handler, method, path, bearer string, body, out any, mode string) int {
 	t.Helper()
 	var buf bytes.Buffer
 	if body != nil {
@@ -72,6 +70,14 @@ func do(t *testing.T, h http.Handler, method, path, bearer string, body any, out
 	if bearer != "" {
 		req.Header.Set("Authorization", "Bearer "+bearer)
 	}
+	switch mode {
+	case "tunnel":
+		req = req.WithContext(remote.WithTunnel(req.Context()))
+	case "local":
+		req.RemoteAddr = "127.0.0.1:40000" // loopback: trusted
+	case "public":
+		req.RemoteAddr = "203.0.113.5:40000" // TEST-NET-3: a public IP
+	}
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	if out != nil && rec.Body.Len() > 0 {
@@ -80,12 +86,11 @@ func do(t *testing.T, h http.Handler, method, path, bearer string, body any, out
 	return rec.Code
 }
 
-// TestAuthProfilesEndToEnd drives the whole account/profile/elevation contract
-// through the mounted router: setup, login + profile picker, profile switch,
-// admin-OTP elevation, and the read/write admin gate.
+// TestAuthProfilesEndToEnd drives the whole setup/pair/profile/admin contract
+// through the mounted router: local setup, the local-vs-tunnel admin gate,
+// remote pairing with the connection code, the profile picker + switch.
 func TestAuthProfilesEndToEnd(t *testing.T) {
-	h, mailer := testAPI(t)
-	const email = "owner@example.com"
+	h := testAPI(t)
 
 	// needs_setup is true before setup.
 	var status struct {
@@ -95,11 +100,9 @@ func TestAuthProfilesEndToEnd(t *testing.T) {
 		t.Fatal("expected needs_setup=true before setup")
 	}
 
-	// Setup: creates account + first profile, returns an elevated session.
+	// Setup (local): creates account + first profile, returns the connection code
+	// and a signed-in session.
 	var setupResp struct {
-		Account struct {
-			Email string `json:"email"`
-		} `json:"account"`
 		Profile struct {
 			ID   int64  `json:"id"`
 			Name string `json:"name"`
@@ -109,36 +112,37 @@ func TestAuthProfilesEndToEnd(t *testing.T) {
 		RefreshToken   string `json:"refresh_token"`
 	}
 	code := do(t, h, http.MethodPost, "/api/setup/complete", "",
-		map[string]any{"email": email, "profile_name": "Owner"}, &setupResp)
+		map[string]any{"profile_name": "Owner"}, &setupResp)
 	if code != http.StatusCreated {
 		t.Fatalf("setup: status %d", code)
 	}
-	if setupResp.Account.Email != email || setupResp.Profile.Name != "Owner" || setupResp.ConnectionCode == "" {
+	if setupResp.Profile.Name != "Owner" || setupResp.ConnectionCode == "" {
 		t.Fatalf("unexpected setup response: %+v", setupResp)
 	}
 	ownerID := setupResp.Profile.ID
+	connCode := setupResp.ConnectionCode
 
-	// The setup session is elevated: an admin mutation gets past RequireAdmin
-	// (503 because no scanner is wired, not 403).
-	if c := do(t, h, http.MethodPost, "/api/admin/scan", setupResp.AccessToken, nil, nil); c != http.StatusServiceUnavailable {
-		t.Fatalf("elevated setup token should pass the admin gate, got %d", c)
+	// Setup cannot be run over the tunnel.
+	if c := doTunnel(t, h, http.MethodPost, "/api/setup/complete", "", map[string]any{}, nil); c != http.StatusForbidden {
+		t.Fatalf("setup over the tunnel must be forbidden, got %d", c)
 	}
 
-	// /me reflects the account, current profile, and elevated state.
+	// A local request may perform an admin mutation: it gets past RequireLocal
+	// (503 because no scanner is wired, not 403).
+	if c := do(t, h, http.MethodPost, "/api/admin/scan", setupResp.AccessToken, nil, nil); c != http.StatusServiceUnavailable {
+		t.Fatalf("local admin mutation should pass the gate, got %d", c)
+	}
+
+	// /me over a local request reports admin:true.
 	var me struct {
-		Account  struct{ Email string } `json:"account"`
-		Profile  struct{ Name string }  `json:"profile"`
-		Profiles []struct {
-			ID   int64  `json:"id"`
-			Name string `json:"name"`
-		} `json:"profiles"`
-		Admin bool `json:"admin"`
+		Profile struct{ Name string } `json:"profile"`
+		Admin   bool                  `json:"admin"`
 	}
 	if c := do(t, h, http.MethodGet, "/api/me", setupResp.AccessToken, nil, &me); c != http.StatusOK {
 		t.Fatalf("me: status %d", c)
 	}
-	if me.Account.Email != email || me.Profile.Name != "Owner" || !me.Admin {
-		t.Fatalf("unexpected /me: %+v", me)
+	if me.Profile.Name != "Owner" || !me.Admin {
+		t.Fatalf("unexpected local /me: %+v", me)
 	}
 
 	// Add a second profile (any signed-in profile may).
@@ -151,100 +155,119 @@ func TestAuthProfilesEndToEnd(t *testing.T) {
 		t.Fatalf("create profile: status %d", c)
 	}
 
-	// Fresh device login: request + verify a pin.
-	if c := do(t, h, http.MethodPost, "/api/auth/request-pin", "", map[string]any{"email": email}, nil); c != http.StatusOK {
-		t.Fatalf("request-pin: status %d", c)
+	// Remote pairing: a tunnel pair with a wrong code is rejected...
+	if c := doTunnel(t, h, http.MethodPost, "/api/auth/pair", "", map[string]any{"code": "NR-WRONG-CODE0"}, nil); c != http.StatusUnauthorized {
+		t.Fatalf("wrong connection code should be 401, got %d", c)
 	}
-	gotEmail, loginPin := mailer.last()
-	if gotEmail != email || loginPin == "" {
-		t.Fatalf("login pin not sent to account email: %q %q", gotEmail, loginPin)
-	}
-	var login struct {
+	// ...and the correct code (case/format-insensitive) yields a session + picker.
+	var paired struct {
 		Profile struct {
-			ID   int64  `json:"id"`
-			Name string `json:"name"`
+			ID int64 `json:"id"`
 		} `json:"profile"`
 		Profiles     []json.RawMessage `json:"profiles"`
 		AccessToken  string            `json:"access_token"`
 		RefreshToken string            `json:"refresh_token"`
 	}
-	if c := do(t, h, http.MethodPost, "/api/auth/verify-pin", "",
-		map[string]any{"email": email, "pin": loginPin}, &login); c != http.StatusOK {
-		t.Fatalf("verify-pin: status %d", c)
+	if c := doTunnel(t, h, http.MethodPost, "/api/auth/pair", "", map[string]any{"code": connCode}, &paired); c != http.StatusOK {
+		t.Fatalf("pair with correct code: status %d", c)
 	}
-	if len(login.Profiles) != 2 {
-		t.Fatalf("verify-pin should return the picker list, got %d profiles", len(login.Profiles))
+	if len(paired.Profiles) != 2 {
+		t.Fatalf("pair should return the picker list, got %d profiles", len(paired.Profiles))
 	}
-	if login.Profile.ID != ownerID {
-		t.Fatalf("verify-pin default should be the first profile, got %+v", login.Profile)
-	}
-
-	// A plain login token is NOT elevated: admin mutation is forbidden.
-	if c := do(t, h, http.MethodPost, "/api/admin/scan", login.AccessToken, nil, nil); c != http.StatusForbidden {
-		t.Fatalf("plain login token must be blocked from admin mutations, got %d", c)
-	}
-	// ...but admin reads are open to it: the request reaches the handler (503,
-	// no scanner wired) rather than being turned away at the gate (403).
-	if c := do(t, h, http.MethodGet, "/api/admin/scan", login.AccessToken, nil, nil); c == http.StatusForbidden || c == http.StatusUnauthorized {
-		t.Fatalf("admin read should be open to any profile, got %d", c)
+	if paired.Profile.ID != ownerID {
+		t.Fatalf("pair default should be the first profile, got %+v", paired.Profile)
 	}
 
-	// Switch to the Kids profile with the device refresh token (no pin).
+	// The paired (remote) session is NOT admin: /me over the tunnel reports false,
+	// admin mutations are forbidden, but admin reads stay open.
+	if c := doTunnel(t, h, http.MethodGet, "/api/me", paired.AccessToken, nil, &me); c != http.StatusOK || me.Admin {
+		t.Fatalf("remote /me should be admin:false, got status=%d admin=%v", c, me.Admin)
+	}
+	if c := doTunnel(t, h, http.MethodPost, "/api/admin/scan", paired.AccessToken, nil, nil); c != http.StatusForbidden {
+		t.Fatalf("remote admin mutation must be blocked, got %d", c)
+	}
+	if c := doTunnel(t, h, http.MethodGet, "/api/admin/scan", paired.AccessToken, nil, nil); c == http.StatusForbidden || c == http.StatusUnauthorized {
+		t.Fatalf("admin read should be open to a remote session, got %d", c)
+	}
+
+	// A local pair needs no code.
+	if c := do(t, h, http.MethodPost, "/api/auth/pair", "", map[string]any{}, nil); c != http.StatusOK {
+		t.Fatalf("local pair without a code should succeed, got %d", c)
+	}
+
+	// Switch to the Kids profile with the device refresh token.
 	var switched struct {
 		Profile struct {
-			ID   int64  `json:"id"`
 			Name string `json:"name"`
 		} `json:"profile"`
-		AccessToken string `json:"access_token"`
 	}
-	if c := do(t, h, http.MethodPost, "/api/auth/select-profile", "",
-		map[string]any{"refresh_token": login.RefreshToken, "profile_id": kids.ID}, &switched); c != http.StatusOK {
+	if c := doTunnel(t, h, http.MethodPost, "/api/auth/select-profile", "",
+		map[string]any{"refresh_token": paired.RefreshToken, "profile_id": kids.ID}, &switched); c != http.StatusOK {
 		t.Fatalf("select-profile: status %d", c)
 	}
 	if switched.Profile.Name != "Kids" {
 		t.Fatalf("expected switch to Kids, got %+v", switched.Profile)
 	}
 
-	// Admin elevation via OTP, using the plain login token as the caller.
-	if c := do(t, h, http.MethodPost, "/api/admin/request-otp", login.AccessToken, nil, nil); c != http.StatusOK {
-		t.Fatalf("request-otp: status %d", c)
+	// Deleting a profile is an admin mutation: refused over the tunnel, allowed
+	// locally.
+	kidsPath := "/api/profiles/" + itoa(kids.ID)
+	if c := doTunnel(t, h, http.MethodDelete, kidsPath, paired.AccessToken, nil, nil); c != http.StatusForbidden {
+		t.Fatalf("remote delete must be blocked, got %d", c)
 	}
-	_, adminPin := mailer.last()
-	if adminPin == "" || adminPin == loginPin {
-		t.Fatalf("admin OTP not issued distinctly: %q", adminPin)
+	if c := do(t, h, http.MethodDelete, kidsPath, setupResp.AccessToken, nil, nil); c != http.StatusNoContent {
+		t.Fatalf("local delete should succeed, got %d", c)
 	}
-	// Wrong code is rejected.
-	if c := do(t, h, http.MethodPost, "/api/admin/verify-otp", login.AccessToken,
-		map[string]any{"otp": "000000"}, nil); c != http.StatusUnauthorized {
-		t.Fatalf("wrong admin otp should be 401, got %d", c)
+}
+
+// TestPublicDirectRequestIsNotTrusted guards the security boundary that makes
+// "local = admin" safe when the box's HTTP port is exposed: a direct (non-tunnel)
+// request from a PUBLIC source IP must be treated exactly like a remote client —
+// no code-free pairing, no admin — even though it did not come over the tunnel.
+func TestPublicDirectRequestIsNotTrusted(t *testing.T) {
+	h := testAPI(t)
+
+	// Set the box up locally and grab its connection code.
+	var setupResp struct {
+		ConnectionCode string `json:"connection_code"`
 	}
-	var elevated struct {
-		AccessToken string `json:"access_token"`
-	}
-	if c := do(t, h, http.MethodPost, "/api/admin/verify-otp", login.AccessToken,
-		map[string]any{"otp": adminPin}, &elevated); c != http.StatusOK {
-		t.Fatalf("verify-otp: status %d", c)
-	}
-	// The elevated token now passes the admin mutation gate.
-	if c := do(t, h, http.MethodPost, "/api/admin/scan", elevated.AccessToken, nil, nil); c != http.StatusServiceUnavailable {
-		t.Fatalf("elevated token should pass the admin gate, got %d", c)
+	if c := do(t, h, http.MethodPost, "/api/setup/complete", "", map[string]any{"profile_name": "Owner"}, &setupResp); c != http.StatusCreated {
+		t.Fatalf("setup: status %d", c)
 	}
 
-	// Deleting a profile is destructive, so it needs elevation: a plain token
-	// is refused, the elevated one succeeds.
-	kidsPath := "/api/profiles/" + itoa(kids.ID)
-	if c := do(t, h, http.MethodDelete, kidsPath, login.AccessToken, nil, nil); c != http.StatusForbidden {
-		t.Fatalf("plain token must not delete a profile, got %d", c)
+	// A public-IP request may NOT pair without the code (the hole would be a
+	// code-free session here).
+	if c := doPublic(t, h, http.MethodPost, "/api/auth/pair", "", map[string]any{}, nil); c != http.StatusUnauthorized {
+		t.Fatalf("code-free pair from a public IP must be 401, got %d", c)
 	}
-	if c := do(t, h, http.MethodDelete, kidsPath, elevated.AccessToken, nil, nil); c != http.StatusNoContent {
-		t.Fatalf("elevated delete should succeed, got %d", c)
+
+	// With the correct code it pairs, but the session is NOT admin...
+	var paired struct {
+		AccessToken string `json:"access_token"`
+	}
+	if c := doPublic(t, h, http.MethodPost, "/api/auth/pair", "", map[string]any{"code": setupResp.ConnectionCode}, &paired); c != http.StatusOK {
+		t.Fatalf("pair from a public IP with the code: status %d", c)
+	}
+	var me struct {
+		Admin bool `json:"admin"`
+	}
+	if c := doPublic(t, h, http.MethodGet, "/api/me", paired.AccessToken, nil, &me); c != http.StatusOK || me.Admin {
+		t.Fatalf("public-IP session must be admin:false, got status=%d admin=%v", c, me.Admin)
+	}
+	// ...and it cannot perform admin mutations.
+	if c := doPublic(t, h, http.MethodPost, "/api/admin/scan", paired.AccessToken, nil, nil); c != http.StatusForbidden {
+		t.Fatalf("admin mutation from a public IP must be 403, got %d", c)
+	}
+	// Setup over a public IP is refused too.
+	if c := doPublic(t, h, http.MethodPost, "/api/setup/complete", "", map[string]any{}, nil); c != http.StatusForbidden {
+		t.Fatalf("setup from a public IP must be 403, got %d", c)
 	}
 }
 
 // TestDeleteLastProfileBlocked guards the invariant that the account can never
 // be left with zero profiles.
 func TestDeleteLastProfileBlocked(t *testing.T) {
-	h, _ := testAPI(t)
+	h := testAPI(t)
 	var setupResp struct {
 		Profile struct {
 			ID int64 `json:"id"`
@@ -252,7 +275,7 @@ func TestDeleteLastProfileBlocked(t *testing.T) {
 		AccessToken string `json:"access_token"`
 	}
 	if c := do(t, h, http.MethodPost, "/api/setup/complete", "",
-		map[string]any{"email": "solo@example.com"}, &setupResp); c != http.StatusCreated {
+		map[string]any{"profile_name": "Solo"}, &setupResp); c != http.StatusCreated {
 		t.Fatalf("setup: status %d", c)
 	}
 	path := "/api/profiles/" + itoa(setupResp.Profile.ID)

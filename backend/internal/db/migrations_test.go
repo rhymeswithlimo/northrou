@@ -9,10 +9,11 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
-// TestProfilesMigrationRoundTrip verifies 00005 applies cleanly (account,
-// profiles, and auth_pins replace users and login_pins), that the per-profile
-// foreign keys are rewritten to reference profiles(id), and that Down/Up
-// round-trips without error.
+// TestProfilesMigrationRoundTrip verifies 00005 applies cleanly (account and
+// profiles replace users and login_pins) and that the per-profile foreign keys
+// are rewritten to reference profiles(id). auth_pins, created by 00005, is later
+// dropped by 00009 (sign-in removal), so at HEAD it is absent. Down/Up must
+// round-trip without error.
 func TestProfilesMigrationRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "m5.db")
 	d, err := Open(path) // Open runs migrations up to the latest version.
@@ -25,7 +26,7 @@ func TestProfilesMigrationRoundTrip(t *testing.T) {
 		name string
 		want int
 	}{
-		{"account", 1}, {"profiles", 1}, {"auth_pins", 1},
+		{"account", 1}, {"profiles", 1}, {"auth_pins", 0},
 		{"users", 0}, {"login_pins", 0},
 	} {
 		var n int
