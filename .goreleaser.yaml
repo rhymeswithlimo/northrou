@@ -92,12 +92,12 @@ signs:
   - id: checksums
     artifacts: checksum
     signature: "${artifact}.sig"
-    # nrsign writes <artifact>.sig next to the (absolute) artifact path; cd into
-    # the backend module so `go run` resolves it.
-    cmd: sh
+    # nrsign writes <artifact>.sig next to the (absolute) artifact path. Goes
+    # through scripts/nrsign-sign.sh rather than an inline `sh -c` string: see
+    # that file for why (goreleaser's ${artifact} substitution mangles a
+    # literal "$0" if it's written directly in this YAML).
+    cmd: scripts/nrsign-sign.sh
     args:
-      - "-c"
-      - 'cd backend && go run ./cmd/nrsign "$0"'
       - "${artifact}"
 
 snapshot:
