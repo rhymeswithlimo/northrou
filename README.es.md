@@ -1,8 +1,8 @@
 <div align="center">
-<img alt="Northrou" src="public/repo/Hero_Banner_JPG_v1.0__Northrou.jpg" width="100%">
+<img alt="Northrou" src="public/repo/Hero_Banner_JPG_v1.1__Northrou.jpg" width="100%">
 </div>
 
-<h1 align="center">Northrou</h1>
+<h3 align="center">Northrou</h3>
 
 <p align="center">
   <a href="README.md">English</a> ·
@@ -22,10 +22,12 @@
   <a href="#licencia">Licencia</a>
 </p>
 
+<p align="center">
 <a href="https://github.com/rhymeswithlimo/northrou/releases"><img src="https://img.shields.io/github/v/release/rhymeswithlimo/northrou" alt="Latest release"></a>
 <a href="LICENSE"><img src="https://img.shields.io/badge/license-BSD--3--Clause-blue" alt="License: BSD 3-Clause"></a>
 <a href="https://github.com/rhymeswithlimo/northrou/commits/main"><img src="https://img.shields.io/github/last-commit/rhymeswithlimo/northrou" alt="Last commit"></a>
 <img src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go&logoColor=white" alt="Go 1.26+">
+</p>
 
 ---
 
