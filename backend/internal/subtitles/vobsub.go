@@ -169,7 +169,11 @@ func readSPU(sub []byte, filepos int64) []byte {
 			}
 			pesLen := int(binary.BigEndian.Uint16(sub[pos+4 : pos+6]))
 			payloadStart := pos + 6
-			if payloadStart+2 > len(sub) {
+			// Need to read sub[payloadStart+2], so require that index to exist:
+			// payloadStart+3 bytes. (Was `+2 > len`, which admitted
+			// payloadStart+2 == len(sub) and then indexed out of range → panic on
+			// a truncated private_stream_1 header.)
+			if payloadStart+3 > len(sub) {
 				return nil
 			}
 			hdrDataLen := int(sub[payloadStart+2])
@@ -214,10 +218,10 @@ func decodeSPU(spu []byte, palette [16]color.RGBA) (image.Image, time.Duration, 
 	}
 
 	var (
-		x1, y1, x2, y2 int
-		field1, field2 int
-		palIdx         = [4]byte{}
-		alpha          = [4]byte{}
+		x1, y1, x2, y2     int
+		field1, field2     int
+		palIdx             = [4]byte{}
+		alpha              = [4]byte{}
 		startDate, endDate time.Duration
 		haveArea, havePix  bool
 	)

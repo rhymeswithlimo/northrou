@@ -5,6 +5,15 @@
 // token the moment it issues a new pair, so a dropped write means the device is
 // signed out for good. Every rotation is persisted before the new access token
 // is handed back to callers.
+//
+// SECURITY: tokens live in localStorage, so any same-origin script can read the
+// (long-lived) refresh token. Two things bound that risk: the client is kept
+// free of HTML-injection sinks (enforced by scripts/check-no-dangerous-sinks.mjs
+// in the build), and the server now revokes a device's whole token family on
+// refresh-token REUSE, so an exfiltrated-then-replayed token trips detection.
+// FOLLOW-UP: on native (Tauri) builds, move the refresh token into the OS
+// keychain via a native plugin rather than localStorage, so a WebView
+// compromise cannot read it. Tracked as a native task (not done here).
 
 const KEY = 'northrou.session';
 

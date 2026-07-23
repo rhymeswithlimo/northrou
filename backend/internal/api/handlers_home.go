@@ -9,10 +9,25 @@ import (
 	"github.com/rhymeswithlimo/northrou/backend/internal/recommend"
 )
 
+// requireProfileID returns the signed-in profile id, or writes 401 and reports
+// false. Middleware guarantees claims on these routes, so this is defensive
+// against a future routing mistake that would otherwise nil-deref the claims.
+func requireProfileID(w http.ResponseWriter, r *http.Request) (int64, bool) {
+	claims, ok := auth.ClaimsFrom(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthenticated")
+		return 0, false
+	}
+	return claims.ProfileID, true
+}
+
 // handleHome returns the personalized, rotated home-screen rows.
 func (a *API) handleHome(w http.ResponseWriter, r *http.Request) {
-	claims, _ := auth.ClaimsFrom(r.Context())
-	rows, err := a.Recommend.Home(r.Context(), claims.ProfileID)
+	pid, ok := requireProfileID(w, r)
+	if !ok {
+		return
+	}
+	rows, err := a.Recommend.Home(r.Context(), pid)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "home generation failed")
 		return
@@ -35,7 +50,10 @@ type watchRequest struct {
 
 // handleWatch records playback progress and updates the taste profile.
 func (a *API) handleWatch(w http.ResponseWriter, r *http.Request) {
-	claims, _ := auth.ClaimsFrom(r.Context())
+	pid, ok := requireProfileID(w, r)
+	if !ok {
+		return
+	}
 	var req watchRequest
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -60,7 +78,7 @@ func (a *API) handleWatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := a.Recommend.RecordWatch(r.Context(), claims.ProfileID, kind, id, req.Position, req.Duration); err != nil {
+	if err := a.Recommend.RecordWatch(r.Context(), pid, kind, id, req.Position, req.Duration); err != nil {
 		writeError(w, http.StatusInternalServerError, "record watch failed")
 		return
 	}
@@ -85,8 +103,11 @@ type continueItemDTO struct {
 
 // handleContinueWatching lists what this profile has started but not finished.
 func (a *API) handleContinueWatching(w http.ResponseWriter, r *http.Request) {
-	claims, _ := auth.ClaimsFrom(r.Context())
-	items, err := a.DB.ListInProgress(r.Context(), claims.ProfileID, 20)
+	pid, ok := requireProfileID(w, r)
+	if !ok {
+		return
+	}
+	items, err := a.DB.ListInProgress(r.Context(), pid, 20)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "continue watching failed")
 		return

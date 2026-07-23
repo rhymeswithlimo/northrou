@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -171,28 +172,133 @@ func (m *Manager) downloadAndExtract(ctx context.Context, a asset, want map[stri
 		return nil, fmt.Errorf("download %s: HTTP %d", a.URL, resp.StatusCode)
 	}
 
-	var reader io.Reader = resp.Body
+	// Resolve the expected checksum: a static pin if any, else an upstream-
+	// published checksum fetched at download time (rolling-URL-safe).
+	wantSum := a.SHA256
+	if wantSum == "" && a.SHA256URL != "" {
+		wantSum, err = m.fetchChecksum(ctx, a.SHA256URL, a.URL)
+		if err != nil {
+			return nil, fmt.Errorf("fetch checksum: %w", err)
+		}
+	}
+
+	// Cap the download to bound memory/disk against an oversized or
+	// decompression-bomb response (the URLs are rolling upstream endpoints, so
+	// the bytes are not under our control).
+	var reader io.Reader = io.LimitReader(resp.Body, maxFFmpegDownload+1)
 	var hasher = sha256.New()
-	if a.SHA256 != "" {
-		reader = io.TeeReader(resp.Body, hasher)
+	if wantSum != "" {
+		reader = io.TeeReader(reader, hasher)
 	}
 
-	got, err := extractBinaries(reader, a.Kind, m.binDir, want)
+	// Extract into a private staging dir and only promote a binary into the
+	// managed binDir AFTER its checksum verifies. Writing straight to the final
+	// path (the old behavior) meant a tampered or truncated download left a
+	// binary at binDir that Locate() would find and EXECUTE unverified on the
+	// next run - defeating the checksum the moment one is pinned.
+	if err := os.MkdirAll(m.binDir, 0o755); err != nil {
+		return nil, err
+	}
+	staging, err := os.MkdirTemp(m.binDir, ".staging-")
 	if err != nil {
-		return got, err
+		return nil, err
+	}
+	defer os.RemoveAll(staging)
+
+	got, err := extractBinaries(reader, a.Kind, staging, want)
+	if err != nil {
+		return nil, err
 	}
 
-	if a.SHA256 != "" {
+	if wantSum != "" {
 		// Drain any trailer so the hash covers the full stream.
 		_, _ = io.Copy(io.Discard, reader)
 		sum := hex.EncodeToString(hasher.Sum(nil))
-		if !strings.EqualFold(sum, a.SHA256) {
-			return got, fmt.Errorf("checksum mismatch for %s: got %s want %s", a.URL, sum, a.SHA256)
+		if !strings.EqualFold(sum, wantSum) {
+			return nil, fmt.Errorf("checksum mismatch for %s: got %s want %s", a.URL, sum, wantSum)
 		}
 	} else {
 		slog.Warn("ffmpeg asset checksum not pinned; skipping verification", "url", a.URL)
 	}
+
+	// Verified (or unpinned): promote the staged binaries into the managed dir.
+	for base := range got {
+		if err := os.Rename(filepath.Join(staging, base), filepath.Join(m.binDir, base)); err != nil {
+			return nil, fmt.Errorf("promote %s: %w", base, err)
+		}
+	}
 	return got, nil
+}
+
+// fetchChecksum downloads a checksum document and extracts the SHA-256 for the
+// asset at assetURL. The body may be a bare hex digest or an sha256sum-style
+// listing ("<hex>  <name>"); in the latter case the line whose name matches the
+// asset's base name (or, failing that, the sole 64-hex token) is used.
+func (m *Manager) fetchChecksum(ctx context.Context, checksumURL, assetURL string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, checksumURL, nil)
+	if err != nil {
+		return "", err
+	}
+	resp, err := m.httpClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return "", err
+	}
+	wantName := path.Base(assetURL)
+	return parseChecksumDoc(string(body), wantName)
+}
+
+// parseChecksumDoc pulls a SHA-256 hex digest out of a checksum document, keying
+// on wantName when the document lists multiple files.
+func parseChecksumDoc(doc, wantName string) (string, error) {
+	isHex64 := func(s string) bool {
+		if len(s) != 64 {
+			return false
+		}
+		_, err := hex.DecodeString(s)
+		return err == nil
+	}
+	var only string
+	var haveOnly bool
+	for _, line := range strings.Split(doc, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		// Bare digest on its own line.
+		if len(fields) == 1 && isHex64(fields[0]) {
+			only, haveOnly = fields[0], !haveOnly && only == ""
+			continue
+		}
+		// "<hex>  <name>" (sha256sum) or "<name>: <hex>" style.
+		for i, f := range fields {
+			if isHex64(f) {
+				name := ""
+				if i == 0 && len(fields) > 1 {
+					name = fields[len(fields)-1]
+				} else if i > 0 {
+					name = strings.TrimSuffix(fields[0], ":")
+				}
+				if path.Base(name) == wantName {
+					return strings.ToLower(f), nil
+				}
+				if only == "" {
+					only = f
+				}
+			}
+		}
+	}
+	if isHex64(only) {
+		return strings.ToLower(only), nil
+	}
+	return "", fmt.Errorf("no sha256 for %s in checksum document", wantName)
 }
 
 // Version runs `ffmpeg -version` and returns the first line, verifying the

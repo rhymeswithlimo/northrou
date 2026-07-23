@@ -115,6 +115,9 @@ func parsePCS(p []byte) (w, h int, objs []compObject) {
 	}
 	w = int(binary.BigEndian.Uint16(p[0:2]))
 	h = int(binary.BigEndian.Uint16(p[2:4]))
+	if w <= 0 || h <= 0 || w > maxSubDim || h > maxSubDim {
+		return 0, 0, nil
+	}
 	count := int(p[10])
 	off := 11
 	for i := 0; i < count; i++ {
@@ -147,6 +150,13 @@ func parsePDS(p []byte, palette map[byte]color.RGBA) {
 	}
 }
 
+// maxSubDim caps a decoded subtitle bitmap's width/height. PGS dimensions come
+// from untrusted 16-bit fields (up to 65535); left unchecked, width*height
+// reaches ~4.29e9, forcing a ~4 GB allocation (OOM) on 64-bit or overflowing
+// int to negative on 32-bit builds (linux/arm) so `make` panics. 4096 comfortably
+// covers 4K UHD subtitle planes and matches the VobSub decoder's own cap.
+const maxSubDim = 4096
+
 func parseODS(p []byte) (uint16, *object, bool) {
 	if len(p) < 11 {
 		return 0, nil, false
@@ -155,6 +165,9 @@ func parseODS(p []byte) (uint16, *object, bool) {
 	// p[2] version, p[3] sequence flag, p[4:7] data length (3 bytes)
 	width := int(binary.BigEndian.Uint16(p[7:9]))
 	height := int(binary.BigEndian.Uint16(p[9:11]))
+	if width <= 0 || height <= 0 || width > maxSubDim || height > maxSubDim {
+		return 0, nil, false
+	}
 	rle := p[11:]
 	pixels := decodeRLE(rle, width, height)
 	return id, &object{width: width, height: height, pixels: pixels}, true

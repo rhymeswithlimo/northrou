@@ -89,6 +89,27 @@ land the change, not after the fact.
   the box), so an idle-timeout proxy in front of the coordinator (e.g. Cloudflare
   closes idle WebSockets after ~100s) can't silently drop a box's registration
   while it sits idle between pairings.
+- **Security: the admin gate can no longer be bypassed with a spoofed IP header.**
+  A request arriving directly on the HTTP port could previously set
+  `X-Forwarded-For`/`X-Real-IP` to a loopback address and be treated as a trusted
+  local request, granting code-free pairing and every admin action. The server no
+  longer trusts those headers; local trust is decided only from the real
+  connection, and a foreign `Host` (DNS-rebinding) is rejected too.
+- **Security: the connection code no longer leaks to remote or read-only
+  sessions.** It is returned only to trusted local requests, is kept out of the
+  server and coordinator logs, and the unmatched-files list and `GET /api/admin/logs`
+  no longer expose host filesystem paths or logs to a remote session.
+- **Security: a malformed remote request or subtitle can no longer crash the
+  server.** A bad tunnel request, a truncated VobSub `.sub`, or an oversized PGS
+  subtitle used to be able to panic the process; these are now contained.
+- **Security: `northrou update` and the install script now fail closed.** Updates
+  refuse to apply without a valid `checksums.txt` (and a valid signature when the
+  build embeds a release key); the install script verifies the checksum on macOS
+  too (it silently skipped it before) and aborts if it can't.
+- The managed ffmpeg download is verified before it is put in place, so a failed
+  or tampered download can no longer leave an unverified binary behind.
+- Refresh-token rotation is now atomic, so a token can't be used twice, and a
+  replayed (already-rotated) token now signs the whole device out.
 
 ### Improved
 - The client's connect page is now a welcome page: enter your server's
@@ -96,6 +117,16 @@ land the change, not after the fact.
   a device successfully pairs.
 - Settings shows the server's name everywhere it used to show a bare address
   or connection code.
+- Cross-origin requests to the server are now restricted to the Northrou apps
+  and same-machine browsers, so a random website you visit can't script the
+  server behind your back.
+- The coordinator and the box now cap connections, pairings, and message sizes.
+  The coordinator also refuses to let a different server displace a connection
+  code that another server has already registered, and a box whose registration
+  is refused now keeps retrying (loudly) instead of sitting silently offline.
+- Request and download sizes are capped across the server (API bodies, ffmpeg,
+  images, TMDB) so an oversized or hostile response can't exhaust memory or disk,
+  and abandoned transcodes can no longer fill the disk.
 
 ## v0.1.5 - 2026-07-21
 

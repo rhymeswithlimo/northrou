@@ -57,7 +57,7 @@ func TestPairingAndRelay(t *testing.T) {
 
 	// Home server registers.
 	server := dial(t, url)
-	write(t, server, Message{Type: TypeRegister, Role: "server", Code: "NR-TEST"})
+	write(t, server, Message{Type: TypeRegister, Role: "server", Code: "NR-TEST", ServerID: "srv-1"})
 	if m := read(t, server); m.Type != TypeRegistered {
 		t.Fatalf("expected registered, got %+v", m)
 	}
@@ -96,5 +96,29 @@ func TestConnectUnknownCode(t *testing.T) {
 	write(t, client, Message{Type: TypeConnect, Role: "client", Code: "NOPE"})
 	if m := read(t, client); m.Type != TypeError {
 		t.Fatalf("expected error for unknown code, got %+v", m)
+	}
+}
+
+// TestRegisterHijackRefused proves a different server_id cannot displace a live
+// registration for a code (the registration-hijack / MITM vector), while the
+// same server_id may reconnect.
+func TestRegisterHijackRefused(t *testing.T) {
+	url := newBrokerServer(t)
+	legit := dial(t, url)
+	write(t, legit, Message{Type: TypeRegister, Role: "server", Code: "NR-HIJACK", ServerID: "real"})
+	if m := read(t, legit); m.Type != TypeRegistered {
+		t.Fatalf("legit register: got %+v", m)
+	}
+	// An attacker who knows the code but not the server_id cannot take it over.
+	attacker := dial(t, url)
+	write(t, attacker, Message{Type: TypeRegister, Role: "server", Code: "NR-HIJACK", ServerID: "attacker"})
+	if m := read(t, attacker); m.Type != TypeError {
+		t.Fatalf("hijack should be refused, got %+v", m)
+	}
+	// The real server (same server_id) may reconnect and replace its own entry.
+	again := dial(t, url)
+	write(t, again, Message{Type: TypeRegister, Role: "server", Code: "NR-HIJACK", ServerID: "real"})
+	if m := read(t, again); m.Type != TypeRegistered {
+		t.Fatalf("same-server reconnect should succeed, got %+v", m)
 	}
 }

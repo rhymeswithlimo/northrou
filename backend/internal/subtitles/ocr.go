@@ -29,6 +29,18 @@ func (e *Extractor) ocrWorker(ctx context.Context) {
 }
 
 func (e *Extractor) processOCR(ctx context.Context, j ocrJob) {
+	// Backstop: subtitle bitstreams are untrusted, and a decoder panic here would
+	// otherwise take down the whole process (this runs in a background worker
+	// goroutine, outside any HTTP Recoverer). Contain it to this one track. The
+	// specific known panics (VobSub truncation, PGS oversized dims) are also
+	// fixed at the source, but this guards against the next one.
+	defer func() {
+		if rec := recover(); rec != nil {
+			slog.Error("OCR worker recovered from panic", "track", j.trackID, "panic", rec)
+			_ = e.db.SetSubtitleVTT(ctx, j.trackID, "", "failed")
+		}
+	}()
+
 	_ = e.db.SetSubtitleVTT(ctx, j.trackID, "", "processing")
 
 	work, err := os.MkdirTemp("", "northrou-ocr-*")

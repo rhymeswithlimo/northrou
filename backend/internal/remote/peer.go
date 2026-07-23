@@ -3,6 +3,7 @@ package remote
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"sync"
@@ -94,7 +95,29 @@ func (p *Peer) connectOnce(ctx context.Context) error {
 	if err := p.send(ctx, signalMessage{Type: "register", Role: "server", ServerID: p.serverID, Code: p.code}); err != nil {
 		return err
 	}
-	slog.Info("registered with coordination server", "url", p.coordURL, "code", p.code)
+
+	// Wait for the coordinator's verdict before believing we're registered. A
+	// refusal (another server_id already holds this code - a squatter, or a stale
+	// binding) must NOT be swallowed: if we optimistically assumed success we'd
+	// sit here forever with a live-but-unregistered socket while clients pairing
+	// with our code reach whoever *is* registered. Instead surface it loudly and
+	// return an error so Run() reconnects with backoff and keeps contending for
+	// the code (e.g. after the squatter drops, or the coordinator restarts).
+	var verdict signalMessage
+	if err := wsjson.Read(ctx, ws, &verdict); err != nil {
+		return err
+	}
+	if verdict.Type == "error" {
+		slog.Error("coordinator refused registration; will keep retrying",
+			"server_id", p.serverID, "err", verdict.Error)
+		return fmt.Errorf("registration refused: %s", verdict.Error)
+	}
+	if verdict.Type != "registered" {
+		return fmt.Errorf("unexpected registration reply %q", verdict.Type)
+	}
+	// Never log p.code: it is the master pairing credential and this line lands
+	// in the rotating log file exposed via `northrou logs`.
+	slog.Info("registered with coordination server", "url", p.coordURL, "server_id", p.serverID)
 
 	// The registration socket is idle between pairings; an idle-timeout proxy in
 	// front of the coordinator (Cloudflare closes idle WebSockets after ~100s)
@@ -204,6 +227,15 @@ func (p *Peer) newSession(ctx context.Context, session string) error {
 				return
 			}
 			go func() {
+				// Last-resort guard: a panic in this goroutine (e.g. deep in the
+				// handler stack, past chi's Recoverer) would otherwise crash the
+				// whole process. Contain it to this one data channel.
+				defer func() {
+					if rec := recover(); rec != nil {
+						slog.Error("tunnel serve panic", "panic", rec)
+						_ = raw.Close()
+					}
+				}()
 				if err := ServeConn(raw, p.handler); err != nil {
 					slog.Debug("tunnel serve error", "err", err)
 				}

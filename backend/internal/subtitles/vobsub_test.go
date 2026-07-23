@@ -1,8 +1,8 @@
 package subtitles
 
 import (
-	"path/filepath"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -91,5 +91,42 @@ func TestReadRLE(t *testing.T) {
 	l, c = readRLE(n)
 	if l != 5 || c != 1 {
 		t.Errorf("2-nibble RLE = (%d,%d), want (5,1)", l, c)
+	}
+}
+
+// TestReadSPUTruncatedHeaderNoPanic guards the off-by-one that crashed the whole
+// server: a .sub ending in a truncated private_stream_1 (0xBD) header where the
+// header-data-length byte sits exactly at len(sub) must not panic.
+func TestReadSPUTruncatedHeaderNoPanic(t *testing.T) {
+	// pack header (0x000001BA + 10) then a truncated 0xBD packet whose
+	// payloadStart+2 index lands exactly at len(sub).
+	pack := append([]byte{0x00, 0x00, 0x01, 0xBA}, make([]byte, 10)...)
+	// 0xBD start code + 2-byte PES length, then only 2 more bytes so
+	// payloadStart(=+6) + 2 == len(sub).
+	bd := []byte{0x00, 0x00, 0x01, 0xBD, 0x00, 0x10, 0x00, 0x00}
+	sub := append(pack, bd...)
+	// Must return (nil) rather than panic on the out-of-range index.
+	if got := readSPU(sub, int64(len(pack))); got != nil {
+		t.Fatalf("expected nil for truncated SPU, got %d bytes", len(got))
+	}
+}
+
+// TestPGSOversizedDimensionsRejected guards against the unbounded-allocation
+// OOM / 32-bit overflow: ODS/PCS dimensions beyond the cap are refused instead
+// of driving a multi-gigabyte make().
+func TestPGSOversizedDimensionsRejected(t *testing.T) {
+	// ODS with width=height=65535.
+	ods := make([]byte, 11)
+	ods[7], ods[8] = 0xFF, 0xFF  // width
+	ods[9], ods[10] = 0xFF, 0xFF // height
+	if _, _, ok := parseODS(ods); ok {
+		t.Fatal("parseODS must reject 65535x65535")
+	}
+	// PCS with width=height=65535.
+	pcs := make([]byte, 11)
+	pcs[0], pcs[1] = 0xFF, 0xFF
+	pcs[2], pcs[3] = 0xFF, 0xFF
+	if w, h, _ := parsePCS(pcs); w != 0 || h != 0 {
+		t.Fatalf("parsePCS must reject 65535x65535, got %dx%d", w, h)
 	}
 }

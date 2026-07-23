@@ -27,6 +27,20 @@ import (
 // DefaultRepo is the source of official release binaries.
 const DefaultRepo = "rhymeswithlimo/northrou"
 
+// SigningPublicKey is the base64-encoded Ed25519 public key (32 bytes) that
+// release checksums are signed with. It is injected at build time via ldflags:
+//
+//	-X github.com/rhymeswithlimo/northrou/backend/internal/update.SigningPublicKey=<base64>
+//
+// When set, Apply requires the release's checksums.txt to carry a valid
+// signature (checksums.txt.sig) made by the matching private key, and refuses
+// to update otherwise - so a compromised release asset cannot execute code on
+// the box. Generate a keypair once with GenerateKeypair; keep the private key
+// offline and configure goreleaser's `signs` to produce checksums.txt.sig.
+// Left empty, the updater falls back to checksums-only integrity (still
+// fail-closed on a missing checksums file).
+var SigningPublicKey string
+
 // Updater checks for and applies updates from a GitHub repository's releases.
 type Updater struct {
 	repo    string // "owner/name"
@@ -67,7 +81,10 @@ func (u *Updater) Latest(ctx context.Context) (*Release, error) {
 
 // latestFrom fetches a release from an explicit URL (used by tests).
 func (u *Updater) latestFrom(ctx context.Context, url string) (*Release, error) {
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	resp, err := u.http.Do(req)
 	if err != nil {
@@ -128,15 +145,40 @@ func (u *Updater) Apply(ctx context.Context, latest *Release) error {
 		return fmt.Errorf("download archive: %w", err)
 	}
 
-	// Verify against the published checksums file when present.
-	if sumsURL, ok := latest.assets["checksums.txt"]; ok {
-		sums, err := u.downloadBytes(ctx, sumsURL)
+	// Integrity + authenticity, fail-CLOSED. The checksums file MUST be present
+	// (goreleaser always emits it); refusing to update without it closes the
+	// bypass where an attacker who can influence release assets simply omits the
+	// checksums to skip verification.
+	sumsURL, ok := latest.assets["checksums.txt"]
+	if !ok {
+		return fmt.Errorf("refusing to update: release has no checksums.txt")
+	}
+	sums, err := u.downloadBytes(ctx, sumsURL)
+	if err != nil {
+		return fmt.Errorf("download checksums: %w", err)
+	}
+	// Authenticity: when a signing public key is embedded in this build, the
+	// checksums file MUST carry a valid Ed25519 signature. This is what upgrades
+	// the trust model from "GitHub/TLS not compromised" to "the release was
+	// signed by the holder of the Northrou release key" - without it, anyone who
+	// can publish a release asset gets code execution on every box. If no key is
+	// embedded (signing not yet provisioned), the checksums-only path above still
+	// applies.
+	if SigningPublicKey != "" {
+		sigURL, ok := latest.assets["checksums.txt.sig"]
+		if !ok {
+			return fmt.Errorf("refusing to update: release checksums are not signed")
+		}
+		sig, err := u.downloadBytes(ctx, sigURL)
 		if err != nil {
-			return fmt.Errorf("download checksums: %w", err)
+			return fmt.Errorf("download signature: %w", err)
 		}
-		if err := verifyChecksum(archive, archiveName, sums); err != nil {
-			return err
+		if err := verifySignature(sums, sig, SigningPublicKey); err != nil {
+			return fmt.Errorf("signature verification failed: %w", err)
 		}
+	}
+	if err := verifyChecksum(archive, archiveName, sums); err != nil {
+		return err
 	}
 
 	binary, err := extractBinary(archive, archiveName)
@@ -174,8 +216,16 @@ func (u *Updater) selectArchive(latest *Release) (name, url string, err error) {
 	return "", "", fmt.Errorf("no release asset for %s/%s", runtime.GOOS, archSuffix())
 }
 
+// maxDownload caps any single update download. Release archives are tens of MB;
+// 256 MiB is far above that but bounds memory against a malicious/redirected
+// asset returning an unbounded (or decompression-bomb) body.
+const maxDownload = 256 << 20
+
 func (u *Updater) downloadBytes(ctx context.Context, url string) ([]byte, error) {
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
 	resp, err := u.http.Do(req)
 	if err != nil {
 		return nil, err
@@ -184,7 +234,14 @@ func (u *Updater) downloadBytes(ctx context.Context, url string) ([]byte, error)
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
-	return io.ReadAll(resp.Body)
+	b, err := io.ReadAll(io.LimitReader(resp.Body, maxDownload+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(b) > maxDownload {
+		return nil, fmt.Errorf("download exceeds %d bytes", maxDownload)
+	}
+	return b, nil
 }
 
 // archSuffix maps GOARCH to the goreleaser arch suffix (arm builds use armv7).

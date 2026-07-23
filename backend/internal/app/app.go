@@ -112,7 +112,10 @@ func New(configPath string) (*App, error) {
 		if err := cfg.Save(configPath); err != nil {
 			slog.Warn("could not persist generated connection code", "err", err)
 		} else {
-			slog.Info("generated this server's connection code (share it to pair apps)", "code", cfg.Remote.ConnectionCode)
+			// Do NOT log the code itself: the rotating log file is readable via
+			// `northrou logs` / GET /api/admin/logs, so the master pairing
+			// credential must not land there. Tell the operator where to get it.
+			slog.Info("generated this server's connection code; run `northrou connection-code` to view it")
 		}
 	}
 
@@ -251,7 +254,9 @@ func (a *App) startRemote(ctx context.Context) {
 	}
 	wsURL := coordinatorWSURL(config.DefaultCoordinationURL)
 	peer := remote.NewPeer(wsURL, serverID, code, a.Server.Handler())
-	slog.Info("remote access enabled", "coordinator", wsURL, "code", code)
+	// Log the coordinator and server id, but never the connection code: it is the
+	// master pairing credential and the log file is exposed via `northrou logs`.
+	slog.Info("remote access enabled", "coordinator", wsURL, "server_id", serverID)
 	peer.Run(ctx)
 }
 
@@ -259,7 +264,9 @@ func (a *App) startRemote(ctx context.Context) {
 // registration.
 func randomServerID() string {
 	b := make([]byte, 16)
-	_, _ = rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		panic("crypto/rand failed: " + err.Error()) // a broken RNG is fatal
+	}
 	return hex.EncodeToString(b)
 }
 

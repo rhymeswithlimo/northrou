@@ -15,6 +15,15 @@ import (
 	"github.com/ulikunitz/xz"
 )
 
+// Download/extraction size caps. Static ffmpeg builds are tens of MB compressed
+// and ~100 MB per binary decompressed; these ceilings are far above that but
+// bound memory/disk against an oversized response or a decompression bomb, since
+// the download URLs are rolling upstream endpoints whose bytes we do not control.
+const (
+	maxFFmpegDownload = 512 << 20 // cap on the compressed download stream
+	maxFFmpegBinary   = 512 << 20 // cap on a single extracted binary
+)
+
 // archiveKind identifies how a downloaded release asset is packed.
 type archiveKind int
 
@@ -122,10 +131,16 @@ func writeExecutable(dst string, r io.Reader) error {
 	if err != nil {
 		return err
 	}
-	if _, err := io.Copy(f, r); err != nil {
+	// Cap the copy so a decompression bomb (a tiny archive entry that inflates to
+	// gigabytes) cannot fill the disk.
+	if n, err := io.Copy(f, io.LimitReader(r, maxFFmpegBinary+1)); err != nil {
 		f.Close()
 		os.Remove(tmp)
 		return err
+	} else if n > maxFFmpegBinary {
+		f.Close()
+		os.Remove(tmp)
+		return fmt.Errorf("archive entry exceeds %d bytes", maxFFmpegBinary)
 	}
 	if err := f.Close(); err != nil {
 		os.Remove(tmp)

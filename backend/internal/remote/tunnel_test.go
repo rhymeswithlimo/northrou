@@ -44,30 +44,41 @@ func TestIsLocal(t *testing.T) {
 	cases := []struct {
 		name       string
 		remoteAddr string
+		host       string
 		tunnel     bool
 		want       bool
 	}{
-		{"loopback v4", "127.0.0.1:5000", false, true},
-		{"loopback v6", "[::1]:5000", false, true},
-		{"rfc1918 10", "10.1.2.3:5000", false, true},
-		{"rfc1918 172", "172.16.5.9:5000", false, true},
-		{"rfc1918 192.168", "192.168.1.42:5000", false, true},
-		{"link-local v4", "169.254.10.20:5000", false, true},
-		{"ula v6", "[fd00::1]:5000", false, true},
-		{"public v4", "203.0.113.5:5000", false, false},
-		{"public v6", "[2606:4700::1]:5000", false, false},
-		{"private but tunneled", "192.168.1.42:5000", true, false},
-		{"unparseable", "webrtc:0", false, false},
+		{"loopback v4", "127.0.0.1:5000", "", false, true},
+		{"loopback v6", "[::1]:5000", "", false, true},
+		{"rfc1918 10", "10.1.2.3:5000", "", false, true},
+		{"rfc1918 172", "172.16.5.9:5000", "", false, true},
+		{"rfc1918 192.168", "192.168.1.42:5000", "", false, true},
+		{"link-local v4", "169.254.10.20:5000", "", false, true},
+		{"ula v6", "[fd00::1]:5000", "", false, true},
+		{"public v4", "203.0.113.5:5000", "", false, false},
+		{"public v6", "[2606:4700::1]:5000", "", false, false},
+		{"private but tunneled", "192.168.1.42:5000", "", true, false},
+		{"unparseable", "webrtc:0", "", false, false},
+		// Host header (DNS-rebinding defense): a private peer is only local if
+		// the Host is an IP/localhost/.local, not a foreign registrable domain.
+		{"private peer, ip host", "192.168.1.42:5000", "192.168.1.42:8674", false, true},
+		{"private peer, localhost host", "127.0.0.1:5000", "localhost:8674", false, true},
+		{"private peer, .local host", "192.168.1.42:5000", "nas.local", false, true},
+		{"private peer, .home host", "192.168.1.42:5000", "nas.home", false, true},
+		{"private peer, single-label host", "192.168.1.42:5000", "northrou", false, true},
+		{"private peer, rebinding public domain", "192.168.1.42:5000", "evil.com", false, false},
+		{"private peer, public domain with port", "192.168.1.42:5000", "attacker.com:8674", false, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			req, _ := http.NewRequest("GET", "/", nil)
 			req.RemoteAddr = tc.remoteAddr
+			req.Host = tc.host
 			if tc.tunnel {
 				req = req.WithContext(WithTunnel(req.Context()))
 			}
 			if got := IsLocal(req); got != tc.want {
-				t.Errorf("IsLocal(%q, tunnel=%v) = %v, want %v", tc.remoteAddr, tc.tunnel, got, tc.want)
+				t.Errorf("IsLocal(addr=%q, host=%q, tunnel=%v) = %v, want %v", tc.remoteAddr, tc.host, tc.tunnel, got, tc.want)
 			}
 		})
 	}
@@ -93,6 +104,35 @@ func TestServeConnMarksTunnel(t *testing.T) {
 	testHandler().ServeHTTP(rec, direct)
 	if got := rec.Body.String(); got != "local" {
 		t.Errorf("direct request: IsTunnel reported %q, want local", got)
+	}
+}
+
+// TestServeConnMalformedEnvelope proves a hostile envelope (invalid HTTP method,
+// unparseable URL) does not panic ServeConn - the crash-DoS a code-holding
+// remote client could otherwise trigger, since ServeConn runs ahead of chi's
+// Recoverer in a bare goroutine.
+func TestServeConnMalformedEnvelope(t *testing.T) {
+	for _, body := range []string{
+		`{"method":"B AD","url":"/ping"}`,         // space in method
+		`{"method":"GET","url":"://:::bad"}`,      // unparseable URL
+		"{\"method\":\"\x01\",\"url\":\"/ping\"}", // control char in method
+	} {
+		clientEnd, serverEnd := net.Pipe()
+		errc := make(chan error, 1)
+		go func() { errc <- ServeConn(serverEnd, testHandler()) }()
+		// Write the raw request frame ourselves (RoundTrip would only build
+		// well-formed envelopes).
+		go func() {
+			_ = writeFrame(clientEnd, []byte(body))
+			// Drain whatever the server writes back so it can finish.
+			_, _ = io.Copy(io.Discard, clientEnd)
+		}()
+		select {
+		case <-errc: // returned instead of panicking: success
+		case <-time.After(2 * time.Second):
+			t.Fatalf("ServeConn hung on malformed envelope %q", body)
+		}
+		clientEnd.Close()
 	}
 }
 

@@ -14,9 +14,18 @@ type asset struct {
 	// they are rolling "latest" endpoints whose bytes change whenever upstream
 	// rebuilds, so a static pin would hard-fail every download within days.
 	// Pinning safely requires first switching to immutable versioned URLs, or
-	// verifying against upstream's own published checksum at download time.
-	// See the note above releases.
+	// verifying against upstream's own published checksum at download time
+	// (SHA256URL below). See the note above releases.
 	SHA256 string
+	// SHA256URL, when set, is fetched at download time and the archive is
+	// verified against the checksum it contains. This is the rolling-URL-safe
+	// path: the checksum tracks the same moving build as the archive. The body
+	// may be a bare hex digest or an sha256sum-style "<hex>  <name>" listing (the
+	// line whose name matches the archive's base name is used). Verification is
+	// still hard-fail on mismatch. Populate per upstream that publishes a
+	// SHA-256 alongside its build (BtbN, evermeet); sources that publish no clean
+	// SHA-256 (johnvansickle) stay unpinned until an alternative is found.
+	SHA256URL string
 }
 
 // release describes where to obtain static ffmpeg/ffprobe for one platform.

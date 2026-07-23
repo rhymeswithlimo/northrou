@@ -23,6 +23,7 @@ type Hub struct {
 	mu       sync.Mutex
 	servers  map[string]*conn    // code -> registered home server
 	sessions map[string]*session // session id -> pair
+	ipConns  map[string]int      // client IP -> live websocket count
 
 	// connect is a code-validity oracle (it answers differently for a real vs
 	// unknown code), and the connection code is now the sole credential a client
@@ -31,6 +32,19 @@ type Hub struct {
 	connectPerIP  *limiter
 	connectGlobal *limiter
 }
+
+const (
+	// maxConnsPerIP bounds concurrent signaling sockets from one source IP, so a
+	// single client cannot exhaust memory by opening sockets without bound.
+	maxConnsPerIP = 40
+	// maxServers bounds total registrations, a backstop against registration-
+	// flood memory growth.
+	maxServers = 100_000
+	// maxSessionsPerConn bounds live pairing sessions initiated by one client
+	// conn, so repeated connect cannot pile up sessions (and, downstream,
+	// PeerConnections on the home server).
+	maxSessionsPerConn = 20
+)
 
 // session pairs a client and a home server for signaling relay.
 type session struct {
@@ -41,11 +55,13 @@ type session struct {
 // conn wraps a signaling WebSocket with a write mutex (concurrent writes are
 // not allowed by the ws library).
 type conn struct {
-	ws   *websocket.Conn
-	mu   sync.Mutex
-	code string // set for registered servers
-	role string
-	ip   string // client IP (for rate limiting connect)
+	ws       *websocket.Conn
+	mu       sync.Mutex
+	code     string // set for registered servers
+	serverID string // set for registered servers; binds the code to one server
+	role     string
+	ip       string // client IP (for rate limiting connect)
+	sessions int    // live sessions this (client) conn has initiated
 }
 
 func (c *conn) send(ctx context.Context, m Message) error {
@@ -59,6 +75,7 @@ func NewHub() *Hub {
 	return &Hub{
 		servers:  map[string]*conn{},
 		sessions: map[string]*session{},
+		ipConns:  map[string]int{},
 		// Legitimate clients connect a handful of times; these caps are far above
 		// that but far below what would make enumerating a ~50-bit code space
 		// feasible.
@@ -76,6 +93,10 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c := &conn{ws: ws, ip: clientIP(r)}
+	if !h.admit(c) {
+		_ = ws.Close(websocket.StatusPolicyViolation, "too many connections")
+		return
+	}
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 	defer h.cleanup(c)
@@ -140,17 +161,60 @@ func (h *Hub) handle(ctx context.Context, c *conn, msg Message) error {
 }
 
 // register records a home server keyed by its connection code.
+//
+// The connection code is a SYMMETRIC secret (every client of a household knows
+// it), so it cannot by itself authenticate a registrant. To stop a code-holder
+// from hijacking a live registration - registering their own socket for someone
+// else's code to intercept that household's clients - a code is bound to the
+// server_id of whoever first registers it, and a registration is refused if a
+// DIFFERENT server_id already holds that code live. The real box reconnecting
+// (same server_id) is allowed to replace its own stale entry. server_id is never
+// shared with clients (only the code is), so an attacker who knows only the code
+// cannot match it. Residual risk: an attacker who also learns the server_id, or
+// who registers before the real box ever does, can still squat.
 func (h *Hub) register(ctx context.Context, c *conn, msg Message) error {
 	if msg.Code == "" {
 		return errors.New("register requires a code")
 	}
+	if msg.ServerID == "" {
+		return errors.New("register requires a server_id")
+	}
 	h.mu.Lock()
+	// A conn registers exactly one code; refuse a second (would leak the first's
+	// map entry, since cleanup only removes the current code).
+	if c.role == "server" {
+		h.mu.Unlock()
+		return errors.New("already registered")
+	}
+	if existing, ok := h.servers[msg.Code]; ok && existing != c && existing.serverID != msg.ServerID {
+		h.mu.Unlock()
+		return errors.New("code already registered to another server")
+	}
+	if len(h.servers) >= maxServers {
+		h.mu.Unlock()
+		return errors.New("server capacity reached")
+	}
 	c.role = "server"
 	c.code = msg.Code
+	c.serverID = msg.ServerID
 	h.servers[msg.Code] = c
 	h.mu.Unlock()
-	slog.Info("home server registered", "code", msg.Code, "server_id", msg.ServerID)
+	// Never log the raw code: it is the household's master pairing credential and
+	// the coordinator sees every server's. Identify the registration by server id.
+	slog.Info("home server registered", "server_id", msg.ServerID)
 	return c.send(ctx, Message{Type: TypeRegistered})
+}
+
+// admit bounds concurrent sockets per source IP. It returns false when the cap
+// is already reached; otherwise it records the new connection.
+func (h *Hub) admit(c *conn) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.ipConns[c.ip] >= maxConnsPerIP {
+		return false
+	}
+	h.ipConns[c.ip]++
+	return true
 }
 
 // connect pairs a client with a registered server and notifies both.
@@ -167,25 +231,35 @@ func (h *Hub) connect(ctx context.Context, client *conn, msg Message) error {
 		h.mu.Unlock()
 		return errors.New("no server registered for that code")
 	}
+	if client.sessions >= maxSessionsPerConn {
+		h.mu.Unlock()
+		return errors.New("too many active sessions")
+	}
 	client.role = "client"
+	client.sessions++
 	sid := randomID()
 	h.sessions[sid] = &session{server: server, client: client}
 	h.mu.Unlock()
 
-	slog.Info("session paired", "session", sid, "code", msg.Code)
+	slog.Info("session paired", "session", sid)
 	if err := server.send(ctx, Message{Type: TypePaired, Session: sid}); err != nil {
 		return err
 	}
 	return client.send(ctx, Message{Type: TypePaired, Session: sid})
 }
 
-// relay forwards a signaling message to the other party in its session.
+// relay forwards a signaling message to the other party in its session. The
+// sender MUST be a member of the session it names, so a third conn that guesses
+// or learns a session id cannot inject signaling into someone else's pairing.
 func (h *Hub) relay(ctx context.Context, from *conn, msg Message) error {
 	h.mu.Lock()
 	sess, ok := h.sessions[msg.Session]
 	h.mu.Unlock()
 	if !ok {
 		return errors.New("unknown session")
+	}
+	if from != sess.server && from != sess.client {
+		return errors.New("not a member of that session")
 	}
 	dst := sess.server
 	if from == sess.server {
@@ -199,6 +273,11 @@ func (h *Hub) relay(ctx context.Context, from *conn, msg Message) error {
 func (h *Hub) cleanup(c *conn) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if n := h.ipConns[c.ip]; n > 1 {
+		h.ipConns[c.ip] = n - 1
+	} else {
+		delete(h.ipConns, c.ip)
+	}
 	if c.code != "" && h.servers[c.code] == c {
 		delete(h.servers, c.code)
 	}
@@ -218,19 +297,24 @@ func (h *Hub) Stats() (servers, sessions int) {
 
 func randomID() string {
 	b := make([]byte, 12)
-	_, _ = rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		panic("crypto/rand failed: " + err.Error()) // a broken RNG is fatal
+	}
 	return hex.EncodeToString(b)
 }
 
-// clientIP extracts the client's IP for rate limiting. The coordinator runs
-// behind a reverse proxy (Caddy) and Cloudflare, so the real client is in
-// X-Forwarded-For (first hop) rather than RemoteAddr, which would be the proxy.
+// clientIP extracts the client's IP for rate limiting. The official coordinator
+// runs behind Cloudflare, which sets CF-Connecting-IP to the real client and,
+// crucially, OVERWRITES any client-supplied value - so it cannot be spoofed to
+// rotate rate-limit keys. The old code trusted the leftmost X-Forwarded-For
+// entry, which a client sets freely; that defeated the per-IP limiter entirely
+// (every request could carry a fresh fake IP). Prefer CF-Connecting-IP; fall
+// back to the real TCP peer. A self-hoster behind a different proxy that does not
+// set CF-Connecting-IP degrades to per-proxy-IP limiting (the global limiter
+// still applies), which is safe, not bypassable.
 func clientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		if i := strings.IndexByte(xff, ','); i >= 0 {
-			return strings.TrimSpace(xff[:i])
-		}
-		return strings.TrimSpace(xff)
+	if cf := strings.TrimSpace(r.Header.Get("CF-Connecting-IP")); cf != "" {
+		return cf
 	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {

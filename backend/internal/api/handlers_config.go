@@ -6,6 +6,7 @@ import (
 
 	"github.com/rhymeswithlimo/northrou/backend/internal/config"
 	"github.com/rhymeswithlimo/northrou/backend/internal/language"
+	"github.com/rhymeswithlimo/northrou/backend/internal/remote"
 )
 
 // configDTO is the settings-page view of config.toml.
@@ -41,19 +42,29 @@ type configDTO struct {
 	HasTMDBKey bool `json:"has_tmdb_key"`
 }
 
-func toConfigDTO(c *config.Config) configDTO {
-	return configDTO{
+// toConfigDTO builds the settings view. includeSecrets gates the connection
+// code — the master pairing credential — to trusted local requests only. This
+// route is an open admin *read* (any signed-in profile, including a remote
+// tunnel client), so echoing the code unconditionally would hand the master
+// credential to a lower-trust or remote session; it survives session revocation,
+// so the only remediation would be rotating it. The TMDB key is likewise never
+// echoed (reported as a boolean).
+func toConfigDTO(c *config.Config, includeSecrets bool) configDTO {
+	dto := configDTO{
 		ServerName:            c.DisplayName(),
 		PreferSystemFFmpeg:    c.Transcode.PreferSystemFFmpeg,
 		MaxTranscodes:         c.Transcode.MaxTranscodes,
 		AllowSoftware4K:       c.Transcode.AllowSoftware4K,
 		Tonemap:               c.Transcode.Tonemap,
 		RemoteEnabled:         c.Remote.Enabled,
-		ConnectionCode:        c.Remote.ConnectionCode,
 		PreferredAudioLang:    firstOr(c.Media.PreferredAudioLangs, "en"),
 		PreferredSubtitleLang: firstOr(c.Media.PreferredSubtitleLangs, "en"),
 		HasTMDBKey:            c.TMDB.APIKey != "",
 	}
+	if includeSecrets {
+		dto.ConnectionCode = c.Remote.ConnectionCode
+	}
+	return dto
 }
 
 func firstOr(list []string, fallback string) string {
@@ -64,9 +75,10 @@ func firstOr(list []string, fallback string) string {
 }
 
 // handleGetConfig returns the editable configuration. Open to any signed-in
-// profile: it is status, not control, and carries no secrets.
+// profile as status, but the connection code (the master credential) is included
+// only for trusted local requests.
 func (a *API) handleGetConfig(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, toConfigDTO(a.Cfg))
+	writeJSON(w, http.StatusOK, toConfigDTO(a.Cfg, remote.IsLocal(r)))
 }
 
 // configPatch is a partial update. Every field is a pointer so "absent" is
@@ -166,7 +178,9 @@ func (a *API) handlePatchConfig(w http.ResponseWriter, r *http.Request) {
 	// A remote_enabled flip takes effect now, not on the next restart.
 	a.syncRemote()
 
-	writeJSON(w, http.StatusOK, toConfigDTO(a.Cfg))
+	// PATCH is admin-mutation, so RequireLocal already guarantees a trusted
+	// local request: safe to echo the code back into the settings UI.
+	writeJSON(w, http.StatusOK, toConfigDTO(a.Cfg, remote.IsLocal(r)))
 }
 
 // mediaDirs returns the library folders as currently written on disk.

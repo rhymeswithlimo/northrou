@@ -136,22 +136,15 @@ func (s *Service) IssueEphemeralSession(ctx context.Context) ([]model.Profile, *
 }
 
 // SelectProfile switches the profile a device is signed in as. It validates the
-// device's refresh token, rotates it, and returns a fresh pair scoped to the
-// chosen profile. No re-auth is required: profiles are not a security boundary.
+// device's refresh token, atomically rotates it to the chosen profile, and
+// returns a fresh pair. No re-auth is required: profiles are not a security
+// boundary.
 func (s *Service) SelectProfile(ctx context.Context, rawRefresh string, profileID int64) (*model.Profile, *TokenPair, error) {
-	stored, err := s.db.GetRefreshToken(ctx, hashToken(rawRefresh))
-	if err != nil || stored.Revoked || time.Now().After(stored.ExpiresAt) {
-		return nil, nil, ErrInvalidToken
-	}
 	prof, err := s.db.GetProfile(ctx, profileID)
 	if err != nil {
 		return nil, nil, ErrInvalidCredentials
 	}
-	if err := s.db.RevokeRefreshToken(ctx, hashToken(rawRefresh)); err != nil {
-		return nil, nil, err
-	}
-	// The rotated token stays the same device's.
-	pair, err := s.issuePair(ctx, profileID, Device{ID: stored.DeviceID, Name: stored.DeviceName})
+	pair, err := s.rotate(ctx, rawRefresh, profileID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -170,23 +163,36 @@ func (s *Service) IssueSetupSession(ctx context.Context, profileID int64) (*Toke
 	return &TokenPair{AccessToken: access, ExpiresAt: exp}, nil
 }
 
-// Refresh validates a refresh token, rotates it (revoking the old one), and
-// returns a fresh pair scoped to the same profile the device was using.
+// Refresh validates a refresh token, atomically rotates it (revoking the old
+// one), and returns a fresh pair scoped to the same profile the device was
+// using.
 func (s *Service) Refresh(ctx context.Context, rawRefresh string) (*TokenPair, error) {
-	stored, err := s.db.GetRefreshToken(ctx, hashToken(rawRefresh))
+	return s.rotate(ctx, rawRefresh, 0)
+}
+
+// rotate atomically consumes rawRefresh and issues a fresh pair bound to the same
+// device. profileID > 0 re-scopes to that profile (a profile switch); 0 keeps
+// the device's current profile. Rotation and issuance are one DB transaction, so
+// concurrent use of the same token cannot double-spend, and replay of an
+// already-rotated token trips reuse detection (the whole device family is
+// revoked). All failure modes collapse to ErrInvalidToken for the caller.
+func (s *Service) rotate(ctx context.Context, rawRefresh string, profileID int64) (*TokenPair, error) {
+	newRefresh, err := randomToken()
+	if err != nil {
+		return nil, err
+	}
+	rotated, err := s.db.RotateRefreshToken(ctx, hashToken(rawRefresh), hashToken(newRefresh), time.Now().Add(s.refreshTTL), profileID)
 	if err != nil {
 		return nil, ErrInvalidToken
 	}
-	if stored.Revoked || time.Now().After(stored.ExpiresAt) || stored.ProfileID == 0 {
-		return nil, ErrInvalidToken
-	}
-	if _, err := s.db.GetProfile(ctx, stored.ProfileID); err != nil {
+	if _, err := s.db.GetProfile(ctx, rotated.ProfileID); err != nil {
 		return nil, ErrInvalidToken // profile deleted
 	}
-	if err := s.db.RevokeRefreshToken(ctx, hashToken(rawRefresh)); err != nil {
+	access, exp, err := s.issueAccess(rotated.ProfileID, s.accessTTL)
+	if err != nil {
 		return nil, err
 	}
-	return s.issuePair(ctx, stored.ProfileID, Device{ID: stored.DeviceID, Name: stored.DeviceName})
+	return &TokenPair{AccessToken: access, RefreshToken: newRefresh, ExpiresAt: exp}, nil
 }
 
 // Logout revokes a refresh token.

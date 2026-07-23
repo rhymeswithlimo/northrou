@@ -343,6 +343,10 @@ func (c *Client) EpisodeDetails(ctx context.Context, showID int64, season, episo
 // retried before giving up and letting the file go unmatched.
 const tmdbRetries = 4
 
+// maxTMDBResponse caps a TMDB API response body. Real responses are small; this
+// bounds memory against a compromised/MITM endpoint returning an unbounded body.
+const maxTMDBResponse = 16 << 20
+
 // get performs a rate-limited, cached GET and decodes JSON into out. Identical
 // requests within a scan are served from the response cache (no network, no
 // rate-limit slot).
@@ -406,10 +410,15 @@ func (c *Client) doGet(ctx context.Context, path string, q url.Values) ([]byte, 
 			resp.Body.Close()
 			return nil, fmt.Errorf("tmdb %s: HTTP %d", path, resp.StatusCode)
 		}
-		body, err := io.ReadAll(resp.Body)
+		// Cap the response: TMDB JSON is small, but a compromised/MITM'd endpoint
+		// (or a proxy) returning an unbounded body would otherwise OOM the box.
+		body, err := io.ReadAll(io.LimitReader(resp.Body, maxTMDBResponse+1))
 		resp.Body.Close()
 		if err != nil {
 			return nil, err
+		}
+		if len(body) > maxTMDBResponse {
+			return nil, fmt.Errorf("tmdb %s: response exceeds %d bytes", path, maxTMDBResponse)
 		}
 		return body, nil
 	}

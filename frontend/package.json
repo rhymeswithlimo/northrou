@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "check:sinks": "node scripts/check-no-dangerous-sinks.mjs",
+    "prebuild": "node scripts/check-no-dangerous-sinks.mjs",
     "build": "vite build",
     "preview": "vite preview",
     "tauri": "tauri"

@@ -13,6 +13,10 @@ import (
 
 const imageBaseURL = "https://image.tmdb.org/t/p"
 
+// maxImageBytes caps a single cached image. TMDB posters/backdrops are a few MB;
+// 32 MiB is far above that and bounds disk against an oversized response.
+const maxImageBytes = 32 << 20
+
 // ImageCache downloads and stores TMDB images on local disk so the frontend is
 // served from the home server, never TMDB directly.
 type ImageCache struct {
@@ -38,6 +42,15 @@ func (ic *ImageCache) Fetch(ctx context.Context, tmdbPath, size string) (string,
 	}
 	rel := filepath.ToSlash(filepath.Join(size, filepath.FromSlash(strings.TrimPrefix(tmdbPath, "/"))))
 	dst := filepath.Join(ic.dir, filepath.FromSlash(rel))
+
+	// Containment: tmdbPath comes from TMDB JSON (untrusted). A value like
+	// "/../../etc/cron.d/x.jpg" would otherwise resolve OUTSIDE the cache dir and
+	// let the HTTP response body be written to an arbitrary file. Reject anything
+	// that does not stay under the cache root.
+	root := filepath.Clean(ic.dir)
+	if dst != root && !strings.HasPrefix(dst, root+string(os.PathSeparator)) {
+		return "", fmt.Errorf("invalid image path %q", tmdbPath)
+	}
 
 	if _, err := os.Stat(dst); err == nil {
 		return rel, nil // already cached
@@ -65,10 +78,16 @@ func (ic *ImageCache) Fetch(ctx context.Context, tmdbPath, size string) (string,
 	if err != nil {
 		return "", err
 	}
-	if _, err := io.Copy(f, resp.Body); err != nil {
+	// Cap the write: posters/backdrops are a few MB; this bounds disk against an
+	// oversized (or malicious) response.
+	if n, err := io.Copy(f, io.LimitReader(resp.Body, maxImageBytes+1)); err != nil {
 		f.Close()
 		os.Remove(tmp)
 		return "", err
+	} else if n > maxImageBytes {
+		f.Close()
+		os.Remove(tmp)
+		return "", fmt.Errorf("image %s exceeds %d bytes", tmdbPath, maxImageBytes)
 	}
 	if err := f.Close(); err != nil {
 		os.Remove(tmp)

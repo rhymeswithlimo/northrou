@@ -51,17 +51,30 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
 info "Downloading ${asset}…"
-curl -sSL "$url" -o "$tmp/northrou.tar.gz" || err "download failed: $url"
+curl -fsSL "$url" -o "$tmp/northrou.tar.gz" || err "download failed: $url"
 
-# Verify checksum if the checksums file is available.
-if curl -sSL "https://github.com/${REPO}/releases/download/${tag}/checksums.txt" -o "$tmp/checksums.txt" 2>/dev/null; then
-  if command -v sha256sum >/dev/null 2>&1; then
-    want=$(grep "  ${asset}\$" "$tmp/checksums.txt" | awk '{print $1}')
-    got=$(sha256sum "$tmp/northrou.tar.gz" | awk '{print $1}')
-    [ "$want" = "$got" ] || err "checksum verification failed"
-    info "Checksum verified."
-  fi
+# Verify the checksum, fail-CLOSED. goreleaser always publishes checksums.txt, so
+# a missing file, a missing entry, or no available hashing tool aborts the
+# install rather than running an unverified binary. macOS ships `shasum`, not
+# `sha256sum`, so support both (the old script silently skipped verification on
+# macOS because it only checked for sha256sum).
+info "Verifying checksum…"
+curl -fsSL "https://github.com/${REPO}/releases/download/${tag}/checksums.txt" -o "$tmp/checksums.txt" \
+  || err "could not download checksums.txt; refusing to install an unverified binary"
+
+if command -v sha256sum >/dev/null 2>&1; then
+  sha256() { sha256sum "$1" | awk '{print $1}'; }
+elif command -v shasum >/dev/null 2>&1; then
+  sha256() { shasum -a 256 "$1" | awk '{print $1}'; }
+else
+  err "no sha256 tool (sha256sum or shasum) found; cannot verify the download"
 fi
+
+want=$(awk -v f="$asset" '$2 == f {print $1}' "$tmp/checksums.txt")
+[ -n "$want" ] || err "no checksum entry for ${asset}; refusing to install"
+got=$(sha256 "$tmp/northrou.tar.gz")
+[ "$want" = "$got" ] || err "checksum verification failed for ${asset}"
+info "Checksum verified."
 
 tar -xzf "$tmp/northrou.tar.gz" -C "$tmp"
 

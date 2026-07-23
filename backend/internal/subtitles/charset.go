@@ -2,6 +2,7 @@ package subtitles
 
 import (
 	"bytes"
+	"unicode/utf16"
 	"unicode/utf8"
 
 	"golang.org/x/text/encoding/charmap"
@@ -40,15 +41,16 @@ func toUTF8(data []byte) []byte {
 }
 
 func decodeUTF16(b []byte, bigEndian bool) []byte {
-	var buf bytes.Buffer
+	// Assemble 16-bit code units and decode via utf16.Decode so surrogate PAIRS
+	// (non-BMP characters, e.g. emoji in a subtitle) are combined into one rune
+	// instead of being emitted as two broken halves.
+	u16 := make([]uint16, 0, len(b)/2)
 	for i := 0; i+1 < len(b); i += 2 {
-		var r rune
 		if bigEndian {
-			r = rune(b[i])<<8 | rune(b[i+1])
+			u16 = append(u16, uint16(b[i])<<8|uint16(b[i+1]))
 		} else {
-			r = rune(b[i+1])<<8 | rune(b[i])
+			u16 = append(u16, uint16(b[i+1])<<8|uint16(b[i]))
 		}
-		buf.WriteRune(r)
 	}
-	return buf.Bytes()
+	return []byte(string(utf16.Decode(u16)))
 }

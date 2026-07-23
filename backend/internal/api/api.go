@@ -173,7 +173,6 @@ func (a *API) Mount(r chi.Router) {
 			r.Get("/admin/streams", a.handleAdminStreams)
 			r.Get("/admin/hardware", a.handleAdminHardware)
 			r.Get("/admin/update", a.handleUpdateCheck)
-			r.Get("/admin/logs", a.handleAdminLogs)
 			r.Get("/admin/sessions", a.handleListSessions)
 
 			// Admin mutations: allowed only from a trusted local request (not
@@ -181,6 +180,9 @@ func (a *API) Mount(r chi.Router) {
 			// public-IP direct hits are refused. See RequireLocal / remote.IsLocal.
 			r.Group(func(r chi.Router) {
 				r.Use(a.Auth.RequireLocal)
+				// Logs can contain paths, IPs, and other host detail, so they are
+				// gated to trusted local requests, not open to remote sessions.
+				r.Get("/admin/logs", a.handleAdminLogs)
 				r.Patch("/admin/config", a.handlePatchConfig)
 				r.Post("/admin/scan", a.handleStartScan)
 				r.Post("/admin/match", a.handleManualMatch)

@@ -22,6 +22,10 @@
 const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
 const SIGNAL_TIMEOUT_MS = 20000;
 const REQUEST_TIMEOUT_MS = 30000;
+// Matches the server's per-frame cap (internal/remote/tunnel.go maxFrame).
+// Defensive: bounds a single allocation even though the peer is the user's own
+// authenticated box.
+const MAX_FRAME = 16 * 1024 * 1024;
 
 /** Reassembles length-prefixed frames out of a message-oriented channel.
  *  Go writes the header and the payload separately, so a frame can arrive split
@@ -51,6 +55,9 @@ class FrameReader {
                 this.buf = this.buf.subarray(4);
                 this.#emit(null); // EOF frame
                 continue;
+            }
+            if (len > MAX_FRAME) {
+                throw new Error(`tunnel frame too large: ${len}`);
             }
             if (this.buf.length < 4 + len) return; // frame still incomplete
 

@@ -186,9 +186,20 @@ func mergeDirs(have, add []string) []string {
 	return have
 }
 
+// mustRandom fills b from crypto/rand and panics on failure. A failed system
+// RNG is catastrophic - we cannot safely mint ANY credential - so we fail loudly
+// (Recoverer turns it into a 500 in a handler; a boot-path failure aborts start)
+// rather than silently emit a predictable value. The old code ignored the error,
+// so a failed read left b all-zero and produced a fixed, guessable code.
+func mustRandom(b []byte) {
+	if _, err := rand.Read(b); err != nil {
+		panic("crypto/rand failed: " + err.Error())
+	}
+}
+
 func randomHex(n int) string {
 	b := make([]byte, n)
-	_, _ = rand.Read(b)
+	mustRandom(b)
 	return hex.EncodeToString(b)
 }
 
@@ -200,7 +211,7 @@ func connectionCode() string {
 	const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789" // 32 chars, no ambiguous ones
 	const n = 10
 	b := make([]byte, n)
-	_, _ = rand.Read(b)
+	mustRandom(b)
 	out := make([]byte, n)
 	for i := range b {
 		out[i] = alphabet[int(b[i])%len(alphabet)]

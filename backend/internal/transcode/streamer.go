@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -37,8 +38,8 @@ type Streamer struct {
 	preferredLangs []string // preferred audio languages (ISO-639), in order
 	sessions       *SessionManager
 
-	mu       sync.Mutex
-	hlsSess  map[string]*hlsSession
+	mu      sync.Mutex
+	hlsSess map[string]*hlsSession
 }
 
 // NewStreamer builds a Streamer. dataDir/hls holds transcode scratch space.
@@ -248,7 +249,17 @@ func (s *Streamer) ServeHLSFile(w http.ResponseWriter, r *http.Request, sessionI
 	http.ServeFile(w, r, filepath.Join(h.dir, clean))
 }
 
-// reaper stops idle HLS sessions and frees their scratch space.
+// maxHLSScratch caps the total on-disk size of all HLS session scratch dirs.
+// An HLS transcode writes the whole movie's segments as fast as the hardware
+// allows, whether or not the client keeps fetching, so an abandoned (or
+// maliciously spun-up) session can pour a full movie onto disk before the idle
+// reaper fires. When the total exceeds this budget the reaper stops the
+// least-recently-accessed sessions until it is back under, bounding disk use
+// regardless of transcode speed.
+const maxHLSScratch = 12 << 30 // 12 GiB
+
+// reaper stops idle HLS sessions and frees their scratch space, and enforces the
+// total scratch budget.
 func (s *Streamer) reaper() {
 	t := time.NewTicker(1 * time.Minute)
 	defer t.Stop()
@@ -262,8 +273,57 @@ func (s *Streamer) reaper() {
 				slog.Info("reaped idle HLS session", "session", id)
 			}
 		}
+		s.enforceScratchBudgetLocked()
 		s.mu.Unlock()
 	}
+}
+
+// enforceScratchBudgetLocked evicts least-recently-accessed HLS sessions until
+// the total scratch size is within maxHLSScratch. Caller holds s.mu.
+func (s *Streamer) enforceScratchBudgetLocked() {
+	type sized struct {
+		id   string
+		h    *hlsSession
+		size int64
+		last time.Time
+	}
+	var total int64
+	items := make([]sized, 0, len(s.hlsSess))
+	for id, h := range s.hlsSess {
+		sz := dirSize(h.dir)
+		total += sz
+		h.mu.Lock()
+		last := h.lastAccess
+		h.mu.Unlock()
+		items = append(items, sized{id: id, h: h, size: sz, last: last})
+	}
+	if total <= maxHLSScratch {
+		return
+	}
+	// Oldest first.
+	sort.Slice(items, func(i, j int) bool { return items[i].last.Before(items[j].last) })
+	for _, it := range items {
+		if total <= maxHLSScratch {
+			break
+		}
+		it.h.stop()
+		delete(s.hlsSess, it.id)
+		s.sessions.Remove(it.id)
+		total -= it.size
+		slog.Warn("evicted HLS session over scratch budget", "session", it.id, "freed_bytes", it.size)
+	}
+}
+
+// dirSize returns the total size of regular files under dir (0 on error).
+func dirSize(dir string) int64 {
+	var total int64
+	_ = filepath.Walk(dir, func(_ string, info os.FileInfo, err error) error {
+		if err == nil && info != nil && info.Mode().IsRegular() {
+			total += info.Size()
+		}
+		return nil
+	})
+	return total
 }
 
 // sessionID is a stable id for a (file, capability-profile) pair so repeated

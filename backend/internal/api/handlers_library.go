@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -238,13 +239,38 @@ func (a *API) showToDTO(s *model.Show, detail bool) showDTO {
 	return dto
 }
 
+// unmatchedDTO is an unmatched file as exposed to clients. It deliberately does
+// NOT carry the absolute filesystem path (returning the raw model row leaked the
+// host's directory layout to any signed-in session, including remote tunnel
+// clients). The basename is enough to identify the file in the manual-match UI;
+// the id is what the match call references.
+type unmatchedDTO struct {
+	ID          int64  `json:"id"`
+	Name        string `json:"name"`
+	Kind        string `json:"kind"`
+	Reason      string `json:"reason"`
+	ParsedTitle string `json:"parsed_title,omitempty"`
+	ParsedYear  int    `json:"parsed_year,omitempty"`
+}
+
 func (a *API) handleListUnmatched(w http.ResponseWriter, r *http.Request) {
 	list, err := a.DB.ListUnmatched(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "list unmatched failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, list)
+	out := make([]unmatchedDTO, 0, len(list))
+	for _, u := range list {
+		out = append(out, unmatchedDTO{
+			ID:          u.ID,
+			Name:        filepath.Base(u.Path),
+			Kind:        string(u.Kind),
+			Reason:      u.Reason,
+			ParsedTitle: u.ParsedTitle,
+			ParsedYear:  u.ParsedYear,
+		})
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // handleTMDBSearch proxies a TMDB title search for the manual-match UI, so the
@@ -276,7 +302,7 @@ func (a *API) handleTMDBSearch(w http.ResponseWriter, r *http.Request) {
 // escape hatch for files that would not auto-match (or matched wrong).
 type manualMatchRequest struct {
 	Path    string `json:"path"`
-	Kind    string `json:"kind"`  // "movie" or "episode"
+	Kind    string `json:"kind"` // "movie" or "episode"
 	TMDBID  int64  `json:"tmdb_id"`
 	Season  int    `json:"season"`  // required for episodes
 	Episode int    `json:"episode"` // required for episodes

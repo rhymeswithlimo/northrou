@@ -26,8 +26,17 @@ type Server struct {
 func New(addr string, a *api.API) *Server {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
+	// NB: deliberately NO middleware.RealIP. It overwrites r.RemoteAddr from the
+	// client-supplied X-Real-IP / X-Forwarded-For header (chi marks it
+	// "Deprecated: vulnerable to IP spoofing"), and remote.IsLocal - the sole
+	// admin gate and the code-free-pairing trust signal - reads r.RemoteAddr.
+	// With RealIP in the chain, any client hitting the exposed port could send
+	// "X-Real-IP: 127.0.0.1" and be treated as trusted-local. The box is not
+	// behind a trusted reverse proxy (it binds all interfaces by default), so
+	// RemoteAddr must stay the real TCP peer. Do not re-add this.
 	r.Use(middleware.Recoverer)
+	r.Use(maxBodyBytes)
+	r.Use(secureHeaders)
 	r.Use(cors)
 	r.Use(slogLogger)
 

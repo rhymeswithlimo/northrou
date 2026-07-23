@@ -75,6 +75,7 @@ func doReq(t *testing.T, h http.Handler, method, path, bearer string, body, out 
 		req = req.WithContext(remote.WithTunnel(req.Context()))
 	case "local":
 		req.RemoteAddr = "127.0.0.1:40000" // loopback: trusted
+		req.Host = "127.0.0.1:8674"        // a real local request hits the box by IP/localhost
 	case "public":
 		req.RemoteAddr = "203.0.113.5:40000" // TEST-NET-3: a public IP
 	}

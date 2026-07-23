@@ -12,6 +12,12 @@ version: 2
 
 project_name: northrou
 
+# Default the signing pubkey to empty when the release environment does not set
+# it, so a build without signing configured still works (updater falls back to
+# checksums-only). Set NORTHROU_SIGNING_PUBKEY in CI to enable signature checks.
+env:
+  - NORTHROU_SIGNING_PUBKEY={{ if index .Env "NORTHROU_SIGNING_PUBKEY" }}{{ .Env.NORTHROU_SIGNING_PUBKEY }}{{ end }}
+
 before:
   hooks:
     - sh -c "cd backend && go mod tidy"
@@ -36,6 +42,12 @@ builds:
       - -X github.com/rhymeswithlimo/northrou/backend/internal/buildinfo.Version={{ .Version }}
       - -X github.com/rhymeswithlimo/northrou/backend/internal/buildinfo.Commit={{ .ShortCommit }}
       - -X github.com/rhymeswithlimo/northrou/backend/internal/buildinfo.Date={{ .Date }}
+      # Embed the release-signing public key so `northrou update` requires a valid
+      # Ed25519 signature over checksums.txt (fail-closed) before applying an
+      # update. Set NORTHROU_SIGNING_PUBKEY (base64, from `nrsign -genkey`) in the
+      # release environment; when unset the updater falls back to checksums-only
+      # integrity (still fail-closed on a missing checksums file).
+      - -X github.com/rhymeswithlimo/northrou/backend/internal/update.SigningPublicKey={{ .Env.NORTHROU_SIGNING_PUBKEY }}
 
   - id: coordinator
     dir: coordination
@@ -69,6 +81,24 @@ archives:
 checksum:
   name_template: "checksums.txt"
   algorithm: sha256
+
+# Sign checksums.txt with the Ed25519 release key, producing checksums.txt.sig,
+# which `northrou update` verifies against the embedded public key before
+# trusting the checksums (and thus the archive). Requires NORTHROU_SIGNING_KEY
+# (base64 private key from `nrsign -genkey`) in the release environment; if the
+# signing step is not configured, drop this block and updates fall back to
+# checksums-only integrity.
+signs:
+  - id: checksums
+    artifacts: checksum
+    signature: "${artifact}.sig"
+    # nrsign writes <artifact>.sig next to the (absolute) artifact path; cd into
+    # the backend module so `go run` resolves it.
+    cmd: sh
+    args:
+      - "-c"
+      - 'cd backend && go run ./cmd/nrsign "$0"'
+      - "${artifact}"
 
 snapshot:
   version_template: "{{ incpatch .Version }}-snapshot"

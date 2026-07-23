@@ -62,6 +62,105 @@ func (d *DB) RevokeRefreshToken(ctx context.Context, tokenHash string) error {
 	return err
 }
 
+// ErrTokenExpired is returned when a refresh token is present but past expiry.
+var ErrTokenExpired = errors.New("refresh token expired")
+
+// ErrTokenReused is returned when an already-revoked refresh token is presented
+// again — the fingerprint of a stolen, previously-rotated token being replayed.
+// RotateRefreshToken responds by revoking the whole device family; the caller
+// should treat it as a compromise (the device must pair again).
+var ErrTokenReused = errors.New("refresh token reused")
+
+// RotateRefreshToken atomically consumes oldHash and stores newHash for the same
+// device, in ONE transaction, so two concurrent refreshes presenting the same
+// token cannot both succeed (the old code did SELECT-check-REVOKE-INSERT as four
+// separate statements, allowing a double-spend). It also detects reuse: if
+// oldHash is already revoked, every token for its device is revoked and
+// ErrTokenReused is returned.
+//
+// profileID, when > 0, scopes the new token to that profile (a profile switch);
+// otherwise the device's current profile is kept. On success it returns the
+// consumed token's record (with the effective ProfileID) so the caller can mint
+// a matching access token.
+func (d *DB) RotateRefreshToken(ctx context.Context, oldHash, newHash string, newExpiresAt time.Time, profileID int64) (*StoredToken, error) {
+	// Managed directly (not via WithTx) because the reuse path must COMMIT the
+	// device-family revocation while still returning a sentinel error.
+	tx, err := d.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	var t StoredToken
+	var revoked int
+	var storedPID sql.NullInt64
+	err = tx.QueryRowContext(ctx,
+		`SELECT id, profile_id, expires_at, revoked, device_id, device_name
+		 FROM refresh_tokens WHERE token_hash = ?`, oldHash).
+		Scan(&t.ID, &storedPID, &t.ExpiresAt, &revoked, &t.DeviceID, &t.DeviceName)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	// Reuse: an already-revoked token presented again means a stolen,
+	// previously-rotated token is being replayed. Nuke the device family and
+	// COMMIT that revocation before signalling the compromise.
+	if revoked == 1 {
+		if t.DeviceID != "" {
+			if _, err := tx.ExecContext(ctx,
+				`UPDATE refresh_tokens SET revoked = 1 WHERE device_id = ? AND device_id != ''`, t.DeviceID); err != nil {
+				return nil, err
+			}
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
+		committed = true
+		return nil, ErrTokenReused
+	}
+	if time.Now().After(t.ExpiresAt) {
+		return nil, ErrTokenExpired
+	}
+	pid := storedPID.Int64
+	if profileID > 0 {
+		pid = profileID
+	}
+	if pid == 0 {
+		return nil, ErrNotFound // token bound to no profile
+	}
+
+	// Consume the old token, guarded on revoked=0 so a concurrent rotation (same
+	// token, racing) affects zero rows and loses.
+	res, err := tx.ExecContext(ctx,
+		`UPDATE refresh_tokens SET revoked = 1 WHERE token_hash = ? AND revoked = 0`, oldHash)
+	if err != nil {
+		return nil, err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return nil, ErrTokenExpired // lost the race: already consumed
+	}
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO refresh_tokens (profile_id, token_hash, expires_at, device_id, device_name, last_used_at)
+		 VALUES (?, ?, ?, ?, ?, ?)`, pid, newHash, newExpiresAt, t.DeviceID, t.DeviceName, time.Now()); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	committed = true
+	t.ProfileID = pid
+	t.Revoked = false
+	return &t, nil
+}
+
 // DeleteExpiredTokens purges expired/revoked tokens; call periodically.
 func (d *DB) DeleteExpiredTokens(ctx context.Context) error {
 	_, err := d.ExecContext(ctx,
@@ -176,4 +275,3 @@ func (d *DB) RevokeAllTokens(ctx context.Context) error {
 	_, err := d.ExecContext(ctx, `UPDATE refresh_tokens SET revoked = 1`)
 	return err
 }
-
