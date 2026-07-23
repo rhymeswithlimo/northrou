@@ -6,6 +6,7 @@
 
 import { useDirect, useTunnel } from './transport.js';
 import { isSignedIn } from './session.js';
+import { pair } from '../data/account.js';
 import { getServer, setServer, isSameOrigin, DEFAULT_COORD_URL } from '../data/servers.js';
 
 /**
@@ -23,10 +24,10 @@ export async function connect() {
     if (!server) return { ok: false, reason: 'no-server' };
     if (!server.code) return { ok: false, reason: 'unreachable' };
 
-    // Hole-punch to the house through the broker.
+    // Hole-punch to the house through the official coordinator.
     try {
-        await useTunnel({ coordUrl: server.coordUrl ?? DEFAULT_COORD_URL, code: server.code });
-        setServer({ ...server, mode: 'tunnel' });
+        await useTunnel({ coordUrl: DEFAULT_COORD_URL, code: server.code });
+        setServer({ ...server, coordUrl: DEFAULT_COORD_URL, mode: 'tunnel' });
         return { ok: true, mode: 'tunnel' };
     } catch (e) {
         return { ok: false, reason: 'unreachable', error: e.message };
@@ -51,14 +52,12 @@ export async function requireServer() {
  * First-run and sign-in gate for the app's entry page. Call after
  * requireServer has resolved transport, before rendering anything.
  *
- * A fresh box has no account, so the library would 401 on every request and
- * read as "server unreachable". Instead:
- *   - On the box (same-origin), a box that still needs setup belongs to the
- *     setup wizard. setup.html talks to the box with a same-origin fetch, so
- *     this only applies here; an app reaching the box over the tunnel skips it.
- *   - A set-up box this device is not signed into goes to the sign-in page.
- *     This is the common case when opening the LAN address from a second
- *     device (e.g. a phone) that has no session of its own yet.
+ * Authentication is the connection code:
+ *   - On the box (same-origin) the request is local and trusted, so a box that
+ *     still needs setup goes to the wizard, and an already-set-up box pairs
+ *     automatically with no code. A multi-profile household lands on the picker.
+ *   - An app/hosted client reaching the box over the tunnel needs the connection
+ *     code, which is entered on connect.html; without a session, go there.
  *
  * Returns true only when the caller may proceed to render.
  * @returns {Promise<boolean>}
@@ -78,9 +77,25 @@ export async function requireReady() {
             // Status unreachable: don't guess. Let the caller's own render path
             // report the unreachable server.
         }
+        // Local access is trusted: pair without a code to get a session.
+        if (!isSignedIn()) {
+            try {
+                const res = await pair();
+                if (res?.profiles?.length > 1) {
+                    window.location.replace('profiles.html');
+                    return false;
+                }
+            } catch {
+                // Couldn't pair (server hiccup / no profiles yet): fall through
+                // and let the caller's render report it.
+            }
+        }
+        return true;
     }
+    // App / hosted client: reached the box over the tunnel, which needs a paired
+    // session from connect.html.
     if (!isSignedIn()) {
-        window.location.replace('login.html');
+        window.location.replace('connect.html');
         return false;
     }
     return true;

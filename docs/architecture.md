@@ -1,14 +1,14 @@
 # Architecture
 
-Northrou runs a server on the user's hardware; the hosted coordinator and pin
-relay provide remote connectivity by default, and the client apps connect to it.
-This doc covers how those pieces fit.
+Northrou runs a server on the user's hardware; the official coordinator provides
+remote connectivity by default, and the client apps connect to it. This doc
+covers how those pieces fit.
 
 Northrou is a monorepo with two Go modules plus the client.
 
 ```
 backend/       server binary  (github.com/rhymeswithlimo/northrou/backend)
-coordination/  signaling relay + pin-delivery relay (github.com/rhymeswithlimo/northrou/coordination)
+coordination/  signaling broker (github.com/rhymeswithlimo/northrou/coordination)
 frontend/      Tauri client (Vite; built by `make frontend`)
 ```
 
@@ -43,8 +43,7 @@ internal/
   config                TOML config, defaults, OS-appropriate paths
   db                    SQLite (pure-Go modernc), goose migrations, query layer
   model                 domain types
-  auth                  one account email + many profiles; passwordless email pins, per-profile JWT access + rotating refresh tokens, OTP-elevated admin capability, middleware; optional OAuth assertion verification (oauth.go)
-  email                 delivery of one-time sign-in pins via the coordination relay (log fallback)
+  auth                  connection-code pairing -> per-profile JWT access + rotating refresh tokens; middleware. Admin is transport-derived (RequireLocal / remote.IsTunnel), not a token claim
   server                chi router, middleware, graceful shutdown
   api                   HTTP handlers (auth, library, search, stream, subtitles, home, admin, config)
   ffmpeg                locate/download managed static ffmpeg + ffprobe
@@ -104,47 +103,23 @@ and TV shows. There is no onboarding quiz.
 
 ## Coordination server (`coordination/`)
 
-A tiny, stateless WebSocket relay. Home servers register by connection code;
-clients request a server by that code; the broker relays only WebRTC signaling
-(SDP + ICE). **It never sees media.**
+A tiny, stateless WebSocket broker, and the **only** infrastructure Northrou
+operates centrally. Home servers register by connection code; clients request a
+server by that code; the broker relays only WebRTC signaling (SDP + ICE). **It
+never sees media**, and it is the sole official coordinator — there is no
+self-hosting path, no sign-in broker, and no pin relay.
 
 The client half of the tunnel is JS (`frontend/js/api/tunnel.js`), because the
 WebView already has a WebRTC stack on every platform and it keeps working in a
 plain browser. A browser served off the box talks to it directly; the apps,
 which are never same-origin with it, always reach it through this tunnel.
 
-The coordinator also hosts the optional **sign-in broker** (`internal/oauth`),
-which is off unless provider credentials are configured. Google and Apple require
-a registered OAuth client with fixed redirect URIs, which a self-hosted box at an
-arbitrary address cannot have, so the credentials live here and the box never
-sees them. The broker mints a 2-minute ES256 assertion carrying the verified
-email; the box verifies it against `/oauth/jwks` and requires the identity to be
-its own account address. That signature check is the security boundary — without
-it the endpoint would accept anyone's claim. The broker learns only that an email
-authenticated; it never sees media, libraries, tokens, or which box that address
-belongs to.
-
-## Pin relay (`coordination/cmd/relay`)
-
-The only other piece of infrastructure Northrou operates centrally, and a
-separate binary from the coordinator (the coordinator stays stateless; the relay
-holds in-memory rate-limit counters). Home servers keep accounts and pins
-entirely local and call `POST /v1/pin/send` on the relay only to deliver the pin
-email, so a household never has to run a mail server. It is on by default
-(`config.email.relay_url`); disabling it falls back to logging the pin. The box
-speaks no SMTP itself, deliberately: self-hosted outbound mail is the classic
-way to lock yourself out of your own login.
-
-The relay has no account list and cannot distinguish a real address from a
-fabricated one, so it is protected by input validation and rate limiting, not
-real authentication. Boxes present a shared client token (shipped in the
-open-source build, so not a secret) that turns away casual scanners of
-`/v1/pin/send`, but the **per-recipient limit is the load-bearing control**: it
-stops the relay from being used to spam a third party's inbox with sign-in
-codes. Per-server and global limits protect the operator's cost and sender
-reputation. Mail is readable in transit like any email, so the relay is a
-trusted delivery party by nature; privacy-sensitive households can run their own
-relay and point `relay_url` at it. It **never sees accounts, library, or media.**
+The broker's `connect` handler is a code-validity oracle (it answers differently
+for a registered vs unknown code), and the connection code is now the credential
+a client authenticates with at the box. It is therefore rate-limited per client
+IP and globally (`internal/broker/limiter.go`) so the oracle cannot be used to
+enumerate valid codes. The box's own `POST /api/auth/pair` is rate-limited too;
+together with the ~50-bit code, that bounds brute force on both hops.
 
 ## Remote access data flow
 

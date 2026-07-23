@@ -22,23 +22,7 @@ type Config struct {
 	Remote    RemoteConfig    `toml:"remote"`
 	Transcode TranscodeConfig `toml:"transcode"`
 	TMDB      TMDBConfig      `toml:"tmdb"`
-	Email     EmailConfig     `toml:"email"`
-	Auth      AuthConfig      `toml:"auth"`
 	Update    UpdateConfig    `toml:"update"`
-}
-
-// AuthConfig turns on social sign-in. It is off by default: the emailed pin
-// needs no setup, works with no internet, and proves exactly the same thing.
-//
-// The box never holds an OAuth client secret. Google and Apple require a
-// registered client with fixed redirect URIs, which a self-hosted server at an
-// arbitrary address cannot have, so the credentials live on the coordination
-// broker and the box only verifies the short-lived assertions it signs.
-type AuthConfig struct {
-	// OAuthIssuer is the broker's base URL. Empty disables social sign-in.
-	OAuthIssuer string `toml:"oauth_issuer"`
-	// OAuthProviders lists what to offer, e.g. ["google", "apple"].
-	OAuthProviders []string `toml:"oauth_providers"`
 }
 
 // ServerConfig covers how the HTTP daemon binds and where it stores state.
@@ -67,12 +51,13 @@ type MediaConfig struct {
 }
 
 // RemoteConfig controls peer-to-peer remote access via the coordination server.
+// There is no coordinator URL knob: Northrou uses the official coordinator
+// (DefaultCoordinationURL) exclusively. The ConnectionCode is the sole
+// credential a remote client presents to pair with this box.
 type RemoteConfig struct {
-	Enabled         bool   `toml:"enabled"`
-	CoordinationURL string `toml:"coordination_url"`
-	SelfHostedCoord bool   `toml:"self_hosted_coordinator"`
-	ServerID        string `toml:"server_id"`
-	ConnectionCode  string `toml:"connection_code"`
+	Enabled        bool   `toml:"enabled"`
+	ServerID       string `toml:"server_id"`
+	ConnectionCode string `toml:"connection_code"`
 }
 
 // TranscodeConfig tunes the streaming/transcoding decision cascade.
@@ -108,10 +93,10 @@ type UpdateConfig struct {
 	// AutoUpdateDisabled turns off the background check: the server checks
 	// GitHub for a newer release every few hours and, once no stream is
 	// active, downloads, verifies, and applies it, then exits so the service
-	// manager restarts into the new version. On by default (like
-	// EmailConfig.RelayDisabled, false means the feature is enabled). Always
-	// off for dev builds and inside containers regardless of this setting,
-	// since neither has a meaningful "restart into the new binary" story.
+	// manager restarts into the new version. On by default (false means the
+	// feature is enabled). Always off for dev builds and inside containers
+	// regardless of this setting, since neither has a meaningful "restart into
+	// the new binary" story.
 	AutoUpdateDisabled bool `toml:"auto_update_disabled"`
 }
 
@@ -121,53 +106,10 @@ type TMDBConfig struct {
 	Language string `toml:"language"`
 }
 
-// DefaultRelayURL is the hosted pin-delivery relay used out of the box, so a
-// household does not have to run its own mail server. See internal/email.
-const DefaultRelayURL = "https://coord.northrou.sh"
-
-// DefaultCoordinationURL is the hosted signaling coordinator used out of the box.
+// DefaultCoordinationURL is the official signaling coordinator. It is the only
+// coordinator Northrou uses; there is no self-hosted-coordinator option (running
+// your own broker is redundant, and a self-builder can change this constant).
 const DefaultCoordinationURL = "https://coord.northrou.sh"
-
-// oldHostedURL is the pre-v0.1.4 single-host hosted default. app.northrou.sh has
-// since moved to the web client (Cloudflare Pages), and coordination + the relay
-// live at coord.northrou.sh. A box that wrote the old value during its first
-// setup would otherwise stay pointed at a host that no longer speaks the
-// coordinator/relay protocol (so remote pairing fails with "no server registered
-// for that code"), so ApplyDefaults migrates it.
-const oldHostedURL = "https://app.northrou.sh"
-
-// DefaultRelayToken is the shared bearer token every build presents to the
-// hosted relay (DefaultRelayURL). It is deliberately NOT a secret: the relay
-// itself documents this token as "a weak control that ships in an open-source
-// client" whose only job is to deter trivial scanning of /v1/pin/send. The
-// relay's real anti-abuse protection is its per-recipient rate limiting, not
-// this value, which is why it can live here in the clear. Shipping it is what
-// makes sign-in work out of the box; without it every fresh box got an
-// otherwise-silent HTTP 401 from the relay. A self-hoster running their own
-// relay sets a private relay_token (and matching RELAY_TOKEN) instead.
-const DefaultRelayToken = "northrou-hosted-relay-v1"
-
-// EmailConfig controls how one-time login pins are delivered. Delivery is the
-// coordination relay's job: it owns the mail infrastructure and the template,
-// so a household never runs a mail server to sign in. If the relay is turned
-// off or unreachable, pins are logged to the server log for local single-box
-// use.
-//
-// There is deliberately no SMTP option here. Running mail is the one piece of
-// self-hosting that reliably fails (SPF/DKIM/DMARC, IP reputation, port 25
-// blocked by most ISPs), and a sign-in code that silently lands in spam locks
-// you out of your own server. The relay carries only an address and a pin.
-type EmailConfig struct {
-	// RelayURL is the hosted pin-delivery service. Defaults to DefaultRelayURL.
-	// Ignored when RelayDisabled is true.
-	RelayURL string `toml:"relay_url"`
-	// RelayToken is an optional bearer token presented to the relay.
-	RelayToken string `toml:"relay_token"`
-	// RelayDisabled turns the hosted relay off, falling back to logging pins.
-	// For an air-gapped box, or a household that would rather read the pin out
-	// of the server log than have it touch anyone else's infrastructure.
-	RelayDisabled bool `toml:"relay_disabled"`
-}
 
 // Default returns a fully-populated Config with defaults applied. It does not
 // touch disk.
@@ -185,9 +127,6 @@ func (c *Config) ApplyDefaults() {
 	if c.Server.DataDir == "" {
 		c.Server.DataDir = DefaultDataDir()
 	}
-	if c.Remote.CoordinationURL == "" || c.Remote.CoordinationURL == oldHostedURL {
-		c.Remote.CoordinationURL = DefaultCoordinationURL
-	}
 	if c.TMDB.Language == "" {
 		c.TMDB.Language = "en-US"
 	}
@@ -196,21 +135,6 @@ func (c *Config) ApplyDefaults() {
 	}
 	if len(c.Media.PreferredSubtitleLangs) == 0 {
 		c.Media.PreferredSubtitleLangs = []string{"en"}
-	}
-	if !c.Email.RelayDisabled {
-		if c.Email.RelayURL == "" || c.Email.RelayURL == oldHostedURL {
-			c.Email.RelayURL = DefaultRelayURL
-		}
-		// Talking to the hosted relay always means the shared client token, so
-		// force it rather than only defaulting an empty value. A custom token
-		// against the hosted relay is always wrong (it only accepts the shared
-		// one), and forcing here self-heals a box left with a stale relay_token
-		// from earlier manual config, which would otherwise 401 forever with no
-		// pin ever delivered. A self-hoster on their own relay sets a different
-		// relay_url, so their token is left untouched.
-		if c.Email.RelayURL == DefaultRelayURL {
-			c.Email.RelayToken = DefaultRelayToken
-		}
 	}
 }
 
@@ -223,9 +147,6 @@ func (c *Config) Validate() error {
 	}
 	if c.Server.DataDir == "" {
 		return errors.New("server.data_dir must be set")
-	}
-	if c.Remote.Enabled && c.Remote.CoordinationURL == "" {
-		return errors.New("remote.enabled is true but remote.coordination_url is empty")
 	}
 	return nil
 }

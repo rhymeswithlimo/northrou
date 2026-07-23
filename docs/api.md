@@ -6,115 +6,95 @@ the frontend consumes.
 
 ## Accounts, profiles, and admin
 
-There is **one account** per server: a single email address that is the
-authentication root. Under it live any number of **profiles** (Netflix-style
-viewers with a name and optional avatar); each profile has its own watch history
-and recommendations. **Admin is not a profile.** It is a short-lived capability
-proven by a one-time code emailed to the account address; anyone who can read
-that email can elevate.
+There are **no accounts, emails, or passwords.** A server has one credential —
+its **connection code** — and any number of **profiles** (Netflix-style viewers
+with a name and optional avatar); each profile has its own watch history and
+recommendations. Presenting the code (or connecting locally) signs a device in
+and lets it pick a profile. **Admin is not a profile and not a token**: admin
+actions are allowed only from a local connection to the box (its own network, or
+the CLI), never over the remote tunnel.
 
 ## Auth
 
-Authentication is passwordless. A device submits the account email, receives a
-one-time pin by email, and exchanges it for tokens scoped to a profile. Access
-tokens are short-lived JWTs; refresh tokens are long-lived, rotating, revocable,
-and remember which profile the device is using.
+The **server connection code is the sole credential**. There are no accounts,
+emails, pins, or OAuth. A device pairs by presenting the code (remote clients) or
+by connecting directly to the box (local requests, which need no code), and
+receives tokens scoped to a profile. Access tokens are short-lived JWTs; refresh
+tokens are long-lived, rotating, revocable, and remember which profile the device
+is using.
 
 | Method | Path | Body | Notes |
 |---|---|---|---|
-| GET | `/api/auth/oauth/config` | - | `{providers[], start_url}`. Empty `providers` means social sign-in is off. |
-| POST | `/api/auth/oauth/signin` | `{assertion, nonce}` | Exchanges a broker assertion for the same `{profile, profiles[], access_token, refresh_token, expires_at}` verify-pin returns. `403` if the identity is not this server's account; `401` if the assertion doesn't verify. |
-| POST | `/api/auth/request-pin` | `{email}` | Emails a one-time sign-in pin if `email` is the account address. Always returns `200` with a generic message (no enumeration). |
-| POST | `/api/auth/verify-pin` | `{email, pin}` | Exchanges a valid pin for `{profile, profiles[], access_token, refresh_token, expires_at}`. Tokens default to the first profile; `profiles[]` is the full list for the picker. `401` on wrong/expired/exhausted pin. |
-| POST | `/api/auth/select-profile` | `{refresh_token, profile_id}` | Switches the active profile. Rotates the refresh token and returns `{profile, access_token, refresh_token, expires_at}` scoped to `profile_id`. No pin required. `404` if the profile does not exist, `401` on a bad/rotated refresh token. |
+| POST | `/api/auth/pair` | `{code}` | Exchanges the connection code for `{profile, profiles[], access_token, refresh_token, expires_at}`. Tokens default to the first profile; `profiles[]` is the full list for the picker. **Remote (tunneled)** requests must supply the correct `code` (`401` otherwise); **local** requests are trusted and may omit it. Wrong-code attempts are globally rate-limited (`429`). |
+| POST | `/api/auth/select-profile` | `{refresh_token, profile_id}` | Switches the active profile. Rotates the refresh token and returns `{profile, access_token, refresh_token, expires_at}` scoped to `profile_id`. `404` if the profile does not exist, `401` on a bad/rotated refresh token. |
 | POST | `/api/auth/refresh` | `{refresh_token}` | Rotates and returns a new token pair for the same profile |
 | POST | `/api/auth/logout` | `{refresh_token}` | Revokes the refresh token |
-| GET | `/api/me` | - | `{account:{email}, profile, profiles[], admin}` for the current session |
+| GET | `/api/me` | - | `{profile, profiles[], admin}` for the current session. `admin` is `true` only for a local (non-tunnel) request. |
 | POST | `/api/me/language` | `{audio, subtitle}` | Set the current profile's preferred audio/subtitle language (ISO-639; empty clears it) |
 
-> **`admin` is not "may this profile administer".** Every profile may
-> administer (admin is gated on an emailed OTP, not identity), so the client
-> should show the Server Admin section to **all** profiles. `admin` is `true`
-> only while the current token is already OTP-elevated; use it to decide whether
-> to skip the OTP prompt, not whether to reveal the admin section at all.
+> **`admin` means "this request is local", not "this profile may administer".**
+> It is `true` only for a trusted local request: one that did **not** arrive over
+> the tunnel **and** whose peer address is loopback or a private/LAN range. A
+> request from a public IP on the direct path (an exposed port) is treated like a
+> remote client — no admin, and pairing still needs the code. The same device is
+> `admin` on the LAN and read-only remotely. Show the Server Admin **controls**
+> only when `admin` is true; admin **reads** are open to any session.
 
-### Social sign-in (optional)
-
-Off unless `[auth] oauth_issuer` is set. It is a shortcut, not a second way in:
-Google/Apple prove control of an email address, which is exactly what the pin
-proves, so an identity that is not the account address is refused with `403`.
-The pin always works and needs no setup or internet.
-
-**The server holds no OAuth secrets.** Google and Apple both require a registered
-client with fixed redirect URIs, which a self-hosted box at an arbitrary address
-cannot have, and a secret shipped in an open-source binary is not a secret. So
-the credentials live on the coordination broker, which:
-
-1. runs the provider flow at its own stable redirect URI,
-2. mints a short-lived (2 min) **assertion**: an ES256 JWT carrying the verified
-   email, the client's nonce, `aud: northrou-server`, and a `jti`,
-3. hands it back to the client in the URL **fragment**, which never reaches a
-   server, an access log, or a `Referer` header.
-
-The box then verifies that assertion against the broker's JWKS
-(`GET {oauth_issuer}/oauth/jwks`, cached ~5 min) before trusting a word of it.
-That signature check is the entire security boundary: without it the endpoint
-would accept "I am you@example.com" from anyone. The box additionally requires a
-matching nonce, a live expiry, the right issuer and audience, ES256 specifically
-(never the token's own `alg`), and refuses a `jti` it has already seen, so a
-captured assertion cannot be replayed even inside its short life.
-
-The broker learns one thing: that an email address authenticated. It never sees
-media, libraries, tokens, or which box (if any) that address belongs to.
-
-Pins are 6 digits, valid for 10 minutes, single-use, and limited to 5 wrong
-guesses before invalidation. Repeat requests within 60 seconds reuse the
-outstanding pin instead of sending another. A `profile` object is
-`{id, name, avatar?}`. Delivery goes through the coordination relay by default
-(no setup required); if the relay is disabled the pin is logged for local
-single-box use. See [configuration](configuration.md).
+The connection code is drawn from a 10-character ambiguity-free alphabet
+(`NR-XXXXX-XXXXX`, ~50 bits). It is displayed during setup, shown in Server
+admin, and printed by `northrou cc`. Rotating it stops new devices from pairing
+but does not sign out already-paired devices (they hold their own refresh
+tokens). A `profile` object is `{id, name, avatar?}`.
 
 ### Profiles
 
 Any signed-in profile may list, add, or rename profiles. **Deleting** a profile
 is destructive (it removes all of that viewer's watch history and
-recommendations), so it requires an elevated token, the same admin OTP that
-gates server mutations.
+recommendations), so it is an admin action: allowed only from a local
+connection, like other server mutations.
 
 | Method | Path | Body | Elevation | Notes |
 |---|---|---|---|---|
 | GET | `/api/profiles` | - | no | `{profiles[]}` |
 | POST | `/api/profiles` | `{name, avatar?}` | no | Create a profile → `201` with the profile |
 | PATCH | `/api/profiles/{id}` | `{name, avatar?}` | no | Rename / re-avatar → the updated profile |
-| DELETE | `/api/profiles/{id}` | - | **yes** | `204`. `403` without elevation; `409` if it is the last profile (never leave zero). |
+| DELETE | `/api/profiles/{id}` | - | **local** | `204`. `403` over the tunnel (local only); `409` if it is the last profile (never leave zero). |
 
-### Admin elevation
+### Admin mutations
 
-Admin mutations require an elevated access token. A signed-in profile requests a
-code (emailed to the account address), then exchanges it for a short-lived token
-carrying the admin capability. Elevation lasts 10 minutes; use the returned
-token as the bearer for admin mutation endpoints.
+Admin mutations (change config, start a scan, manual-match, apply an update,
+delete a profile) are allowed only from a **local** request: one that did not go
+through the remote tunnel **and** whose peer address is loopback or a private/LAN
+range. That is a browser on the server's own network, or the `northrou` CLI. A
+tunneled (remote) request, or a direct request from a public IP, is refused with
+`403`. There is no elevation token and no code to enter: admin is a property of
+*how* the box was reached. Admin **reads** (status, config, hardware, scan
+progress) stay open to any signed-in session.
 
-| Method | Path | Body | Notes |
-|---|---|---|---|
-| POST | `/api/admin/request-otp` | - | Emails an admin code to the account address. Generic `200`. Any signed-in profile may call it. |
-| POST | `/api/admin/verify-otp` | `{otp}` | Exchanges a valid code for `{access_token, expires_at}` (elevated, ~10 min, scoped to the calling profile). `401` on a bad code. |
+> **Exposing the box's HTTP port is unsafe.** "Local" is judged from the real TCP
+> peer (`RemoteAddr`), never a client header, so a public IP is correctly
+> untrusted. But if the port sits behind a NAT/proxy that rewrites the source to
+> a private address — notably Docker's default userland proxy publishing the port
+> to the internet — remote traffic can *look* private and regain admin. Bind to
+> the LAN/loopback (or keep the port off the public internet) on any box where
+> that applies; remote clients are meant to arrive over the tunnel, not the port.
 
 ## First-run setup
 
-Only usable while no account exists.
+Only usable while no account exists, and only from a local request (`403` over
+the tunnel).
 
 | Method | Path | Body |
 |---|---|---|
 | GET | `/api/setup/status` | → `{needs_setup}` |
-| POST | `/api/setup/complete` | `{email, profile_name?, tmdb_api_key, enable_remote}` → `{account, profile, connection_code, access_token, refresh_token}` |
+| POST | `/api/setup/complete` | `{profile_name?, tmdb_api_key, enable_remote}` → `{profile, connection_code, access_token, refresh_token}` |
 
-Setup establishes the account email and its first profile (named `profile_name`,
-or derived from the email local-part if omitted) and signs the operator straight
-in with a session **elevated for the setup window**, so they can administer and
-scan immediately without an email round-trip. Media folders are not part of
-setup: they are configured on the server itself (`northrou admin` → Library),
-since the paths describe the server's own filesystem.
+Setup creates the first profile (named `profile_name`, or `Me` if omitted),
+issues the server **connection code** (returned as `connection_code`), and signs
+the operator straight in. Since setup runs locally, that session is
+admin-capable. Media folders are not part of setup: they are configured on the
+server itself (`northrou admin` → Library), since the paths describe the
+server's own filesystem.
 
 ## Library
 
@@ -218,12 +198,13 @@ browsable. There is no onboarding quiz.
 
 ## Admin
 
-Reads are available to any signed-in profile (they expose status, not controls),
-so a dashboard needs no elevation. **Mutations require an elevated token** from
-`/api/auth/admin/verify-otp` (see [Admin elevation](#admin-elevation)); without
-it they return `403 admin elevation required`.
+Reads are available to any signed-in session (they expose status, not controls),
+so a dashboard needs nothing special. **Mutations are local-only**: they are
+refused with `403` when the request arrives over the remote tunnel, and allowed
+from a browser on the server's own network or the CLI. See
+[Admin mutations](#admin-mutations).
 
-| Method | Path | Elevation | Notes |
+| Method | Path | Local only | Notes |
 |---|---|---|---|
 | GET | `/api/admin/config` | no | Editable configuration (no secrets) |
 | GET | `/api/admin/scan` | no | Scan progress |
@@ -259,8 +240,8 @@ never over the API: a client that could rewrite it could point the scanner at an
 directory the daemon can read. `POST /api/admin/scan` still triggers a scan of
 whatever folders are configured there; it just does not choose them.
 
-**The TMDB key is never returned**, only a `has_tmdb_key` boolean, so a leaked
-elevated token cannot also read it back. It can be written.
+**The TMDB key is never returned**, only a `has_tmdb_key` boolean, so reading the
+config never leaks it. It can be written.
 
 Bind address, port and `data_dir` are deliberately not editable here: changing
 them through the very connection you are using is how you lock yourself out of

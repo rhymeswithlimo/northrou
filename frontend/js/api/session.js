@@ -53,20 +53,3 @@ export function accessTokenExpired(skewMs = 5000) {
     if (!s?.expires_at) return false;
     return Date.parse(s.expires_at) - skewMs <= Date.now();
 }
-
-/* ---------- admin elevation ---------- */
-
-// Elevation is a separate short-lived token (~10 min) carrying the admin
-// capability. It is deliberately NOT persisted: it should not survive a reload,
-// and re-proving control of the account email is one email away.
-let elevated = null;
-let elevatedUntil = 0;
-
-export function setElevation(token, expiresAt) {
-    elevated = token;
-    elevatedUntil = Date.parse(expiresAt) || (Date.now() + 10 * 60 * 1000);
-}
-
-export const clearElevation = () => { elevated = null; elevatedUntil = 0; };
-export const isElevated = () => Boolean(elevated) && Date.now() < elevatedUntil;
-export const elevatedToken = () => (isElevated() ? elevated : null);

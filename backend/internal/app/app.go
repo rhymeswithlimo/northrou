@@ -5,6 +5,8 @@ package app
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"net"
@@ -20,7 +22,6 @@ import (
 	"github.com/rhymeswithlimo/northrou/backend/internal/buildinfo"
 	"github.com/rhymeswithlimo/northrou/backend/internal/config"
 	"github.com/rhymeswithlimo/northrou/backend/internal/db"
-	"github.com/rhymeswithlimo/northrou/backend/internal/email"
 	"github.com/rhymeswithlimo/northrou/backend/internal/ffmpeg"
 	"github.com/rhymeswithlimo/northrou/backend/internal/mediainfo"
 	"github.com/rhymeswithlimo/northrou/backend/internal/metadata"
@@ -82,23 +83,33 @@ func New(configPath string) (*App, error) {
 		database.Close()
 		return nil, fmt.Errorf("auth secret: %w", err)
 	}
-	authSvc := auth.NewService(database, secret, email.New(cfg))
+	authSvc := auth.NewService(database, secret)
 	ffm := ffmpeg.NewManager(cfg.Server.DataDir, cfg.Transcode.PreferSystemFFmpeg)
+
+	// The connection code is the sole credential remote clients pair with, so
+	// every configured server must have one. A server upgraded from a build that
+	// predates code-only auth (or that never enabled remote) may lack an id/code;
+	// mint and persist them at boot so `northrou cc` works and the apps can pair.
+	// First-run boxes have no config file yet: setup writes these instead.
+	if !firstRun && (cfg.Remote.ServerID == "" || cfg.Remote.ConnectionCode == "") {
+		if cfg.Remote.ServerID == "" {
+			cfg.Remote.ServerID = randomServerID()
+		}
+		if cfg.Remote.ConnectionCode == "" {
+			cfg.Remote.ConnectionCode = api.NewConnectionCode()
+		}
+		if err := cfg.Save(configPath); err != nil {
+			slog.Warn("could not persist generated connection code", "err", err)
+		} else {
+			slog.Info("generated this server's connection code (share it to pair apps)", "code", cfg.Remote.ConnectionCode)
+		}
+	}
 
 	tmdb := metadata.NewClient(cfg.TMDB.APIKey, cfg.TMDB.Language)
 	images := metadata.NewImageCache(cfg.Server.DataDir)
 	// Prober is attached once ffmpeg resolves (see Run/ensureFFmpeg).
 	scan := scanner.New(database, tmdb, images, nil)
 	rec := recommend.New(database)
-
-	// Social sign-in is opt-in. With no broker configured the verifier stays
-	// nil and the endpoints report it as unavailable, rather than the client
-	// offering a button that cannot work.
-	var oauthVerifier *auth.OAuthVerifier
-	if cfg.Auth.OAuthIssuer != "" {
-		oauthVerifier = auth.NewOAuthVerifier(cfg.Auth.OAuthIssuer)
-		slog.Info("social sign-in enabled", "broker", cfg.Auth.OAuthIssuer, "providers", cfg.Auth.OAuthProviders)
-	}
 
 	apiSrv := api.New(api.Deps{
 		DB:         database,
@@ -108,7 +119,6 @@ func New(configPath string) (*App, error) {
 		Scanner:    scan,
 		Recommend:  rec,
 		ImagesDir:  images.Dir(),
-		OAuth:      oauthVerifier,
 	})
 
 	addr := net.JoinHostPort(cfg.Server.BindAddr, strconv.Itoa(cfg.Server.Port))
@@ -175,10 +185,18 @@ func (a *App) startRemote(ctx context.Context) {
 		slog.Warn("remote access enabled but connection code/server id missing; run setup")
 		return
 	}
-	wsURL := coordinatorWSURL(a.Cfg.Remote.CoordinationURL)
+	wsURL := coordinatorWSURL(config.DefaultCoordinationURL)
 	peer := remote.NewPeer(wsURL, serverID, code, a.Server.Handler())
 	slog.Info("remote access enabled", "coordinator", wsURL, "code", code)
 	peer.Run(ctx)
+}
+
+// randomServerID returns a random 16-byte hex identifier for coordinator
+// registration.
+func randomServerID() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
 }
 
 // coordinatorWSURL converts a coordination base URL to its /ws WebSocket URL.

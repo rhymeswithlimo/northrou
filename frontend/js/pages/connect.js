@@ -5,6 +5,7 @@
 
 import { $, show, hide, setError, reveal } from '../lib/dom.js';
 import { useTunnel } from '../api/transport.js';
+import { pair } from '../data/account.js';
 import {
     setServer, normalizeCode, isSameOrigin, DEFAULT_COORD_URL,
 } from '../data/servers.js';
@@ -12,7 +13,6 @@ import {
 const stepCode = $('#step-code');
 const stepConnecting = $('#step-connecting');
 const codeInput = $('#code');
-const coordInput = $('#coord');
 const connectBtn = $('#connect');
 const codeError = $('#code-error');
 const status = $('#connect-status');
@@ -22,14 +22,12 @@ const status = $('#connect-status');
 if (isSameOrigin()) window.location.replace('index.html');
 else reveal();
 
-/** Format as NR-XXXX-XXXX while typing, without fighting the caret at the end. */
+/** Group the code as NR-XXXX-XXXX-... while typing, without fighting the caret. */
 codeInput.addEventListener('input', () => {
     const raw = codeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
     const body = raw.startsWith('NR') ? raw.slice(2) : raw;
-    const parts = ['NR'];
-    if (body.length) parts.push(body.slice(0, 4));
-    if (body.length > 4) parts.push(body.slice(4, 8));
-    codeInput.value = body.length ? parts.join('-') : '';
+    const groups = body.match(/.{1,4}/g) ?? [];
+    codeInput.value = body.length ? ['NR', ...groups].join('-') : '';
 
     connectBtn.disabled = !normalizeCode(codeInput.value);
     setError(codeError, '');
@@ -40,21 +38,22 @@ $('#code-form').addEventListener('submit', async (e) => {
     const code = normalizeCode(codeInput.value);
     if (!code) return;
 
-    // A self-hosted coordinator overrides the default hosted broker.
-    const coordUrl = coordInput.value.trim() || DEFAULT_COORD_URL;
     show(stepConnecting);
     hide(stepCode);
     status.textContent = 'Connecting peer to peer...';
 
     try {
-        await useTunnel({ coordUrl, code });
-        setServer({ code, coordUrl, mode: 'tunnel' });
-        window.location.replace('login.html');
+        // Open the tunnel, then authenticate with the same code: the connection
+        // code is the credential, exchanged for this device's own session.
+        await useTunnel({ coordUrl: DEFAULT_COORD_URL, code });
+        setServer({ code, coordUrl: DEFAULT_COORD_URL, mode: 'tunnel' });
+        const res = await pair(code);
+        window.location.replace(res?.profiles?.length > 1 ? 'profiles.html' : 'index.html');
     } catch (err) {
         // Back to the form with the real reason, rather than a dead spinner.
         hide(stepConnecting);
         show(stepCode);
-        setError(codeError, err.message || 'Could not reach that server.');
+        setError(codeError, err.message || 'Could not reach that server, or the code was wrong.');
         codeInput.focus();
     }
 });

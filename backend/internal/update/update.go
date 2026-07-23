@@ -151,8 +151,8 @@ func (u *Updater) Apply(ctx context.Context, latest *Release) error {
 
 // selectArchive picks the release asset matching this OS/architecture.
 //
-// The GitHub release also carries the coordinator_* and relay_* archives,
-// which share the exact same _<os>_<arch> suffix as the northrou archive
+// The GitHub release also carries the coordinator_* archive, which shares the
+// exact same _<os>_<arch> suffix as the northrou archive
 // (e.g. coordinator_1.2.0_linux_amd64.tar.gz). Matching on the OS/arch token
 // alone is therefore ambiguous, and since assets is a map, iteration order is
 // random - roughly a coin flip that lands on the wrong archive, after which

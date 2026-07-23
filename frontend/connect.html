@@ -42,22 +42,9 @@
 
                 <div class="auth__options">
                     <form class="auth__form" id="code-form" novalidate>
-                        <label for="code" class="auth__label u-mono">Connection Code:</label>
-                        <input type="text" id="code" class="auth__input input--mono" placeholder="NR-XXXX-XXXX"
+                        <input type="text" id="code" class="auth__input input--mono" placeholder="NR-XXXXX-XXXXX"
                                autocomplete="off" autocapitalize="characters" spellcheck="false"
                                aria-describedby="code-error">
-
-                        <details class="setup__details">
-                            <summary class="setup__summary"><span>Run your own coordinator?</span></summary>
-                            <div class="setup__fields">
-                                <label for="coord" class="auth__label u-mono">Coordination Server:</label>
-                                <input type="text" id="coord" class="auth__input"
-                                       placeholder="Default: the hosted broker" autocomplete="off" spellcheck="false">
-                                <p class="setup__hint">
-                                    Only if your household runs its own coordinator. It handles login and auth; media never passes through it.
-                                </p>
-                            </div>
-                        </details>
 
                         <button type="submit" class="auth__submit" id="connect" disabled>Connect</button>
                         <p class="form-error u-hidden" id="code-error" role="alert"></p>

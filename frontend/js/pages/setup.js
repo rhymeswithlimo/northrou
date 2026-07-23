@@ -1,12 +1,12 @@
 // First-run setup.
 //
 // This one talks to the real API already: /api/setup/status and
-// /api/setup/complete both exist. Setup signs the operator straight in with a
-// session elevated for the setup window, so they can scan and administer
-// without an email round-trip.
+// /api/setup/complete both exist. Setup signs the operator straight in (setup
+// runs locally, so the session is admin-capable) and issues the server
+// connection code.
 //
-// Two steps, and neither collects a path: media folders are added on the box
-// with `northrou admin`, where they can be checked against the real filesystem.
+// Two steps, and neither collects a path or an email: media folders are added on
+// the box with `northrou admin`, and authentication is the connection code.
 
 import { $, $$, show, hide, setError, reveal } from '../lib/dom.js';
 import { toast } from '../components/states.js';
@@ -15,8 +15,6 @@ import { confetti } from '../lib/confetti.js';
 // Setup never redirects away on boot (an already-set-up box shows a message in
 // place), so it always stays: reveal immediately.
 reveal();
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 const steps = {
     account: $('#step-account'),
@@ -34,20 +32,10 @@ $$('[data-back]').forEach((btn) => {
     btn.addEventListener('click', () => goTo($(`#${btn.dataset.back}`)));
 });
 
-/* ---------- step 1: account ---------- */
-
-const emailInput = $('#email');
-const accountNext = $('#account-next');
-
-const validateEmail = () => {
-    accountNext.disabled = !EMAIL_RE.test(emailInput.value.trim());
-};
-emailInput.addEventListener('input', validateEmail);
-validateEmail();
+/* ---------- step 1: welcome ---------- */
 
 $('#account-form').addEventListener('submit', (e) => {
     e.preventDefault();
-    if (accountNext.disabled) return;
     goTo(steps.meta);
 });
 
@@ -63,7 +51,6 @@ $('#meta-form').addEventListener('submit', async (e) => {
     setError(setupError, '');
 
     const body = {
-        email: emailInput.value.trim(),
         tmdb_api_key: $('#tmdb').value.trim(),
         enable_remote: true,
     };
@@ -113,12 +100,12 @@ $('#copy-code').addEventListener('click', async () => {
         const { needs_setup } = await res.json();
         if (!needs_setup) {
             steps.account.querySelector('.auth__subtitle').textContent =
-                'This server is already set up. Sign in to continue.';
+                'This server is already set up.';
             $('#account-form').replaceChildren(
                 Object.assign(document.createElement('a'), {
                     className: 'auth__submit',
-                    href: 'login.html',
-                    textContent: 'Go to sign in',
+                    href: 'index.html',
+                    textContent: 'Open my library',
                     style: 'display:flex;text-decoration:none',
                 }),
             );

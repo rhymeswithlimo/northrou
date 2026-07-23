@@ -12,12 +12,9 @@ README.md
 /scripts/release.sh
 /release/
 
-# Coordination stack deployment secrets (see docs/deploy-coordination.md).
-# deploy.yml.example is the tracked template; deploy.yml is the box's real copy
-# with live OAuth/SMTP credentials and must never be committed.
+# Coordination deployment (see docs/deploy-coordination.md).
+# deploy.yml.example is the tracked template; deploy.yml is the box's real copy.
 /deploy.yml
-/oauth-signing.pem
-*.p8
 # Anchored, and they must stay that way. Unanchored, these matched any path
 # segment with those names and silently swallowed the cmd/ directories named
 # after the binaries they build: backend/cmd/northrou/main.go and
@@ -26,10 +23,8 @@ README.md
 # package is .../sh/northrou/native/.
 /northrou
 /coordinator
-/relay
-# `go build` inside coordination/ drops its binaries beside the source.
+# `go build` inside coordination/ drops its binary beside the source.
 /coordination/coordinator
-/coordination/relay
 
 # Local dev data / config
 *.db

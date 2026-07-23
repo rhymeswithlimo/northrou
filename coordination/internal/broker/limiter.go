@@ -1,16 +1,17 @@
-package relay
+package broker
 
 import (
 	"sync"
 	"time"
 )
 
-// limiter is a small in-memory sliding-window rate limiter keyed by an
-// arbitrary string. It is intentionally simple and process-local: the relay is
-// abuse-limited, not a distributed quota system. Running more than one relay
-// instance splits these counters, so the effective caps are per-instance (see
-// the package doc). State is pruned lazily so memory stays bounded by the set
-// of keys seen within the window.
+// limiter is a small in-memory sliding-window rate limiter keyed by an arbitrary
+// string. It bounds abuse (here, connection-code guessing via connect, which is
+// a code-validity oracle: it answers "paired" for a real code and "error"
+// otherwise). It is process-local; running more than one coordinator splits the
+// counters, so the effective caps are per-instance. State is pruned lazily so
+// memory stays bounded by the set of keys seen within the window. Copied from
+// the former relay package, which is being removed.
 type limiter struct {
 	mu     sync.Mutex
 	window time.Duration
@@ -48,25 +49,4 @@ func (l *limiter) allow(key string) bool {
 	}
 	l.hits[key] = append(kept, l.now())
 	return true
-}
-
-// prune drops keys with no recent hits so the map does not grow without bound
-// under a churn of distinct keys.
-func (l *limiter) prune() {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	cutoff := l.now().Add(-l.window)
-	for k, ts := range l.hits {
-		live := ts[:0]
-		for _, t := range ts {
-			if t.After(cutoff) {
-				live = append(live, t)
-			}
-		}
-		if len(live) == 0 {
-			delete(l.hits, k)
-		} else {
-			l.hits[k] = live
-		}
-	}
 }

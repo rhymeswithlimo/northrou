@@ -6,6 +6,7 @@ package api
 
 import (
 	"sync"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -27,22 +28,27 @@ type Deps struct {
 	Scanner    *scanner.Scanner
 	Recommend  *recommend.Engine
 	ImagesDir  string
-	// OAuth verifies broker sign-in assertions. Nil when no broker is
-	// configured, in which case the endpoints report social sign-in as
-	// unavailable rather than pretending.
-	OAuth *auth.OAuthVerifier
 }
 
 // API bundles handler dependencies and route registration.
 type API struct {
 	Deps
 
+	// pairLimiter bounds connection-code guessing on /api/auth/pair. It is global
+	// (see limiter.go for why per-IP is not possible on the box).
+	pairLimiter *limiter
+
 	mu       sync.RWMutex
 	streamer *transcode.Streamer // set once ffmpeg is ready
 }
 
 // New constructs the API.
-func New(d Deps) *API { return &API{Deps: d} }
+func New(d Deps) *API {
+	return &API{
+		Deps:        d,
+		pairLimiter: newLimiter(time.Minute, 60),
+	}
+}
 
 // SetStreamer attaches the transcoding streamer once ffmpeg becomes available.
 func (a *API) SetStreamer(s *transcode.Streamer) {
@@ -74,13 +80,11 @@ func (a *API) Mount(r chi.Router) {
 			r.Post("/complete", a.handleSetupComplete)
 		})
 
-		// Authentication (passwordless: request a pin to the account email,
-		// exchange it, then pick a profile).
+		// Authentication: the server connection code is the sole credential.
+		// A remote client presents it to /auth/pair (over the tunnel); a local
+		// request is trusted and pairs without a code. Then pick a profile.
 		r.Route("/auth", func(r chi.Router) {
-			r.Post("/request-pin", a.handleRequestPin)
-			r.Get("/oauth/config", a.handleOAuthConfig)
-			r.Post("/oauth/signin", a.handleOAuthSignIn)
-			r.Post("/verify-pin", a.handleVerifyPin)
+			r.Post("/pair", a.handlePair)
 			r.Post("/select-profile", a.handleSelectProfile)
 			r.Post("/refresh", a.handleRefresh)
 			r.Post("/logout", a.handleLogout)
@@ -98,13 +102,6 @@ func (a *API) Mount(r chi.Router) {
 			r.Get("/profiles", a.handleListProfiles)
 			r.Post("/profiles", a.handleCreateProfile)
 			r.Patch("/profiles/{id}", a.handleUpdateProfile)
-
-			// Admin elevation: request an emailed OTP, exchange it for a
-			// short-lived elevated access token used for admin mutations. These
-			// are plain-authenticated (any profile may elevate by proving
-			// control of the account email), not behind RequireAdmin.
-			r.Post("/admin/request-otp", a.handleRequestAdminOTP)
-			r.Post("/admin/verify-otp", a.handleVerifyAdminOTP)
 
 			// Library.
 			r.Get("/movies", a.handleListMovies)
@@ -142,10 +139,11 @@ func (a *API) Mount(r chi.Router) {
 			r.Get("/admin/hardware", a.handleAdminHardware)
 			r.Get("/admin/update", a.handleUpdateCheck)
 
-			// Admin mutations: require an OTP-elevated session (the "adm"
-			// claim), i.e. the caller proved control of the account email.
+			// Admin mutations: allowed only from a trusted local request (not
+			// tunneled, and a loopback/private peer). Tunneled requests and
+			// public-IP direct hits are refused. See RequireLocal / remote.IsLocal.
 			r.Group(func(r chi.Router) {
-				r.Use(a.Auth.RequireAdmin)
+				r.Use(a.Auth.RequireLocal)
 				r.Patch("/admin/config", a.handlePatchConfig)
 				r.Post("/admin/scan", a.handleStartScan)
 				r.Post("/admin/match", a.handleManualMatch)

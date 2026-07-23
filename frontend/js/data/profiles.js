@@ -1,8 +1,8 @@
 // Profiles seam.
 //
 // Any signed-in profile may list, add or rename. Deleting is destructive (it
-// takes that viewer's whole watch history with it) so it needs an elevated
-// token, the same admin OTP that gates server mutations.
+// takes that viewer's whole watch history with it) so it is an admin action:
+// allowed only from a local connection, like other server mutations.
 
 import { get, post, patch, del } from '../api/client.js';
 
@@ -21,7 +21,7 @@ export async function renameProfile(id, name, avatar) {
     return patch(`/api/profiles/${id}`, { name, avatar });
 }
 
-/** Requires elevation. 409 when it is the last profile: never leave zero. */
+/** Local connection only (403 otherwise). 409 when it is the last profile. */
 export async function deleteProfile(id) {
-    return del(`/api/profiles/${id}`, { elevated: true });
+    return del(`/api/profiles/${id}`);
 }

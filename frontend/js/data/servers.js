@@ -55,10 +55,15 @@ export function forgetServer() {
     } catch { /* nothing to do */ }
 }
 
-/** Connection codes are shown as NR-XXXX-XXXX; accept them typed any which way. */
+/**
+ * Connection codes are shown grouped (NR-XXXXX-XXXXX) but accepted typed any
+ * which way. Current codes have a 10-character body; older servers issued 8, so
+ * accept a range. The server compares dash/case-insensitively, so the canonical
+ * form here just needs the NR prefix and the raw body.
+ */
 export function normalizeCode(input) {
     const clean = (input ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
     const body = clean.startsWith('NR') ? clean.slice(2) : clean;
-    if (body.length !== 8) return null;
-    return `NR-${body.slice(0, 4)}-${body.slice(4)}`;
+    if (body.length < 8 || body.length > 16) return null;
+    return `NR-${body}`;
 }

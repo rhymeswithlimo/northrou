@@ -20,11 +20,11 @@ func newClient(base string) *client {
 	return &client{base: base, http: &http.Client{Timeout: 5 * time.Second}}
 }
 
-// requestPin asks the server to email a one-time sign-in code to the address.
-// The endpoint intentionally returns 200 even for unknown emails.
-func (c *client) requestPin(ctx context.Context, email string) error {
-	body, _ := json.Marshal(map[string]string{"email": email})
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/api/auth/request-pin", bytes.NewReader(body))
+// pair signs the TUI in and stores the access token. The admin runs on (or
+// directly connects to) the box, so the request is local: the connection code is
+// the credential for remote clients only, and a local pair needs none.
+func (c *client) pair(ctx context.Context) error {
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/api/auth/pair", bytes.NewReader([]byte("{}")))
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -32,26 +32,8 @@ func (c *client) requestPin(ctx context.Context, email string) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("could not request a code (HTTP %d)", resp.StatusCode)
+		return fmt.Errorf("could not connect to the server (HTTP %d)", resp.StatusCode)
 	}
-	return nil
-}
-
-// verifyPin exchanges an emailed pin for an access token and stores it.
-func (c *client) verifyPin(ctx context.Context, email, pin string) error {
-	body, _ := json.Marshal(map[string]string{"email": email, "pin": pin})
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/api/auth/verify-pin", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("invalid or expired code (HTTP %d)", resp.StatusCode)
-	}
-	// The dashboard is read-only, so a plain profile token suffices; admin
-	// elevation is only needed for mutations the TUI does not perform.
 	var out struct {
 		AccessToken string `json:"access_token"`
 	}

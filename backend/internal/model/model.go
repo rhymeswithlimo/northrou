@@ -26,18 +26,11 @@ const (
 	HDRHLG         HDRType = "hlg"
 )
 
-// Account is the household's single authentication root: one email address that
-// receives sign-in and admin-elevation pins. There is exactly one account per
-// server; it owns any number of Profiles.
-type Account struct {
-	Email     string
-	CreatedAt time.Time
-}
-
 // Profile is a viewer under the account, in the style of Netflix profiles. It
 // carries a display name and optional avatar and owns all per-viewer state
 // (watch history, taste profile, home rows). Profiles have no email and no
-// password; admin is not a profile attribute but an OTP-proven capability.
+// password; every profile may administer from a local connection (see the auth
+// package).
 type Profile struct {
 	ID        int64
 	Name      string
