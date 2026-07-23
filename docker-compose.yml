@@ -1,7 +1,7 @@
 # Northrou for homelab / NAS users.
 #
 #   docker compose up -d
-#   # then open http://localhost:8674 to run setup
+#   docker compose exec northrou northrou setup   # terminal setup wizard
 #
 # Point the volume mounts below at your own media folders (read-only), then set
 # those paths in the setup wizard (inside the container they appear under /media).

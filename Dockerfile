@@ -31,4 +31,4 @@ VOLUME ["/config", "/data"]
 EXPOSE 8674
 
 # Run in the foreground (not as an OS service) inside the container.
-ENTRYPOINT ["northrou", "serve", "--no-browser", "--config", "/config/config.toml"]
+ENTRYPOINT ["northrou", "serve", "--config", "/config/config.toml"]

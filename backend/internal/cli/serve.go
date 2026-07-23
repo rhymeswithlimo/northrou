@@ -63,12 +63,6 @@ func newServeCmd() *cobra.Command {
 			return portConflict(a.Run(ctx), port)
 		},
 	}
-	// Accepted and ignored: older installed services invoke `serve --no-browser`
-	// (their unit files carry the flag), and rejecting it would crash-loop them
-	// after an update. Setup no longer involves a browser at all.
-	var noBrowser bool
-	cmd.Flags().BoolVar(&noBrowser, "no-browser", false, "")
-	_ = cmd.Flags().MarkHidden("no-browser")
 	return cmd
 }
 

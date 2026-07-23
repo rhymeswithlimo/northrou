@@ -123,7 +123,7 @@ func (m model) viewRemote() string {
 		if info.ConnectionCode != "" {
 			b.WriteString("Connection code\n")
 			b.WriteString(codeStyle.Render(info.ConnectionCode) + "\n")
-			b.WriteString(subtleStyle.Render("Anyone with this code can watch your library. Share it like a house key.") + "\n")
+			b.WriteString(subtleStyle.Render("Anyone with this code can watch your library. Keep it private, and only share it with people you trust.") + "\n")
 		}
 	} else {
 		fmt.Fprintf(&b, "Remote access : %s\n", warnStyle("off (home network only)"))

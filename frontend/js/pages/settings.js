@@ -204,7 +204,7 @@ function renderAdminLocked() {
     note.hidden = false;
     note.textContent = ADMIN_LOCAL_ONLY;
     $('#admin-state').dataset.state = 'locked';
-    $('#admin-state').textContent = 'Local only';
+    $('#admin-state').textContent = 'Local-only';
 }
 
 async function renderAdmin() {

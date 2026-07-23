@@ -411,7 +411,7 @@ func (m model) viewSummary() string {
 		body.WriteString(codeStyle.Render(s.code) + "\n\n")
 		body.WriteString("Enter it in the Northrou app, or at " + valueStyle("app.northrou.sh") + ",\n")
 		body.WriteString("to watch from anywhere. Anyone with this code can watch your\n")
-		body.WriteString("library, so share it like a house key.\n")
+		body.WriteString("library, so keep it private and only share it with people you trust.\n")
 	} else {
 		body.WriteString("Remote access is off: this server is reachable on your home\n")
 		body.WriteString("network only. Turn it on any time in Settings.\n")

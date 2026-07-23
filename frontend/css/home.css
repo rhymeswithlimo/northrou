@@ -85,7 +85,6 @@
     gap: 18px;
 
     opacity: 1;
-    padding: 1px;
     width: fit-content;
 
     text-shadow: 0 1px 4px hsl(from var(--strong) h s l / 0.2);
@@ -94,12 +93,6 @@
 
     @media (hover: hover) {
         &:hover { text-decoration: underline; opacity: .84; }
-    }
-
-    &:focus-visible {
-        outline: none;
-        background-color: var(--contrast);
-        color: var(--strong) !important;
     }
 }
 

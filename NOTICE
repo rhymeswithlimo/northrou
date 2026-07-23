@@ -22,7 +22,7 @@ Northrou relies on the following components, each under its own license:
   in this repository). Licensed under the GNU GPL/LGPL and the licenses of its
   own third-party components. https://ffmpeg.org/legal.html
 
-- Tesfseract OCR, optional; used only for image-based (PGS) subtitle OCR when
+- Tesseract OCR, optional; used only for image-based (PGS) subtitle OCR when
   present on the system. Apache License 2.0.
   https://github.com/tesseract-ocr/tesseract
 

@@ -7,7 +7,8 @@
 #   CLOUDFLARE_API_TOKEN   - token with the "Cloudflare Pages: Edit" permission
 #   CLOUDFLARE_ACCOUNT_ID  - your Cloudflare account id
 # And a Cloudflare Pages project named below (northrou-web), with app.northrou.sh
-# added as its custom domain. See docs/deploy-coordination.md.
+# added as its custom domain. See docs/configuration.md ("Deploying the
+# coordination server").
 
 name: Deploy web client
 

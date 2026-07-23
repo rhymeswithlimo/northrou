@@ -1,12 +1,12 @@
 # Changelog
 
-Notable changes to Northrou, one section per release. Each release entry uses
-whichever of these apply — a release with nothing to fix just omits that
-heading:
+Notable changes to Northrou, one section per release. Every entry is built
+from exactly these three headings, always in this order, and never any
+other heading — a release with nothing to fix just omits that one:
 
-- **Added** - new features
-- **Fixed** - bug fixes
-- **Improved** - changes to existing behavior that aren't new features or fixes
+1. **Added** - new features
+2. **Fixed** - bug fixes
+3. **Improved** - changes to existing behavior that aren't new features or fixes
 
 `scripts/release.sh --publish` pulls the section matching the tag it's cutting
 and uses it as the GitHub release body, so an entry needs to exist here
@@ -15,8 +15,9 @@ land the change, not after the fact.
 
 ## v0.1.6 - Unreleased
 
-### Changed
+### Added
 
+- **App clients** now build and release. APKs and desktop. IOS still needs to be implemented.
 - **Sign-in is gone. The server connection code is now the only credential.**
   There are no more accounts, emails, one-time pins, or Google/Apple sign-in.
   A remote client (the apps and the web client) enters the connection code to
@@ -35,10 +36,6 @@ land the change, not after the fact.
 - **Self-hosting a coordination server has been removed.** Northrou uses the
   official coordinator exclusively; the `coordination_url` and
   `self_hosted_coordinator` settings and the pin-delivery relay are gone.
-
-### Added
-
-- **App clients** now build and release. APKs and desktop. IOS still needs to be implemented.
 - `northrou cc` prints this server's connection code (the code apps and the web
   client use to pair), so you don't have to dig it out of config.toml. Aliases:
   `code`, `connection-code`. On a box running the system service (as root), run
@@ -78,13 +75,6 @@ land the change, not after the fact.
   echoes it) and the change takes effect on the running server immediately -
   no restart, the next scan uses it.
 
-### Improved
-- The client's connect page is now a welcome page: enter your server's
-  connection code and start watching, with the celebration moved to the moment
-  a device successfully pairs.
-- Settings shows the server's name everywhere it used to show a bare address
-  or connection code.
-
 ### Fixed
 - Turning remote access on (in setup or settings) now starts the tunnel
   immediately; it used to silently wait for the next server restart, so the
@@ -99,6 +89,13 @@ land the change, not after the fact.
   the box), so an idle-timeout proxy in front of the coordinator (e.g. Cloudflare
   closes idle WebSockets after ~100s) can't silently drop a box's registration
   while it sits idle between pairings.
+
+### Improved
+- The client's connect page is now a welcome page: enter your server's
+  connection code and start watching, with the celebration moved to the moment
+  a device successfully pairs.
+- Settings shows the server's name everywhere it used to show a bare address
+  or connection code.
 
 ## v0.1.5 - 2026-07-21
 
