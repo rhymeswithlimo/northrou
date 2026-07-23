@@ -7,8 +7,9 @@
 // token. Keep the client sink-free.
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, extname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const ROOT = new URL('../js', import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL('../js', import.meta.url));
 const SINKS = [
   /\.innerHTML\s*=/,
   /\.outerHTML\s*=/,
