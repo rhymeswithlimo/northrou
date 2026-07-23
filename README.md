@@ -33,7 +33,7 @@
 
 Northrou is an open-source media server you run on your own hardware. Point
 it at your movie and TV library and it streams to your phone, tablet,
-desktop, or TV — at home or away — without your media ever passing through
+desktop, or TV, at home or away, without your media ever passing through
 anyone else's servers.
 
 Playback adapts to whatever's watching. Files play back untouched wherever a
@@ -44,10 +44,10 @@ through or adapted per device instead of getting flattened to stereo.
 Add a library and Northrou fills in the rest: posters, cast, and details are
 matched automatically, subtitles (including image-based tracks most servers
 can't touch) just work, and a recommendation engine built from your own watch
-history — never shared anywhere — helps you find what to watch next.
+history, never shared anywhere, helps you find what to watch next.
 
 One person sets up the server once and shares a connection code. Everyone
-else enters that code in the app to connect — no accounts, no emails, no
+else enters that code in the app to connect: no accounts, no emails, no
 passwords. Remote access is peer-to-peer: your server and your device talk
 directly, so nothing in between ever sees what you're streaming.
 
@@ -59,8 +59,8 @@ northrou setup
 ```
 
 The installer sets Northrou up as a background service and fetches FFmpeg
-automatically — nothing else to install. `setup` then walks you through
-naming your server, adding your media folders, and generating your
+automatically, so there's nothing else to install. `setup` then walks you
+through naming your server, adding your media folders, and generating your
 connection code, right in the terminal, no browser needed. Install the app
 on your other devices, enter the code, and you're connected.
 
@@ -70,7 +70,7 @@ or see [docs/](docs/) in this repo.
 
 ## Commands
 
-Day to day you shouldn't need most of this — `northrou admin` opens a live
+Day to day you shouldn't need most of this: `northrou admin` opens a live
 terminal dashboard of streams, hardware, and capacity if you ever want to
 look under the hood.
 
@@ -95,22 +95,45 @@ COMMANDS:
    tmdb-key                 show, set, or remove the TMDB API key
    update                   check for and install a newer release
    version                  print version info
+   -h, --help               show help for a command
 
 GLOBAL (every command):
    --config string          path to config.toml (default: OS config dir)
-   -v, --verbose             enable debug logging
+   -v, --verbose            enable debug logging
+
+LOGS:
+   -f, --follow             keep printing new log lines as they arrive
+   -n, --lines int          trailing lines to show (default 200)
+
+ADMIN:
+   --addr string            server base URL (default from config, e.g. http://localhost:8674)
+
+SCAN:
+   --tv                     treat the given paths as TV episodes (default: detect by filename)
+
+MATCH:
+   --tmdb-id int            TMDB id of the movie or show to link (required)
+   --tv                     treat the file as a TV episode
+   --season int             season number (with --tv)
+   --episode int            episode number (with --tv)
+
+CC ROTATE:
+   -y, --yes                rotate without confirmation
+
+UPDATE:
+   -y, --yes                apply the update without confirmation
+   --check                  only check; do not install
 ```
 
 `setup` is interactive and needs no flags. Service commands (`install`,
 `start`, `stop`, `restart`, `update`) write to root-owned locations, so run
-those with `sudo` on Linux — the command tells you when it needs elevation.
-Run `northrou <command> --help` for a full list of flags per command.
+those with `sudo` on Linux. The command tells you when it needs elevation.
 
 ## Documentation
 
-The full reference — every config option, the HTTP API, architecture, and
-more — lives at [northrou.sh/docs](https://northrou.sh/docs). The same pages
-are mirrored in this repo:
+The full reference, covering every config option, the HTTP API, architecture,
+and more, lives at [northrou.sh/docs](https://northrou.sh/docs). The same
+pages are mirrored in this repo:
 
 - [Configuration reference](docs/configuration.md)
 - [HTTP API reference](docs/api.md)
@@ -119,7 +142,7 @@ are mirrored in this repo:
 
 ## Development
 
-Northrou is fully open source and self-buildable. It's a monorepo — the
+Northrou is fully open source and self-buildable. It's a monorepo: the
 server and remote-access broker are separate Go modules, and the client
 (`frontend/`) is a Tauri app shared across web, desktop, iOS, and Android.
 
@@ -134,7 +157,7 @@ together.
 
 ## License
 
-BSD 3-Clause — see [LICENSE](LICENSE). You may build, run, fork, and
+BSD 3-Clause, see [LICENSE](LICENSE). You may build, run, fork, and
 redistribute the software freely under those terms. The **Northrou** name,
 logos, and brand assets are not part of the grant and may not be used to
 endorse or promote derived products without permission (see [NOTICE](NOTICE)).

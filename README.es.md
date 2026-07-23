@@ -31,13 +31,13 @@
 
 ---
 
-Northrou es un servidor multimedia de código abierto que ejecutas en tu propio hardware. Apúntalo a tu biblioteca de películas y series, y transmitirá contenido a tu teléfono, tablet, ordenador o TV — en casa o fuera — sin que tus archivos multimedia pasen nunca por servidores de terceros.
+Northrou es un servidor multimedia de código abierto que ejecutas en tu propio hardware. Apúntalo a tu biblioteca de películas y series, y transmitirá contenido a tu teléfono, tablet, ordenador o TV, en casa o fuera, sin que tus archivos multimedia pasen nunca por servidores de terceros.
 
 La reproducción se adapta a cada dispositivo. Los archivos se reproducen sin modificar allí donde el dispositivo pueda con ellos, convirtiendo solo lo que realmente lo necesita, aprovechando tu GPU cuando hay una disponible. Las pistas de Dolby Atmos y audio sin pérdida se transmiten tal cual o se adaptan según el dispositivo, en lugar de aplanarse a estéreo.
 
-Añade una biblioteca y Northrou se encarga del resto: las carátulas, el reparto y los detalles se emparejan automáticamente, los subtítulos (incluidas las pistas basadas en imagen que la mayoría de servidores no pueden procesar) simplemente funcionan, y un motor de recomendaciones construido a partir de tu propio historial de visualización — que nunca se comparte con nadie — te ayuda a encontrar qué ver a continuación.
+Añade una biblioteca y Northrou se encarga del resto: las carátulas, el reparto y los detalles se emparejan automáticamente, los subtítulos (incluidas las pistas basadas en imagen que la mayoría de servidores no pueden procesar) simplemente funcionan, y un motor de recomendaciones construido a partir de tu propio historial de visualización, que nunca se comparte con nadie, te ayuda a encontrar qué ver a continuación.
 
-Una persona configura el servidor una sola vez y comparte un código de conexión. Todos los demás introducen ese código en la aplicación para conectarse — sin cuentas, sin correos, sin contraseñas. El acceso remoto es de igual a igual (peer-to-peer): tu servidor y tu dispositivo se comunican directamente, así que nada intermedio llega a ver lo que estás reproduciendo.
+Una persona configura el servidor una sola vez y comparte un código de conexión. Todos los demás introducen ese código en la aplicación para conectarse: sin cuentas, sin correos, sin contraseñas. El acceso remoto es de igual a igual (peer-to-peer): tu servidor y tu dispositivo se comunican directamente, así que nada intermedio llega a ver lo que estás reproduciendo.
 
 ## Instalación
 
@@ -46,13 +46,13 @@ curl -sSL https://raw.githubusercontent.com/rhymeswithlimo/northrou/main/scripts
 northrou setup
 ```
 
-El instalador configura Northrou como un servicio en segundo plano y descarga FFmpeg automáticamente — no necesitas instalar nada más. Después, `setup` te guía paso a paso, directamente en la terminal y sin necesidad de navegador, para nombrar tu servidor, añadir tus carpetas multimedia y generar tu código de conexión. Instala la aplicación en tus otros dispositivos, introduce el código y listo, estarás conectado.
+El instalador configura Northrou como un servicio en segundo plano y descarga FFmpeg automáticamente, así que no necesitas instalar nada más. Después, `setup` te guía paso a paso, directamente en la terminal y sin necesidad de navegador, para nombrar tu servidor, añadir tus carpetas multimedia y generar tu código de conexión. Instala la aplicación en tus otros dispositivos, introduce el código y listo, estarás conectado.
 
 ¿Prefieres Docker, o instalar todo manualmente? La guía completa (con todas las formas de instalación y opciones de configuración) está en [northrou.sh/docs](https://northrou.sh/docs), o consulta [docs/](docs/) en este repositorio.
 
 ## Comandos
 
-En el día a día no deberías necesitar casi nada de esto — `northrou admin` abre un panel de terminal en vivo con las transmisiones, el hardware y la capacidad, por si alguna vez quieres mirar bajo el capó.
+En el día a día no deberías necesitar casi nada de esto: `northrou admin` abre un panel de terminal en vivo con las transmisiones, el hardware y la capacidad, por si alguna vez quieres mirar bajo el capó.
 
 ```text
 northrou <command> [flags]
@@ -75,17 +75,41 @@ COMANDOS:
    tmdb-key                 muestra, establece o elimina la clave de la API de TMDB
    update                   busca e instala una versión más reciente
    version                  imprime información de la versión
+   -h, --help               muestra la ayuda de un comando
 
 GLOBAL (todos los comandos):
    --config string          ruta a config.toml (por defecto: el directorio de configuración del sistema)
-   -v, --verbose             activa el registro de depuración
+   -v, --verbose            activa el registro de depuración
+
+LOGS:
+   -f, --follow             sigue mostrando nuevas líneas de log a medida que aparecen
+   -n, --lines int          líneas finales a mostrar (por defecto 200)
+
+ADMIN:
+   --addr string            URL base del servidor (por defecto la de la configuración, p. ej. http://localhost:8674)
+
+SCAN:
+   --tv                     trata las rutas indicadas como episodios de TV (por defecto: se detecta por el nombre del archivo)
+
+MATCH:
+   --tmdb-id int            ID de TMDB de la película o serie a vincular (obligatorio)
+   --tv                     trata el archivo como un episodio de TV
+   --season int             número de temporada (con --tv)
+   --episode int            número de episodio (con --tv)
+
+CC ROTATE:
+   -y, --yes                rota sin pedir confirmación
+
+UPDATE:
+   -y, --yes                aplica la actualización sin pedir confirmación
+   --check                  solo comprueba; no instala
 ```
 
-`setup` es interactivo y no necesita flags. Los comandos de servicio (`install`, `start`, `stop`, `restart`, `update`) escriben en ubicaciones propiedad de root, así que en Linux debes ejecutarlos con `sudo` — el propio comando te avisará cuando necesite privilegios elevados. Ejecuta `northrou <command> --help` para ver la lista completa de flags de cada comando.
+`setup` es interactivo y no necesita flags. Los comandos de servicio (`install`, `start`, `stop`, `restart`, `update`) escriben en ubicaciones propiedad de root, así que en Linux debes ejecutarlos con `sudo`. El propio comando te avisará cuando necesite privilegios elevados.
 
 ## Documentación
 
-La referencia completa — todas las opciones de configuración, la API HTTP, la arquitectura y más — está en [northrou.sh/docs](https://northrou.sh/docs). Las mismas páginas están reflejadas en este repositorio:
+La referencia completa, con todas las opciones de configuración, la API HTTP, la arquitectura y más, está en [northrou.sh/docs](https://northrou.sh/docs). Las mismas páginas están reflejadas en este repositorio:
 
 - [Referencia de configuración](docs/configuration.md)
 - [Referencia de la API HTTP](docs/api.md)
@@ -94,7 +118,7 @@ La referencia completa — todas las opciones de configuración, la API HTTP, la
 
 ## Desarrollo
 
-Northrou es completamente de código abierto y se puede compilar por tu cuenta. Es un monorepo — el servidor y el broker de acceso remoto son módulos de Go independientes, y el cliente (`frontend/`) es una aplicación Tauri compartida entre web, escritorio, iOS y Android.
+Northrou es completamente de código abierto y se puede compilar por tu cuenta. Es un monorepo: el servidor y el broker de acceso remoto son módulos de Go independientes, y el cliente (`frontend/`) es una aplicación Tauri compartida entre web, escritorio, iOS y Android.
 
 ```sh
 make build   # compila el cliente y luego bin/northrou y bin/coordinator
@@ -106,4 +130,4 @@ Consulta [docs/architecture.md](docs/architecture.md) para ver cómo encajan las
 
 ## Licencia
 
-BSD 3-Clause — ver [LICENSE](LICENSE). Puedes compilar, ejecutar, hacer fork y redistribuir el software libremente bajo esos términos. El nombre **Northrou**, los logotipos y los activos de marca no forman parte de esta cesión y no pueden usarse para respaldar o promocionar productos derivados sin permiso (ver [NOTICE](NOTICE)).
+BSD 3-Clause, ver [LICENSE](LICENSE). Puedes compilar, ejecutar, hacer fork y redistribuir el software libremente bajo esos términos. El nombre **Northrou**, los logotipos y los activos de marca no forman parte de esta cesión y no pueden usarse para respaldar o promocionar productos derivados sin permiso (ver [NOTICE](NOTICE)).
