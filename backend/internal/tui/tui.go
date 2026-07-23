@@ -15,6 +15,8 @@ package tui
 import (
 	"context"
 	"fmt"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -27,22 +29,32 @@ type view int
 
 const (
 	viewConnecting view = iota
+	viewWizard    // first-run setup (setup.go)
+	viewSummary   // post-setup / already-set-up recap (setup.go)
 	viewDashboard
 )
 
-var tabs = []string{"Streams", "Hardware", "Library"}
+var tabs = []string{"Streams", "Hardware", "Library", "Remote"}
 
 // Tab indices, named so the key handling doesn't compare against bare ints.
 const (
 	tabStreams = iota
 	tabHardware
 	tabLibrary
+	tabRemote
 )
 
 type model struct {
 	client *client
 	addr   string
+	port   int
 	state  view
+
+	// setupMode marks a `northrou setup` launch: check setup status first and
+	// run the wizard (or show the recap) before the dashboard.
+	setupMode bool
+	wiz       wizard
+	sum       summary
 
 	// connect
 	loginErr string
@@ -65,6 +77,13 @@ type model struct {
 	addKind  string
 	volErr   string
 	volMsg   string
+
+	// Remote tab (remote.go): device selection, the rotate confirmation, and
+	// the last action's outcome.
+	devCur        int
+	confirmRotate bool
+	remoteMsg     string
+	remoteErr     string
 }
 
 // messages
@@ -84,6 +103,22 @@ func Run(base, configPath string, local bool) error {
 	return err
 }
 
+// RunSetup starts the TUI in setup mode: on a box that still needs first-run
+// setup it walks the operator through the wizard; on one that is already set
+// up it shows the recap (name, connection code, addresses) and then offers the
+// dashboard. Always local - setup is an operator action on the box itself.
+func RunSetup(base, configPath string) error {
+	m := newModel(base, configPath, true)
+	m.setupMode = true
+	// Seed the wizard with any folders already on this machine's config (an
+	// operator may have added some via `northrou admin` before running setup).
+	existing, _ := m.store.load()
+	m.wiz = newWizard(existing)
+	p := tea.NewProgram(m, tea.WithAltScreen())
+	_, err := p.Run()
+	return err
+}
+
 func newModel(base, configPath string, local bool) model {
 	volIn := textinput.New()
 	volIn.Placeholder = "/Volumes/Media/Movies"
@@ -93,11 +128,22 @@ func newModel(base, configPath string, local bool) model {
 	return model{
 		client:   newClient(base),
 		addr:     base,
+		port:     portOf(base),
 		state:    viewConnecting,
 		store:    mediaStore{path: configPath},
 		local:    local,
 		volInput: volIn,
 	}
+}
+
+// portOf extracts the TCP port from a base URL like http://localhost:8674.
+func portOf(base string) int {
+	if u, err := url.Parse(base); err == nil {
+		if p, err := strconv.Atoi(u.Port()); err == nil {
+			return p
+		}
+	}
+	return 80
 }
 
 // reloadVolumes re-reads the folder list from disk. Called on sign-in and after
@@ -117,7 +163,14 @@ func (m *model) reloadVolumes() {
 	}
 }
 
-func (m model) Init() tea.Cmd { return m.pairCmd() }
+// Init connects: setup mode asks the server whether it still needs first-run
+// setup before anything else; the plain dashboard just pairs.
+func (m model) Init() tea.Cmd {
+	if m.setupMode {
+		return m.statusCmd()
+	}
+	return m.pairCmd()
+}
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -130,20 +183,80 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c":
 			return m, tea.Quit
 		}
-		if m.state == viewConnecting {
+		switch m.state {
+		case viewConnecting:
 			// Retry a failed connection on any key.
 			if m.loginErr != "" {
 				m.loginErr = ""
-				return m, m.pairCmd()
+				return m, m.Init()
+			}
+			return m, nil
+		case viewWizard:
+			return m.updateWizard(msg)
+		case viewSummary:
+			switch msg.String() {
+			case "enter":
+				m.state = viewDashboard
+				m.reloadVolumes()
+				return m, tea.Batch(m.fetchCmd(), tickCmd())
+			case "q":
+				return m, tea.Quit
 			}
 			return m, nil
 		}
 		return m.updateDashboard(msg)
 
+	case setupStatusMsg:
+		if msg.err != nil {
+			m.loginErr = msg.err.Error()
+			return m, nil
+		}
+		if msg.needsSetup {
+			m.state = viewWizard
+			return m, textinput.Blink
+		}
+		// Already set up: pair, then fetch the recap's data (pairedMsg routes
+		// to infoCmd in setup mode).
+		return m, m.pairCmd()
+
+	case setupDoneMsg:
+		if msg.err != nil {
+			m.wiz.step = wizRemote
+			m.wiz.errMsg = msg.err.Error()
+			return m, nil
+		}
+		m.sum = summary{
+			celebrate:  true,
+			serverName: displayName(m.wiz.name.Value()),
+			code:       msg.code,
+			remoteOn:   m.wiz.remoteOn,
+			scanning:   msg.scanning,
+		}
+		m.state = viewSummary
+		return m, nil
+
+	case infoMsg:
+		if msg.err != nil {
+			// The recap is a courtesy; the dashboard still works without it.
+			m.state = viewDashboard
+			m.reloadVolumes()
+			return m, tea.Batch(m.fetchCmd(), tickCmd())
+		}
+		m.sum = summary{
+			serverName: msg.name,
+			code:       msg.info.ConnectionCode,
+			remoteOn:   msg.info.RemoteEnabled,
+		}
+		m.state = viewSummary
+		return m, nil
+
 	case pairedMsg:
 		if msg.err != nil {
 			m.loginErr = msg.err.Error()
 			return m, nil
+		}
+		if m.setupMode && m.state == viewConnecting {
+			return m, m.infoCmd()
 		}
 		m.state = viewDashboard
 		m.reloadVolumes()
@@ -152,7 +265,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case dataMsg:
 		m.data = msg.data
 		m.lastUpdate = time.Now()
+		if m.devCur >= len(m.data.devices) {
+			m.devCur = max(len(m.data.devices)-1, 0)
+		}
 		return m, nil
+
+	case remoteActionMsg:
+		if msg.err != nil {
+			m.remoteErr = msg.err.Error()
+		} else {
+			m.remoteMsg = msg.msg
+		}
+		// Refetch so the tab shows the server's new state, not our idea of it.
+		return m, m.fetchCmd()
 
 	case tickMsg:
 		if m.state == viewDashboard {
@@ -164,6 +289,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// displayName mirrors the server's fallback for an unnamed box.
+func displayName(name string) string {
+	if name = strings.TrimSpace(name); name != "" {
+		return name
+	}
+	return "Your server"
+}
+
 func (m model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// While typing a folder path, every key belongs to the input. Checked first
 	// or "q" would quit and "l" would switch tabs mid-path.
@@ -172,6 +305,11 @@ func (m model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.tab == tabLibrary && m.local {
 		if handled, mm, cmd := m.updateVolumeKeys(msg); handled {
+			return mm, cmd
+		}
+	}
+	if m.tab == tabRemote {
+		if handled, mm, cmd := m.updateRemoteKeys(msg); handled {
 			return mm, cmd
 		}
 	}
@@ -302,8 +440,13 @@ var (
 )
 
 func (m model) View() string {
-	if m.state == viewConnecting {
+	switch m.state {
+	case viewConnecting:
 		return m.viewConnecting()
+	case viewWizard:
+		return m.viewWizard()
+	case viewSummary:
+		return m.viewSummary()
 	}
 	return m.viewDashboard()
 }
@@ -345,6 +488,8 @@ func (m model) viewDashboard() string {
 		body = m.viewHardware()
 	case tabLibrary:
 		body = m.viewLibrary()
+	case tabRemote:
+		body = m.viewRemote()
 	}
 
 	status := ""
@@ -355,8 +500,11 @@ func (m model) viewDashboard() string {
 	}
 
 	footer := subtleStyle.Render("tab: switch view • r: refresh • q: quit")
-	if m.tab == tabLibrary {
+	switch m.tab {
+	case tabLibrary:
 		footer = subtleStyle.Render(m.volumeHelp())
+	case tabRemote:
+		footer = subtleStyle.Render(m.remoteHelp())
 	}
 	return header.String() + "\n\n" + boxStyle.Render(body) + "\n" + status + "\n" + footer
 }
@@ -436,16 +584,7 @@ func (m model) viewVolumes() string {
 	if len(m.volumes) == 0 {
 		b.WriteString(subtleStyle.Render("None configured. Nothing will be scanned until you add one.\n"))
 	}
-	for i, v := range m.volumes {
-		marker := "  "
-		line := fmt.Sprintf("%-9s %s", v.Label(), v.Path)
-		// Don't mark a selection while the cursor is parked and typing.
-		if i == m.volCur && !m.adding {
-			marker = lipgloss.NewStyle().Foreground(accent).Render("› ")
-			line = lipgloss.NewStyle().Foreground(accent).Render(line)
-		}
-		b.WriteString(marker + line + "\n")
-	}
+	b.WriteString(renderVolumeList(m.volumes, m.volCur, m.adding))
 
 	if m.adding {
 		label := "movie"

@@ -5,6 +5,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -29,7 +30,7 @@ func New(configPath string) (service.Service, *program, error) {
 		Name:        serviceName,
 		DisplayName: "Northrou Media Server",
 		Description: "Self-hosted media server for your physical collection.",
-		Arguments:   []string{"serve", "--no-browser", "--config", configPath},
+		Arguments:   []string{"serve", "--config", configPath},
 		// Windows only (kardianos ignores these keys elsewhere): an abrupt
 		// process exit (e.g. self-update replacing the binary and exiting to
 		// pick it up) registers with the SCM as a failure, so it needs an
@@ -104,6 +105,88 @@ func Install(configPath string) error {
 		return fmt.Errorf("start service: %w", err)
 	}
 	return nil
+}
+
+// Start starts the installed service.
+func Start(configPath string) error {
+	svc, _, err := New(configPath)
+	if err != nil {
+		return err
+	}
+	if err := svc.Start(); err != nil {
+		return fmt.Errorf("start service: %w", err)
+	}
+	return nil
+}
+
+// Stop stops the installed service.
+func Stop(configPath string) error {
+	svc, _, err := New(configPath)
+	if err != nil {
+		return err
+	}
+	if err := svc.Stop(); err != nil {
+		return fmt.Errorf("stop service: %w", err)
+	}
+	return nil
+}
+
+// Restart restarts the installed service.
+func Restart(configPath string) error {
+	svc, _, err := New(configPath)
+	if err != nil {
+		return err
+	}
+	if err := svc.Restart(); err != nil {
+		return fmt.Errorf("restart service: %w", err)
+	}
+	return nil
+}
+
+// Status describes the installed service's state in operator terms.
+type Status int
+
+const (
+	StatusUnknown Status = iota
+	StatusNotInstalled
+	StatusRunning
+	StatusStopped
+)
+
+func (s Status) String() string {
+	switch s {
+	case StatusNotInstalled:
+		return "not installed"
+	case StatusRunning:
+		return "running"
+	case StatusStopped:
+		return "stopped"
+	}
+	return "unknown"
+}
+
+// GetStatus reports whether the service is installed and running. An error
+// means the state could not be determined (e.g. no permission to ask the
+// service manager), which is distinct from a clean "not installed".
+func GetStatus(configPath string) (Status, error) {
+	svc, _, err := New(configPath)
+	if err != nil {
+		return StatusUnknown, err
+	}
+	st, err := svc.Status()
+	if err != nil {
+		if errors.Is(err, service.ErrNotInstalled) {
+			return StatusNotInstalled, nil
+		}
+		return StatusUnknown, err
+	}
+	switch st {
+	case service.StatusRunning:
+		return StatusRunning, nil
+	case service.StatusStopped:
+		return StatusStopped, nil
+	}
+	return StatusUnknown, nil
 }
 
 // Uninstall stops and removes the service.

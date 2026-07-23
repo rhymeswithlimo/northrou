@@ -9,7 +9,7 @@
          The timeout is a backstop if a code path forgets to reveal(). -->
     <script>(function(d){d.classList.add('booting');setTimeout(function(){d.classList.remove('booting');},2000);})(document.documentElement);</script>
 
-    <title>Connect - Northrou</title>
+    <title>Welcome - Northrou</title>
 
     <link rel="icon" href="assets/favicon-dark.svg" media="(prefers-color-scheme: light)">
     <link rel="icon" href="assets/favicon-light.svg" media="(prefers-color-scheme: dark)">
@@ -19,7 +19,7 @@
     <link rel="stylesheet" href="css/auth.css">
     <link rel="stylesheet" href="css/setup.css">
 
-    <script type="module" src="js/pages/connect.js"></script>
+    <script type="module" src="js/pages/welcome.js"></script>
 </head>
 <body>
 
@@ -35,8 +35,8 @@
                         </svg>
                     </span>
                     <div>
-                        <h1 class="auth__title" id="t-code">Connect to your server</h1>
-                        <p class="auth__subtitle">Enter the connection code from your Northrou server.</p>
+                        <h1 class="auth__title" id="t-code">Welcome to Northrou</h1>
+                        <p class="auth__subtitle">Enter your server's connection code to start watching.</p>
                     </div>
                 </header>
 
@@ -49,6 +49,7 @@
                         <button type="submit" class="auth__submit" id="connect" disabled>Connect</button>
                         <p class="form-error u-hidden" id="code-error" role="alert"></p>
                     </form>
+                    <a href="https://northrou.sh/docs" class="btn--information" target="_blank" rel="noopener noreferrer" style="position: absolute; top: 125px;">How do I set up a server?</a>
                 </div>
             </section>
 

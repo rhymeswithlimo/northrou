@@ -86,6 +86,24 @@ body {
 
 .setting--end { justify-content: flex-end; }
 
+/* A row whose control is a full-width input: stack the label above it rather
+   than squeezing the field into the right rail. */
+.setting--stack {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+}
+
+.settings__tmdb {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.settings__tmdb .settings__input {
+    flex: 1 1 12rem;
+}
+
 .setting__text {
     display: flex;
     flex-direction: column;
@@ -387,3 +405,63 @@ body {
 @media (prefers-reduced-motion: reduce) {
     .blink { animation: none; }
 }
+
+/* ==================== LOGS DIALOG ==================== */
+
+.logs-dialog {
+    width: min(880px, calc(100vw - 2 * var(--sidepadding)));
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+
+    padding: 16px;
+    border: 1px solid hsl(from var(--muted) h s l / .25);
+    border-radius: 12px;
+    background: var(--strong);
+    color: var(--contrast);
+}
+
+.logs-dialog::backdrop {
+    background: hsl(0 0% 0% / .6);
+}
+
+.logs-dialog__text {
+    margin: 0;
+    overflow: auto;
+    flex: 1;
+
+    font-family: 'Geist Mono', monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.logs-dialog > .btn {
+    align-self: flex-end;
+}
+
+/* ==================== PAIRED DEVICES ==================== */
+
+.devices {
+    list-style: none;
+    margin: 8px 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.devices__row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid hsl(from var(--muted) h s l / .14);
+}
+
+.devices__row:last-child { border-bottom: none; }
+
+.devices__text { min-width: 0; }
+.devices__text .setting__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

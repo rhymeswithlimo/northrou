@@ -40,13 +40,21 @@ func NewRootCmd() *cobra.Command {
 		newVersionCmd(),
 		newServeCmd(),
 		newSetupCmd(),
+		newStatusCmd(),
+		newDoctorCmd(),
 		newInstallCmd(),
 		newUninstallCmd(),
+		newStartCmd(),
+		newStopCmd(),
+		newRestartCmd(),
+		newLogsCmd(),
 		newAdminCmd(),
 		newScanCmd(),
 		newMatchCmd(),
 		newUpdateCmd(),
 		newConnectionCodeCmd(),
+		newDevicesCmd(),
+		newTMDBKeyCmd(),
 	)
 	return root
 }

@@ -94,14 +94,7 @@ if [ "${NORTHROU_NO_SERVICE:-}" != "1" ]; then
   fi
 fi
 
-# `northrou install` above also starts the service immediately, which binds
-# its HTTP port right now - so `northrou setup` (meant for the not-yet-a-
-# service case) would just fail with the port already taken. Point to the
-# already-running instance instead of telling people to run a command that's
-# about to fail.
-if [ "$service_started" = "1" ]; then
-  info "Done! Northrou is already running. Open http://localhost:8674/ (or this machine's LAN address) in a browser to finish setup."
-else
-  info "Done! Run 'northrou setup' to create your account and point at your media."
-fi
-info "Away from home, you and anyone with your connection code can sign in from any device at https://app.northrou.sh."
+# One path either way: `northrou setup` detects an already-running service and
+# drives it, or starts the server itself if none is installed.
+info "Done! Run 'northrou setup' to name your server, add your media folders, and get your connection code."
+info "Away from home, you and anyone with your connection code can watch from any device at https://app.northrou.sh."

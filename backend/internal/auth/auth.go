@@ -72,11 +72,29 @@ type TokenPair struct {
 	ExpiresAt    time.Time `json:"expires_at"`
 }
 
+// Device describes the client a session belongs to, so the operator can see
+// and revoke paired devices. ID is minted at pair time and inherited across
+// token rotations; Name is a human label (typically derived from the client's
+// User-Agent).
+type Device struct {
+	ID   string
+	Name string
+}
+
+// NewDeviceID mints a random identifier for a newly pairing device.
+func NewDeviceID() string {
+	id, err := randomToken()
+	if err != nil {
+		return ""
+	}
+	return id[:16]
+}
+
 // IssueSession issues a signed-in session once access has been proven (the
 // caller verified the connection code, or the request is local). It defaults to
 // the first profile and hands back the full list so the client can show the
 // profile picker.
-func (s *Service) IssueSession(ctx context.Context) ([]model.Profile, *model.Profile, *TokenPair, error) {
+func (s *Service) IssueSession(ctx context.Context, device Device) ([]model.Profile, *model.Profile, *TokenPair, error) {
 	profiles, err := s.db.ListProfiles(ctx)
 	if err != nil {
 		return nil, nil, nil, err
@@ -85,11 +103,36 @@ func (s *Service) IssueSession(ctx context.Context) ([]model.Profile, *model.Pro
 		return nil, nil, nil, ErrInvalidCredentials
 	}
 	selected := profiles[0]
-	pair, err := s.issuePair(ctx, selected.ID)
+	pair, err := s.issuePair(ctx, selected.ID, device)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 	return profiles, &selected, pair, nil
+}
+
+// IssueEphemeralSession issues an access token with NO stored refresh token:
+// nothing persists and nothing shows up in the paired-devices list. This is
+// for the operator's own short-lived tooling (`northrou status`, the admin
+// TUI, the CLI's local API client), which would otherwise mint a permanent
+// "device" every time the operator so much as looked at the server. The
+// invariant it protects: **the paired-devices list means streaming clients,
+// not the admin's own terminal.** Local-only by construction - the caller
+// must not offer it to remote clients, which would use it to stream while
+// dodging the device list.
+func (s *Service) IssueEphemeralSession(ctx context.Context) ([]model.Profile, *model.Profile, *TokenPair, error) {
+	profiles, err := s.db.ListProfiles(ctx)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if len(profiles) == 0 {
+		return nil, nil, nil, ErrInvalidCredentials
+	}
+	selected := profiles[0]
+	access, exp, err := s.issueAccess(selected.ID, s.accessTTL)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return profiles, &selected, &TokenPair{AccessToken: access, ExpiresAt: exp}, nil
 }
 
 // SelectProfile switches the profile a device is signed in as. It validates the
@@ -107,18 +150,24 @@ func (s *Service) SelectProfile(ctx context.Context, rawRefresh string, profileI
 	if err := s.db.RevokeRefreshToken(ctx, hashToken(rawRefresh)); err != nil {
 		return nil, nil, err
 	}
-	pair, err := s.issuePair(ctx, profileID)
+	// The rotated token stays the same device's.
+	pair, err := s.issuePair(ctx, profileID, Device{ID: stored.DeviceID, Name: stored.DeviceName})
 	if err != nil {
 		return nil, nil, err
 	}
 	return prof, pair, nil
 }
 
-// IssueSetupSession mints a signed-in session for first-run setup. Setup only
-// runs from a local request, so the resulting session is admin-capable simply by
-// being used locally; there is nothing special about the tokens themselves.
+// IssueSetupSession mints a signed-in session for first-run setup: an access
+// token only, no stored refresh token. Setup is the operator's own terminal
+// wizard, and its session must not linger in the paired-devices list as a
+// phantom "Setup wizard" device (see IssueEphemeralSession).
 func (s *Service) IssueSetupSession(ctx context.Context, profileID int64) (*TokenPair, error) {
-	return s.issuePair(ctx, profileID)
+	access, exp, err := s.issueAccess(profileID, s.accessTTL)
+	if err != nil {
+		return nil, err
+	}
+	return &TokenPair{AccessToken: access, ExpiresAt: exp}, nil
 }
 
 // Refresh validates a refresh token, rotates it (revoking the old one), and
@@ -137,7 +186,7 @@ func (s *Service) Refresh(ctx context.Context, rawRefresh string) (*TokenPair, e
 	if err := s.db.RevokeRefreshToken(ctx, hashToken(rawRefresh)); err != nil {
 		return nil, err
 	}
-	return s.issuePair(ctx, stored.ProfileID)
+	return s.issuePair(ctx, stored.ProfileID, Device{ID: stored.DeviceID, Name: stored.DeviceName})
 }
 
 // Logout revokes a refresh token.
@@ -161,13 +210,13 @@ func (s *Service) VerifyAccess(tokenString string) (*Claims, error) {
 }
 
 // issuePair mints an access token and a stored refresh token, both scoped to
-// profileID.
-func (s *Service) issuePair(ctx context.Context, profileID int64) (*TokenPair, error) {
+// profileID and bound to the device.
+func (s *Service) issuePair(ctx context.Context, profileID int64, device Device) (*TokenPair, error) {
 	access, exp, err := s.issueAccess(profileID, s.accessTTL)
 	if err != nil {
 		return nil, err
 	}
-	refresh, err := s.newRefresh(ctx, profileID)
+	refresh, err := s.newRefresh(ctx, profileID, device)
 	if err != nil {
 		return nil, err
 	}
@@ -193,14 +242,18 @@ func (s *Service) issueAccess(profileID int64, ttl time.Duration) (string, time.
 	return access, exp, nil
 }
 
-// newRefresh creates and stores a refresh token bound to a profile, returning
-// the raw token.
-func (s *Service) newRefresh(ctx context.Context, profileID int64) (string, error) {
+// newRefresh creates and stores a refresh token bound to a profile and device,
+// returning the raw token. A device without an ID (a fresh pair) gets one
+// minted here so rotations have something stable to inherit.
+func (s *Service) newRefresh(ctx context.Context, profileID int64, device Device) (string, error) {
 	refresh, err := randomToken()
 	if err != nil {
 		return "", err
 	}
-	if err := s.db.InsertRefreshToken(ctx, profileID, hashToken(refresh), time.Now().Add(s.refreshTTL)); err != nil {
+	if device.ID == "" {
+		device.ID = NewDeviceID()
+	}
+	if err := s.db.InsertRefreshToken(ctx, profileID, hashToken(refresh), time.Now().Add(s.refreshTTL), device.ID, device.Name); err != nil {
 		return "", err
 	}
 	return refresh, nil

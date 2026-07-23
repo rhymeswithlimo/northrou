@@ -25,11 +25,11 @@ is using.
 
 | Method | Path | Body | Notes |
 |---|---|---|---|
-| POST | `/api/auth/pair` | `{code}` | Exchanges the connection code for `{profile, profiles[], access_token, refresh_token, expires_at}`. Tokens default to the first profile; `profiles[]` is the full list for the picker. **Remote (tunneled)** requests must supply the correct `code` (`401` otherwise); **local** requests are trusted and may omit it. Wrong-code attempts are globally rate-limited (`429`). |
+| POST | `/api/auth/pair` | `{code, device_name?, ephemeral?}` | Exchanges the connection code for `{profile, profiles[], access_token, refresh_token, expires_at, server_name}`. Tokens default to the first profile; `profiles[]` is the full list for the picker; `server_name` labels the server in the client. `device_name` labels this device in the operator's paired-devices list (User-Agent when omitted). `ephemeral: true` (honored for **local** requests only) returns an access token with no stored session and no `refresh_token` - it is how the operator's own tooling (`northrou status`, the TUI, the CLI) signs in without appearing in the paired-devices list, which means *streaming clients*, not the admin's terminal. **Remote (tunneled)** requests must supply the correct `code` (`401` otherwise) and always get a tracked session; **local** requests are trusted and may omit the code. Wrong-code attempts are globally rate-limited (`429`). |
 | POST | `/api/auth/select-profile` | `{refresh_token, profile_id}` | Switches the active profile. Rotates the refresh token and returns `{profile, access_token, refresh_token, expires_at}` scoped to `profile_id`. `404` if the profile does not exist, `401` on a bad/rotated refresh token. |
 | POST | `/api/auth/refresh` | `{refresh_token}` | Rotates and returns a new token pair for the same profile |
 | POST | `/api/auth/logout` | `{refresh_token}` | Revokes the refresh token |
-| GET | `/api/me` | - | `{profile, profiles[], admin}` for the current session. `admin` is `true` only for a local (non-tunnel) request. |
+| GET | `/api/me` | - | `{profile, profiles[], admin, server_name}` for the current session. `admin` is `true` only for a local (non-tunnel) request. |
 | POST | `/api/me/language` | `{audio, subtitle}` | Set the current profile's preferred audio/subtitle language (ISO-639; empty clears it) |
 
 > **`admin` means "this request is local", not "this profile may administer".**
@@ -42,9 +42,10 @@ is using.
 
 The connection code is drawn from a 10-character ambiguity-free alphabet
 (`NR-XXXXX-XXXXX`, ~50 bits). It is displayed during setup, shown in Server
-admin, and printed by `northrou cc`. Rotating it stops new devices from pairing
-but does not sign out already-paired devices (they hold their own refresh
-tokens). A `profile` object is `{id, name, avatar?}`.
+admin, and printed by `northrou cc`. Rotating it
+(`POST /api/admin/connection-code/rotate`, or `northrou cc rotate`) also
+revokes every paired device's session, so the old code and old devices go
+together. A `profile` object is `{id, name, avatar?}`.
 
 ### Profiles
 
@@ -82,19 +83,29 @@ progress) stay open to any signed-in session.
 ## First-run setup
 
 Only usable while no account exists, and only from a local request (`403` over
-the tunnel).
+the tunnel). These endpoints are driven by the terminal setup wizard
+(`northrou setup`); there is no browser setup page.
 
 | Method | Path | Body |
 |---|---|---|
-| GET | `/api/setup/status` | → `{needs_setup}` |
-| POST | `/api/setup/complete` | `{profile_name?, tmdb_api_key, enable_remote}` → `{profile, connection_code, access_token, refresh_token}` |
+| GET | `/api/setup/status` | → `{needs_setup, server_name}` |
+| POST | `/api/setup/complete` | `{server_name?, profile_name?, tmdb_api_key, enable_remote, movie_dirs?, show_dirs?}` → `{profile, connection_code, access_token, refresh_token}` |
 
-Setup creates the first profile (named `profile_name`, or `Me` if omitted),
-issues the server **connection code** (returned as `connection_code`), and signs
-the operator straight in. Since setup runs locally, that session is
-admin-capable. Media folders are not part of setup: they are configured on the
-server itself (`northrou admin` → Library), since the paths describe the
-server's own filesystem.
+Setup names the server (`server_name`; clients see it when pairing), creates
+the first profile (named `profile_name`, or `Me` if omitted), issues the server
+**connection code** (returned as `connection_code`), and signs the operator
+straight in. Since setup runs locally, that session is admin-capable. The
+session is ephemeral (`refresh_token` is empty): the wizard is the operator's
+own terminal, not a paired device.
+
+`movie_dirs` / `show_dirs` are the one deliberate exception to "media folders
+are never settable over the API": setup is local-only and once-ever, and
+sending them through the daemon writes them into the daemon's own
+`config.toml` (which may not be the same file the wizard process reads, e.g. a
+service running as root). Each path must be absolute and exist on the server
+(`400` otherwise, before any state changes); they merge with any folders
+already on disk. After setup, folders are managed on the server itself
+(`northrou admin` → Library).
 
 ## Library
 
@@ -211,19 +222,38 @@ from a browser on the server's own network or the CLI. See
 | GET | `/api/admin/streams` | no | Active streams (mode, codecs, backend, client) |
 | GET | `/api/admin/hardware` | no | Detected acceleration + estimated capacity |
 | GET | `/api/admin/update` | no | Check for a newer release |
+| GET | `/api/admin/logs` | no | Tail of the server log, plain text; `?n=` lines (default 200, max 5000) |
+| GET | `/api/admin/sessions` | no | Paired devices: `[{id, device_name, profile_name, paired_at, last_seen_at}]` |
 | PATCH | `/api/admin/config` | **yes** | Partial configuration update |
 | POST | `/api/admin/scan` | **yes** | Start a library scan of the server-configured folders |
 | POST | `/api/admin/match` | **yes** | Force a file to a specific TMDB title (manual correction) |
 | POST | `/api/admin/update` | **yes** | Download and install the latest release |
+| POST | `/api/admin/connection-code/rotate` | **yes** | Mint a fresh connection code → `{connection_code}` |
+| DELETE | `/api/admin/sessions/{id}` | **yes** | Revoke one paired device (`404` if unknown) |
+
+### Devices & code rotation
+
+`GET /api/admin/sessions` lists the devices currently paired with the server,
+one entry per device across its token rotations. Device names come from the
+`device_name` the client sent to `POST /api/auth/pair` (falling back to its
+User-Agent).
+
+`POST /api/admin/connection-code/rotate` replaces the connection code **and
+revokes every paired device's session** — a rotation that left old devices
+connected would not be one. The running server re-registers with the
+coordinator under the new code immediately. Devices on the server's own
+network re-pair automatically (local pairing needs no code); every remote
+device must enter the new code. The CLI equivalents are `northrou devices`,
+`northrou devices revoke <id>`, and `northrou cc rotate`.
 
 ### Configuration
 
 `/api/admin/config` exposes the subset of `config.toml` the settings screen edits:
-`prefer_system_ffmpeg`, `max_transcodes` (0 = auto), `allow_software_4k`,
-`tonemap`, `remote_enabled`, `connection_code`, and the language preferences
-`preferred_audio_lang` / `preferred_subtitle_lang` (ISO-639 codes, default
-`en`), which drive audio/subtitle track selection independently of the TMDB
-metadata language.
+`server_name`, `prefer_system_ffmpeg`, `max_transcodes` (0 = auto),
+`allow_software_4k`, `tonemap`, `remote_enabled`, `connection_code`, and the
+language preferences `preferred_audio_lang` / `preferred_subtitle_lang`
+(ISO-639 codes, default `en`), which drive audio/subtitle track selection
+independently of the TMDB metadata language.
 
 ### Manual match
 
@@ -241,7 +271,11 @@ directory the daemon can read. `POST /api/admin/scan` still triggers a scan of
 whatever folders are configured there; it just does not choose them.
 
 **The TMDB key is never returned**, only a `has_tmdb_key` boolean, so reading the
-config never leaks it. It can be written.
+config never leaks it. It is write-only through the same `PATCH`: send
+`tmdb_api_key` with a value to set or replace it, or an empty string to remove
+it. The change takes effect on the running server immediately (the next scan
+uses it) — no restart. This is what the settings TMDB-key field and the
+`northrou tmdb-key set|clear` command drive.
 
 Bind address, port and `data_dir` are deliberately not editable here: changing
 them through the very connection you are using is how you lock yourself out of

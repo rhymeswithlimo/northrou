@@ -27,6 +27,10 @@ type Config struct {
 
 // ServerConfig covers how the HTTP daemon binds and where it stores state.
 type ServerConfig struct {
+	// Name is the human-facing name for this server ("Living Room NAS"),
+	// chosen during setup and shown to every client that pairs with it.
+	// Empty means unnamed; DisplayName falls back to the machine's hostname.
+	Name string `toml:"name"`
 	// BindAddr is the interface the HTTP server listens on. Empty means all
 	// interfaces. Local clients connect straight here; remote clients arrive
 	// over the peer-to-peer tunnel (see RemoteConfig).
@@ -35,6 +39,19 @@ type ServerConfig struct {
 	// DataDir holds the SQLite database, cached images, managed ffmpeg,
 	// generated subtitles, and HLS scratch space.
 	DataDir string `toml:"data_dir"`
+}
+
+// DisplayName returns the configured server name, falling back to the
+// machine's hostname and finally to "Northrou" so callers always have
+// something presentable to show.
+func (c *Config) DisplayName() string {
+	if c.Server.Name != "" {
+		return c.Server.Name
+	}
+	if host, err := os.Hostname(); err == nil && host != "" {
+		return host
+	}
+	return "Northrou"
 }
 
 // MediaConfig lists the on-disk libraries to scan and the household's language

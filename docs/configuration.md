@@ -19,6 +19,7 @@ from it.
 
 ```toml
 [server]
+name = "Living Room NAS"         # shown to every device that pairs
 bind_addr = ""          # "" = all interfaces
 port = 8674
 data_dir = "/var/lib/northrou"   # database, images, ffmpeg, subtitles, HLS scratch
@@ -51,6 +52,9 @@ auto_update_disabled = false   # true turns off background self-update
 ## Fields
 
 ### `[server]`
+- **name** - the human-facing name for this server ("Living Room NAS"), chosen
+  during `northrou setup` and shown to every client that pairs with it. Empty
+  falls back to the machine's hostname.
 - **bind_addr** - network interface to listen on. Empty binds all interfaces.
   **Admin actions are allowed only from a local connection** — one from loopback
   or a private/LAN address that is not the remote tunnel — so a request from a

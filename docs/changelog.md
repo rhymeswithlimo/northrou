@@ -43,8 +43,55 @@ land the change, not after the fact.
   client use to pair), so you don't have to dig it out of config.toml. Aliases:
   `code`, `connection-code`. On a box running the system service (as root), run
   it with `sudo`.
+- **Setup now happens in your terminal.** `northrou setup` walks through
+  everything on the server itself - name your server, add media folders, an
+  optional TMDB key, and remote access - and finishes by showing the connection
+  code and kicking off the first scan. No browser needed, which is exactly what
+  a headless NAS over SSH wants; the browser setup page is gone. Re-running it
+  on a configured server shows a recap and opens the dashboard.
+- **Servers have names.** Setup asks what to call the server ("Living Room
+  NAS"); every device that pairs sees the name instead of a bare address or
+  code. Stored as `name` under `[server]`; editable via the settings API.
+- `northrou status` shows what the server is doing in one shot - service state,
+  addresses, setup progress, remote access, library counts, ffmpeg readiness -
+  and, when something is missing, the exact next command to run.
+- `northrou doctor` checks the setup end to end (config, data dir, media
+  folders, port, ffmpeg, Tesseract, TMDB key, coordinator reachability) with
+  pass/warn/fail lines, and exits non-zero when something is actually broken.
+- `northrou start` / `stop` / `restart` control the installed service; no more
+  `uninstall && install` just to restart.
+- `northrou logs [-f] [-n N]` shows (or follows) the server's log. The daemon
+  now writes a size-rotated log file under `data_dir/logs` regardless of how it
+  was started, and the settings page's View logs button shows the same tail.
+- **See and revoke paired devices.** `northrou devices` lists every device
+  paired with the server (also in the TUI's new Remote tab and in local web
+  settings); revoke one with `northrou devices revoke <id>`. The list means
+  streaming clients: the operator's own tooling (status, the TUI, the CLI)
+  signs in ephemerally and never appears in it.
+- **Rotate the connection code.** `northrou cc rotate` (or the button in the
+  TUI/settings) mints a fresh code and signs every device out; devices at home
+  re-pair automatically, remote ones need the new code.
+- **Add, change, or remove the TMDB API key after setup.** If you skipped the
+  key during setup (or want to change or clear it), there's now a field for it
+  in local Server admin settings and a `northrou tmdb-key set <key>` /
+  `northrou tmdb-key clear` command. The key stays write-only (the server never
+  echoes it) and the change takes effect on the running server immediately -
+  no restart, the next scan uses it.
+
+### Improved
+- The client's connect page is now a welcome page: enter your server's
+  connection code and start watching, with the celebration moved to the moment
+  a device successfully pairs.
+- Settings shows the server's name everywhere it used to show a bare address
+  or connection code.
 
 ### Fixed
+- Turning remote access on (in setup or settings) now starts the tunnel
+  immediately; it used to silently wait for the next server restart, so the
+  connection code you had just been shown didn't work yet. Rotating the code
+  re-registers with the coordinator on the spot for the same reason.
+- `northrou update` now restarts the running service itself after installing,
+  instead of telling you to `uninstall && install`.
 - Displayed error messages now read consistently - capitalized and ending in a
   full stop - whatever their source, including raw coordinator/backend strings
   that are lowercase by Go convention.

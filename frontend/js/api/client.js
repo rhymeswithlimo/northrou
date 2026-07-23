@@ -93,11 +93,11 @@ async function refreshTokens() {
 
 /**
  * @param {string} path e.g. "/api/home"
- * @param {{method?: string, body?: any, auth?: boolean,
+ * @param {{method?: string, body?: any, auth?: boolean, text?: boolean,
  *          signal?: AbortSignal, query?: Record<string, any>}} [opts]
  */
 export async function request(path, opts = {}) {
-    const { method = 'GET', body, auth = true, signal, query } = opts;
+    const { method = 'GET', body, auth = true, text = false, signal, query } = opts;
 
     let url = apiUrl(path);
     if (query) {
@@ -146,6 +146,8 @@ export async function request(path, opts = {}) {
 
     if (!res.ok) throw await toError(res);
     if (res.status === 204) return null;
+    // Plain-text endpoints (the server log tail) opt out of JSON parsing.
+    if (text) return res.text();
     return parseBody(res);
 }
 

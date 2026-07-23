@@ -13,6 +13,7 @@ import (
 	"github.com/rhymeswithlimo/northrou/backend/internal/auth"
 	"github.com/rhymeswithlimo/northrou/backend/internal/config"
 	"github.com/rhymeswithlimo/northrou/backend/internal/db"
+	"github.com/rhymeswithlimo/northrou/backend/internal/metadata"
 	"github.com/rhymeswithlimo/northrou/backend/internal/recommend"
 	"github.com/rhymeswithlimo/northrou/backend/internal/scanner"
 	"github.com/rhymeswithlimo/northrou/backend/internal/transcode"
@@ -27,6 +28,7 @@ type Deps struct {
 	ConfigPath string
 	Scanner    *scanner.Scanner
 	Recommend  *recommend.Engine
+	TMDB       *metadata.Client
 	ImagesDir  string
 }
 
@@ -38,8 +40,10 @@ type API struct {
 	// (see limiter.go for why per-IP is not possible on the box).
 	pairLimiter *limiter
 
-	mu       sync.RWMutex
-	streamer *transcode.Streamer // set once ffmpeg is ready
+	mu            sync.RWMutex
+	streamer      *transcode.Streamer // set once ffmpeg is ready
+	remoteSync    func()              // starts/stops the remote peer to match Cfg (set by app)
+	remoteRestart func()              // bounces the remote peer to pick up a new code (set by app)
 }
 
 // New constructs the API.
@@ -62,6 +66,37 @@ func (a *API) getStreamer() *transcode.Streamer {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	return a.streamer
+}
+
+// SetRemoteSync wires the app callbacks that manage the remote peer: sync
+// reconciles it with Cfg.Remote.Enabled (so flipping remote access in setup or
+// settings takes effect immediately rather than on the next restart), and
+// restart bounces a running peer so it re-registers under a rotated code.
+func (a *API) SetRemoteSync(sync, restart func()) {
+	a.mu.Lock()
+	a.remoteSync = sync
+	a.remoteRestart = restart
+	a.mu.Unlock()
+}
+
+// syncRemote invokes the app's remote reconciler, if wired (tests may not).
+func (a *API) syncRemote() {
+	a.mu.RLock()
+	fn := a.remoteSync
+	a.mu.RUnlock()
+	if fn != nil {
+		fn()
+	}
+}
+
+// restartRemote bounces the remote peer, if wired (tests may not).
+func (a *API) restartRemote() {
+	a.mu.RLock()
+	fn := a.remoteRestart
+	a.mu.RUnlock()
+	if fn != nil {
+		fn()
+	}
 }
 
 // Mount registers all API routes on r under /api.
@@ -138,6 +173,8 @@ func (a *API) Mount(r chi.Router) {
 			r.Get("/admin/streams", a.handleAdminStreams)
 			r.Get("/admin/hardware", a.handleAdminHardware)
 			r.Get("/admin/update", a.handleUpdateCheck)
+			r.Get("/admin/logs", a.handleAdminLogs)
+			r.Get("/admin/sessions", a.handleListSessions)
 
 			// Admin mutations: allowed only from a trusted local request (not
 			// tunneled, and a loopback/private peer). Tunneled requests and
@@ -148,6 +185,8 @@ func (a *API) Mount(r chi.Router) {
 				r.Post("/admin/scan", a.handleStartScan)
 				r.Post("/admin/match", a.handleManualMatch)
 				r.Post("/admin/update", a.handleUpdateApply)
+				r.Post("/admin/connection-code/rotate", a.handleRotateConnectionCode)
+				r.Delete("/admin/sessions/{id}", a.handleRevokeSession)
 				r.Delete("/profiles/{id}", a.handleDeleteProfile)
 			})
 			// stream / subtitles / home mount here in P3-P6.

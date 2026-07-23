@@ -18,7 +18,7 @@ const listEl = $('#profiles');
 $('.profiles__title').textContent = watchingGreeting();
 
 if (!(await requireServer())) throw new Error('no server');
-if (!isSignedIn()) window.location.replace('connect.html');
+if (!isSignedIn()) window.location.replace('welcome.html');
 else reveal();
 
 function profileNode(profile) {
@@ -67,7 +67,7 @@ async function render() {
         profiles = await listProfiles();
     } catch (err) {
         if (err.isAuth) {
-            window.location.replace('connect.html');
+            window.location.replace('welcome.html');
             return;
         }
         listEl.replaceChildren(statePanel({

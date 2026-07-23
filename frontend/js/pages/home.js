@@ -7,7 +7,8 @@ import { posterCard, continueCard, row } from '../components/card.js';
 import { createDetailModal } from '../components/detail.js';
 import { statePanel, skeletonRow, toast, mountOfflineBanner } from '../components/states.js';
 import { getHero, getContinueWatching, getHomeRows, getDetail } from '../data/library.js';
-import { requireServer, requireReady } from '../api/connect.js';
+import { requireServer, requireReady, needsSetup } from '../api/connect.js';
+import { isSameOrigin } from '../data/servers.js';
 import { mountNativeChrome, setNativeChromeVisible } from '../components/native-chrome.js';
 
 const rowsEl = $('#rows');
@@ -111,11 +112,32 @@ document.addEventListener('click', (e) => {
     openDetail(target.dataset.kind, target.dataset.id);
 });
 
+// A browser on a box that has not been set up yet: setup happens on the server
+// itself, so all this page can do is say so, plainly, instead of pairing into
+// an account that does not exist and rendering an inexplicable empty library.
+function renderNeedsSetup() {
+    reveal();
+    const panel = statePanel({
+        title: 'Almost there',
+        body: 'This server has not been set up yet. In a terminal on the server, run '
+            + '`northrou setup` to name it, add your media folders, and get your connection code.',
+        action: { label: "I've run it", onClick: () => window.location.reload() },
+    });
+    panel.classList.add('state--fill');
+    heroEl.replaceChildren();
+    rowsEl.replaceChildren(panel);
+}
+
 // Resolve the server (same-origin or tunnel), then gate on first-run setup and
 // sign-in, before building the shell. An app starts knowing nothing about which
 // box it belongs to; a fresh box needs setup; a second device needs to sign in.
 // Doing this first means a redirect fires ahead of any shell or skeleton flash.
-if (await requireServer() && await requireReady()) {
+const serverOk = await requireServer();
+const setupPending = serverOk && isSameOrigin() && await needsSetup();
+if (setupPending) {
+    renderNeedsSetup();
+}
+if (serverOk && !setupPending && await requireReady()) {
     // Staying here: reveal before building the shell so the home skeleton is
     // what appears, not a flash on the way to a redirect that isn't happening.
     reveal();

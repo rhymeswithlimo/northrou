@@ -1,8 +1,12 @@
 package api
 
 import (
+	"errors"
 	"net/http"
+	"os"
+	"strconv"
 
+	"github.com/rhymeswithlimo/northrou/backend/internal/logging"
 	"github.com/rhymeswithlimo/northrou/backend/internal/transcode"
 )
 
@@ -50,4 +54,28 @@ func (a *API) handleAdminHardware(w http.ResponseWriter, r *http.Request) {
 		ActiveTranscodes:  sm.ActiveTranscodes(),
 		FFmpegReady:       true,
 	})
+}
+
+// handleAdminLogs returns the tail of the server's log file as plain text, for
+// the settings page's log viewer and remote troubleshooting. An admin read like
+// the rest of this file: status, not control.
+func (a *API) handleAdminLogs(w http.ResponseWriter, r *http.Request) {
+	n := 200
+	if q := r.URL.Query().Get("n"); q != "" {
+		v, err := strconv.Atoi(q)
+		if err != nil || v < 1 || v > 5000 {
+			writeError(w, http.StatusBadRequest, "n must be between 1 and 5000")
+			return
+		}
+		n = v
+	}
+	tail, err := logging.Tail(logging.Path(a.Cfg.Server.DataDir), n)
+	if errors.Is(err, os.ErrNotExist) {
+		tail = []byte("No log file yet.\n")
+	} else if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not read the log file")
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	_, _ = w.Write(tail)
 }

@@ -4,36 +4,46 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"slices"
+	"strings"
 	"time"
 )
 
 // StoredToken is a persisted refresh token record (hash only, never the raw
 // token). ProfileID records which profile the device is currently using, so a
 // refresh mints an access token for the same profile without another pin.
+// DeviceID/DeviceName identify the paired device across token rotations.
 type StoredToken struct {
-	ID        int64
-	ProfileID int64
-	ExpiresAt time.Time
-	Revoked   bool
+	ID         int64
+	ProfileID  int64
+	ExpiresAt  time.Time
+	Revoked    bool
+	DeviceID   string
+	DeviceName string
 }
 
-// InsertRefreshToken stores the hash of a refresh token bound to a profile.
-func (d *DB) InsertRefreshToken(ctx context.Context, profileID int64, tokenHash string, expiresAt time.Time) error {
+// InsertRefreshToken stores the hash of a refresh token bound to a profile and
+// the device it belongs to. deviceID stays stable across rotations; a fresh
+// pair mints a new one.
+func (d *DB) InsertRefreshToken(ctx context.Context, profileID int64, tokenHash string, expiresAt time.Time, deviceID, deviceName string) error {
 	_, err := d.ExecContext(ctx,
-		`INSERT INTO refresh_tokens (profile_id, token_hash, expires_at) VALUES (?, ?, ?)`,
-		profileID, tokenHash, expiresAt)
+		`INSERT INTO refresh_tokens (profile_id, token_hash, expires_at, device_id, device_name, last_used_at)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
+		profileID, tokenHash, expiresAt, deviceID, deviceName, time.Now())
 	return err
 }
 
 // GetRefreshToken looks up a refresh token by its hash.
 func (d *DB) GetRefreshToken(ctx context.Context, tokenHash string) (*StoredToken, error) {
 	row := d.QueryRowContext(ctx,
-		`SELECT id, profile_id, expires_at, revoked FROM refresh_tokens WHERE token_hash = ?`,
+		`SELECT id, profile_id, expires_at, revoked, device_id, device_name
+		 FROM refresh_tokens WHERE token_hash = ?`,
 		tokenHash)
 	var t StoredToken
 	var revoked int
 	var profileID sql.NullInt64
-	err := row.Scan(&t.ID, &profileID, &t.ExpiresAt, &revoked)
+	err := row.Scan(&t.ID, &profileID, &t.ExpiresAt, &revoked, &t.DeviceID, &t.DeviceName)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -58,3 +68,112 @@ func (d *DB) DeleteExpiredTokens(ctx context.Context) error {
 		`DELETE FROM refresh_tokens WHERE expires_at < ? OR revoked = 1`, time.Now())
 	return err
 }
+
+// DeviceSession is one paired device, as shown to the operator: the newest
+// active token per device plus when the device first paired and was last seen.
+type DeviceSession struct {
+	// Key identifies the device for revocation: its device_id, or "row-<id>"
+	// for tokens from before device tracking existed.
+	Key         string
+	DeviceName  string
+	ProfileName string
+	CreatedAt   time.Time
+	LastUsedAt  time.Time
+}
+
+// ListDeviceSessions returns the currently-paired devices (active, unexpired
+// tokens grouped per device), most recently used first.
+func (d *DB) ListDeviceSessions(ctx context.Context) ([]DeviceSession, error) {
+	// last_used_at is selected raw and coalesced in Go: written by this code
+	// it is a driver time value, but created_at comes from SQLite's own
+	// CURRENT_TIMESTAMP, and a SQL COALESCE across the two degrades to a plain
+	// string the driver refuses to scan into time.Time.
+	rows, err := d.QueryContext(ctx,
+		`SELECT rt.id, rt.device_id, rt.device_name, rt.created_at,
+		        rt.last_used_at, COALESCE(p.name, '')
+		 FROM refresh_tokens rt
+		 LEFT JOIN profiles p ON p.id = rt.profile_id
+		 WHERE rt.revoked = 0 AND rt.expires_at > ?
+		 ORDER BY rt.id ASC`, time.Now())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	// Group in Go: a household has a handful of devices, and later rows (the
+	// ORDER BY follows insertion order, i.e. rotation order) carry the newest
+	// name/profile/last-seen, so each device ends up described by its latest
+	// token while keeping the earliest created_at as "paired since".
+	byKey := map[string]*DeviceSession{}
+	var order []string
+	for rows.Next() {
+		var id int64
+		var deviceID, deviceName, profileName string
+		var created time.Time
+		var lastUsedN sql.NullTime
+		if err := rows.Scan(&id, &deviceID, &deviceName, &created, &lastUsedN, &profileName); err != nil {
+			return nil, err
+		}
+		lastUsed := created
+		if lastUsedN.Valid {
+			lastUsed = lastUsedN.Time
+		}
+		key := deviceID
+		if key == "" {
+			key = fmt.Sprintf("row-%d", id)
+		}
+		s, ok := byKey[key]
+		if !ok {
+			s = &DeviceSession{Key: key, CreatedAt: created}
+			byKey[key] = s
+			order = append(order, key)
+		}
+		s.DeviceName = deviceName
+		s.ProfileName = profileName
+		s.LastUsedAt = lastUsed
+		if created.Before(s.CreatedAt) {
+			s.CreatedAt = created
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	out := make([]DeviceSession, 0, len(order))
+	for _, key := range order {
+		out = append(out, *byKey[key])
+	}
+	// Most recently used first.
+	slices.SortStableFunc(out, func(a, b DeviceSession) int {
+		return b.LastUsedAt.Compare(a.LastUsedAt)
+	})
+	return out, nil
+}
+
+// RevokeDeviceSession revokes every token belonging to the device identified
+// by a DeviceSession.Key. It reports ErrNotFound when nothing matched.
+func (d *DB) RevokeDeviceSession(ctx context.Context, key string) error {
+	var res sql.Result
+	var err error
+	if id, ok := strings.CutPrefix(key, "row-"); ok {
+		res, err = d.ExecContext(ctx,
+			`UPDATE refresh_tokens SET revoked = 1 WHERE id = ? AND revoked = 0`, id)
+	} else {
+		res, err = d.ExecContext(ctx,
+			`UPDATE refresh_tokens SET revoked = 1 WHERE device_id = ? AND device_id != '' AND revoked = 0`, key)
+	}
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// RevokeAllTokens revokes every refresh token: every paired device must pair
+// again. Used when the connection code is rotated.
+func (d *DB) RevokeAllTokens(ctx context.Context) error {
+	_, err := d.ExecContext(ctx, `UPDATE refresh_tokens SET revoked = 1`)
+	return err
+}
+

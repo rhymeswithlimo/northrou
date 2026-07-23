@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 
@@ -12,10 +11,6 @@ import (
 	"github.com/rhymeswithlimo/northrou/backend/internal/update"
 	"github.com/spf13/cobra"
 )
-
-// errNotYet marks commands whose full behavior arrives in a later build phase.
-// The commands exist now so the CLI surface is stable.
-var errNotYet = errors.New("not implemented yet in this build")
 
 func newInstallCmd() *cobra.Command {
 	return &cobra.Command{
@@ -110,7 +105,18 @@ func newUpdateCmd() *cobra.Command {
 			if err := u.Apply(cmd.Context(), latest); err != nil {
 				return needsRoot(cmd, err)
 			}
-			notice("Updated to %s. Restart the service to run the new version:\n  sudo northrou uninstall && sudo northrou install", latest.Version)
+			// The new binary is in place; the running service is still the old
+			// one until it restarts. Do that here rather than asking the
+			// operator to.
+			if st, err := service.GetStatus(flagConfigPath); err == nil && st == service.StatusRunning {
+				if err := service.Restart(flagConfigPath); err != nil {
+					notice("Updated to %s, but the running service could not be restarted (%v).\nRestart it to run the new version:  sudo northrou restart", latest.Version, err)
+					return nil
+				}
+				notice("Updated to %s and restarted the service.", latest.Version)
+				return nil
+			}
+			notice("Updated to %s.", latest.Version)
 			return nil
 		},
 	}

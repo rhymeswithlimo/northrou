@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -23,6 +24,7 @@ import (
 	"github.com/rhymeswithlimo/northrou/backend/internal/config"
 	"github.com/rhymeswithlimo/northrou/backend/internal/db"
 	"github.com/rhymeswithlimo/northrou/backend/internal/ffmpeg"
+	"github.com/rhymeswithlimo/northrou/backend/internal/logging"
 	"github.com/rhymeswithlimo/northrou/backend/internal/mediainfo"
 	"github.com/rhymeswithlimo/northrou/backend/internal/metadata"
 	"github.com/rhymeswithlimo/northrou/backend/internal/recommend"
@@ -61,6 +63,15 @@ type App struct {
 	// update and exiting relies on the service manager restarting the
 	// process, which does not happen for a terminal-attached foreground run.
 	RunAsService bool
+
+	// Remote-peer lifecycle. bgCtx is the parent context for background
+	// subsystems, set by StartBackground; remoteCancel is non-nil while the
+	// peer goroutine runs. Guarded by remoteMu because SyncRemote is called
+	// both at boot and from API handlers when setup or a settings PATCH flips
+	// Remote.Enabled at runtime.
+	remoteMu     sync.Mutex
+	bgCtx        context.Context
+	remoteCancel context.CancelFunc
 }
 
 // New builds an App from the config at configPath, opening and migrating the
@@ -118,6 +129,7 @@ func New(configPath string) (*App, error) {
 		ConfigPath: configPath,
 		Scanner:    scan,
 		Recommend:  rec,
+		TMDB:       tmdb,
 		ImagesDir:  images.Dir(),
 	})
 
@@ -133,7 +145,7 @@ func New(configPath string) (*App, error) {
 		"first_run", firstRun,
 	)
 
-	return &App{
+	a := &App{
 		Cfg:        cfg,
 		ConfigPath: configPath,
 		DB:         database,
@@ -145,7 +157,12 @@ func New(configPath string) (*App, error) {
 		API:        apiSrv,
 		Server:     httpSrv,
 		FirstRun:   firstRun,
-	}, nil
+	}
+	// Let the API start/stop the remote peer when setup or a settings PATCH
+	// flips Remote.Enabled, and bounce it when the connection code rotates,
+	// instead of either change waiting for a restart.
+	apiSrv.SetRemoteSync(a.SyncRemote, a.RestartRemote)
+	return a, nil
 }
 
 // Run starts the HTTP server and blocks until ctx is cancelled, then shuts
@@ -155,25 +172,72 @@ func (a *App) Run(ctx context.Context) error {
 	if err := a.Server.Start(); err != nil {
 		return err
 	}
-
-	go a.ensureFFmpeg(ctx)
-
-	// Remote access: register with the coordination server and tunnel the API
-	// over WebRTC. A browser served off this box talks to it directly; the apps
-	// reach it through this tunnel.
-	if a.Cfg.Remote.Enabled {
-		go a.startRemote(ctx)
-	}
-
-	if a.RunAsService {
-		go a.autoUpdate(ctx)
-	}
+	a.StartBackground(ctx)
 
 	<-ctx.Done()
 	slog.Info("shutting down")
 	shutCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	return a.Server.Shutdown(shutCtx)
+}
+
+// StartBackground launches the subsystems that accompany a serving App:
+// the ffmpeg resolver, the remote peer (when enabled), and - under a service
+// manager - the auto-updater. Split from Run so `northrou setup`, which owns
+// the foreground with a TUI, gets the same fully-functional server.
+func (a *App) StartBackground(ctx context.Context) {
+	a.remoteMu.Lock()
+	a.bgCtx = ctx
+	a.remoteMu.Unlock()
+
+	// From here on the daemon's log lines also land in data_dir/logs, where
+	// `northrou logs` and the settings page read them back.
+	logging.AttachFile(a.Cfg.Server.DataDir)
+
+	go a.ensureFFmpeg(ctx)
+
+	// Remote access: register with the coordination server and tunnel the API
+	// over WebRTC. A browser served off this box talks to it directly; the apps
+	// reach it through this tunnel.
+	a.SyncRemote()
+
+	if a.RunAsService {
+		go a.autoUpdate(ctx)
+	}
+}
+
+// SyncRemote starts or stops the remote peer so it matches Cfg.Remote.Enabled.
+// Safe to call any time; before StartBackground it is a no-op (Run will sync).
+// This is what makes "enable remote access" in setup or settings take effect
+// immediately instead of on the next restart.
+func (a *App) SyncRemote() {
+	a.remoteMu.Lock()
+	defer a.remoteMu.Unlock()
+
+	enabled := a.Cfg.Remote.Enabled
+	switch {
+	case enabled && a.remoteCancel == nil && a.bgCtx != nil:
+		ctx, cancel := context.WithCancel(a.bgCtx)
+		a.remoteCancel = cancel
+		go a.startRemote(ctx)
+	case !enabled && a.remoteCancel != nil:
+		a.remoteCancel()
+		a.remoteCancel = nil
+		slog.Info("remote access disabled; peer stopped")
+	}
+}
+
+// RestartRemote stops a running remote peer and starts a fresh one, so it
+// re-registers with the coordinator under the current (e.g. just-rotated)
+// connection code. A no-op when remote access is off or nothing has started.
+func (a *App) RestartRemote() {
+	a.remoteMu.Lock()
+	if a.remoteCancel != nil {
+		a.remoteCancel()
+		a.remoteCancel = nil
+	}
+	a.remoteMu.Unlock()
+	a.SyncRemote()
 }
 
 // startRemote launches the WebRTC peer that brokers remote client connections

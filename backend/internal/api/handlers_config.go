@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/rhymeswithlimo/northrou/backend/internal/config"
 	"github.com/rhymeswithlimo/northrou/backend/internal/language"
@@ -23,6 +24,8 @@ import (
 // scanner anywhere the daemon can read. Read them from disk when you need them
 // (see mediaDirs) rather than trusting the long-lived in-memory copy.
 type configDTO struct {
+	ServerName string `json:"server_name"`
+
 	PreferSystemFFmpeg bool `json:"prefer_system_ffmpeg"`
 	MaxTranscodes      int  `json:"max_transcodes"` // 0 = auto
 	AllowSoftware4K    bool `json:"allow_software_4k"`
@@ -40,6 +43,7 @@ type configDTO struct {
 
 func toConfigDTO(c *config.Config) configDTO {
 	return configDTO{
+		ServerName:            c.DisplayName(),
 		PreferSystemFFmpeg:    c.Transcode.PreferSystemFFmpeg,
 		MaxTranscodes:         c.Transcode.MaxTranscodes,
 		AllowSoftware4K:       c.Transcode.AllowSoftware4K,
@@ -69,6 +73,8 @@ func (a *API) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 // distinguishable from "set to false/empty": without that, a PATCH touching
 // only the transcode cap would silently switch remote access off.
 type configPatch struct {
+	ServerName *string `json:"server_name"`
+
 	PreferSystemFFmpeg *bool `json:"prefer_system_ffmpeg"`
 	MaxTranscodes      *int  `json:"max_transcodes"`
 	AllowSoftware4K    *bool `json:"allow_software_4k"`
@@ -104,6 +110,11 @@ func (a *API) handlePatchConfig(w http.ResponseWriter, r *http.Request) {
 		cfg = &c
 	}
 
+	if p.ServerName != nil {
+		if name := strings.TrimSpace(*p.ServerName); name != "" {
+			cfg.Server.Name = name
+		}
+	}
 	if p.PreferSystemFFmpeg != nil {
 		cfg.Transcode.PreferSystemFFmpeg = *p.PreferSystemFFmpeg
 	}
@@ -152,6 +163,8 @@ func (a *API) handlePatchConfig(w http.ResponseWriter, r *http.Request) {
 
 	*a.Cfg = *cfg
 	a.applyConfig()
+	// A remote_enabled flip takes effect now, not on the next restart.
+	a.syncRemote()
 
 	writeJSON(w, http.StatusOK, toConfigDTO(a.Cfg))
 }
@@ -179,5 +192,11 @@ func (a *API) applyConfig() {
 	if s := a.getStreamer(); s != nil {
 		s.Sessions().SetMaxTranscodes(a.Cfg.Transcode.MaxTranscodes)
 		s.SetPreferredLangs(a.Cfg.Media.PreferredAudioLangs)
+	}
+	// The scanner and manual-match share this one client, so updating the key
+	// here means a key added or removed in settings/CLI takes effect on the
+	// next scan without a restart.
+	if a.TMDB != nil {
+		a.TMDB.SetAPIKey(a.Cfg.TMDB.APIKey)
 	}
 }

@@ -47,7 +47,7 @@ $('#back').addEventListener('click', () => history.back());
 mountOfflineBanner();
 
 if (!(await requireServer())) throw new Error('no server');
-if (!isSignedIn()) window.location.replace('connect.html');
+if (!isSignedIn()) window.location.replace('welcome.html');
 
 let me = null;
 let profiles = [];
@@ -233,7 +233,7 @@ async function renderAdmin() {
     panel.replaceChildren(node);
 
     // ---- server
-    $('#server-name', node).textContent = 'This server';
+    $('#server-name', node).textContent = config.server_name || 'This server';
     $('#server-address', node).textContent = window.location.host || 'local';
     $('#server-status', node).dataset.state = 'connected';
     $('#server-status-text', node).textContent = 'Connected';
@@ -285,11 +285,149 @@ async function renderAdmin() {
 
     toggle($('#remote-access', node), config.remote_enabled, (v) => saveConfig({ remote_enabled: v }));
 
-    $('#switch-server', node).addEventListener('click', () => window.location.assign('connect.html'));
+    renderTmdbKey(node);
+
+    // ---- devices & access
+    $('#connection-code-value', node).textContent = config.connection_code || 'None yet';
+    $('#rotate-code', node).addEventListener('click', onRotateCode);
+    renderDevices(node);
+
+    $('#switch-server', node).addEventListener('click', () => window.location.assign('welcome.html'));
     $('#forget-server', node).addEventListener('click', () => {
         if (!confirm('Forget this server? You will need its connection code to pair again.')) return;
         signOut();
     });
+}
+
+/* ==================== TMDB key ==================== */
+
+// The TMDB key is write-only: the server reports only whether one is set
+// (has_tmdb_key), never the key itself. So this offers "set/replace" and, when
+// one exists, "remove" - it never shows the current value.
+function renderTmdbKey(root) {
+    const input = $('#tmdb-key', root);
+    const save = $('#tmdb-save', root);
+    const remove = $('#tmdb-remove', root);
+    const desc = $('#tmdb-desc', root);
+
+    const reflect = () => {
+        const has = !!config.has_tmdb_key;
+        remove.hidden = !has;
+        input.placeholder = has ? 'A key is set — paste a new one to replace it' : 'Paste your TMDB API key';
+        desc.textContent = has
+            ? 'A key is set. It fetches posters, descriptions, and artwork, and stays on this server.'
+            : 'Add a key to fetch posters, descriptions, and artwork. Free from themoviedb.org; it stays on this server.';
+    };
+    reflect();
+
+    save.addEventListener('click', async () => {
+        const key = input.value.trim();
+        if (!key) {
+            toast('Paste a key first.', { variant: 'error' });
+            return;
+        }
+        save.disabled = true;
+        try {
+            config = await admin.patchConfig({ tmdb_api_key: key });
+            input.value = '';
+            reflect();
+            toast('TMDB key saved. Run a scan to fill in missing artwork.');
+        } catch (err) {
+            toast(err.isForbidden ? ADMIN_LOCAL_ONLY : 'Could not save the key.', { variant: 'error' });
+        } finally {
+            save.disabled = false;
+        }
+    });
+
+    remove.addEventListener('click', async () => {
+        if (!confirm("Remove the TMDB key? New scans won't fetch posters or descriptions until you add one again.")) return;
+        try {
+            config = await admin.patchConfig({ tmdb_api_key: '' });
+            input.value = '';
+            reflect();
+            toast('TMDB key removed.');
+        } catch (err) {
+            toast(err.isForbidden ? ADMIN_LOCAL_ONLY : 'Could not remove the key.', { variant: 'error' });
+        }
+    });
+}
+
+/* ==================== devices & access ==================== */
+
+// A rough "how long ago" for the paired-devices list.
+function agoText(iso) {
+    const t = Date.parse(iso);
+    if (Number.isNaN(t)) return 'unknown';
+    const mins = Math.floor((Date.now() - t) / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins}m ago`;
+    if (mins < 24 * 60) return `${Math.floor(mins / 60)}h ago`;
+    return `${Math.floor(mins / (24 * 60))}d ago`;
+}
+
+async function renderDevices(root) {
+    const list = $('#devices-list', root);
+    const note = $('#devices-note', root);
+    let devices = [];
+    try {
+        devices = await admin.getSessions();
+    } catch {
+        note.textContent = 'Could not load the device list.';
+        return;
+    }
+    if (!devices.length) {
+        note.textContent = 'No devices are paired yet.';
+        list.replaceChildren();
+        return;
+    }
+    note.textContent = `${devices.length} device${devices.length === 1 ? '' : 's'} can watch this library.`;
+    list.replaceChildren(...devices.map((d) => {
+        const li = document.createElement('li');
+        li.className = 'devices__row';
+
+        const text = document.createElement('div');
+        text.className = 'devices__text';
+        const name = document.createElement('p');
+        name.className = 'setting__name';
+        name.textContent = d.device_name || 'Unknown device';
+        const desc = document.createElement('p');
+        desc.className = 'setting__desc';
+        desc.textContent = `${d.profile_name || 'No profile'} · last seen ${agoText(d.last_seen_at)}`;
+        text.append(name, desc);
+
+        const revoke = document.createElement('button');
+        revoke.type = 'button';
+        revoke.className = 'btn btn--quiet';
+        revoke.textContent = 'Revoke';
+        revoke.addEventListener('click', async () => {
+            if (!confirm(`Sign out ${d.device_name || 'this device'}? It will need the connection code to pair again.`)) return;
+            try {
+                await admin.revokeSession(d.id);
+                toast('Device revoked.');
+                renderDevices(root);
+            } catch (err) {
+                toast(err.isForbidden ? ADMIN_LOCAL_ONLY : 'Could not revoke the device.', { variant: 'error' });
+            }
+        });
+
+        li.append(text, revoke);
+        return li;
+    }));
+}
+
+async function onRotateCode() {
+    if (!confirm('Rotate the connection code? Every paired device is signed out and must '
+        + 'pair again with the new code. Devices at home reconnect on their own.')) return;
+    try {
+        const res = await admin.rotateConnectionCode();
+        const codeEl = document.querySelector('#connection-code-value');
+        if (codeEl) codeEl.textContent = res.connection_code;
+        toast(`New code: ${res.connection_code}`);
+        const panel = document.querySelector('#admin-panel .settings__admin-inner');
+        if (panel) renderDevices(panel);
+    } catch (err) {
+        toast(err.isForbidden ? ADMIN_LOCAL_ONLY : 'Could not rotate the code.', { variant: 'error' });
+    }
 }
 
 /* ==================== unmatched files (fix match) ==================== */
@@ -420,6 +558,38 @@ function basename(p) {
     return p.split(/[\\/]/).pop();
 }
 
+/* ==================== logs ==================== */
+
+// The server's recent log lines, in a dialog. Same content as `northrou logs`.
+async function showLogs() {
+    let text;
+    try {
+        text = await admin.getLogs();
+    } catch {
+        toast('Could not load the server log.', { variant: 'error' });
+        return;
+    }
+
+    const dialog = document.createElement('dialog');
+    dialog.className = 'logs-dialog';
+
+    const pre = document.createElement('pre');
+    pre.className = 'logs-dialog__text';
+    pre.textContent = text || 'The log is empty.';
+
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'btn btn--quiet';
+    close.textContent = 'Close';
+    close.addEventListener('click', () => dialog.close());
+
+    dialog.append(pre, close);
+    dialog.addEventListener('close', () => dialog.remove());
+    document.body.appendChild(dialog);
+    dialog.showModal();
+    pre.scrollTop = pre.scrollHeight; // newest lines are the ones being asked about
+}
+
 async function saveConfig(patch) {
     try {
         config = await admin.patchConfig(patch);
@@ -439,7 +609,7 @@ async function init() {
         if (err.isAuth) {
             // Not paired: send to the connect screen. Stay blank, don't flash
             // the settings shell.
-            window.location.replace('connect.html');
+            window.location.replace('welcome.html');
             return;
         }
         // Staying to show the error: reveal so it isn't hidden behind the boot gate.
@@ -454,11 +624,12 @@ async function init() {
     }
 
     reveal();
-    // "Server" row: the box's LAN address when served off it, or the connection
-    // code the app paired with.
-    $('#account-email').textContent = isSameOrigin()
-        ? (window.location.host || 'This server')
-        : (getServer()?.code ?? 'Paired server');
+    // "Server" row: the server's own name (set during `northrou setup`), with
+    // the LAN address / stored pairing as fallbacks for older servers.
+    $('#account-email').textContent = me.server_name
+        || (isSameOrigin()
+            ? (window.location.host || 'This server')
+            : (getServer()?.name ?? getServer()?.code ?? 'Paired server'));
     $('#current-profile').textContent = me.profile.name;
 
     renderProfiles();
@@ -485,7 +656,7 @@ async function init() {
             toast('Could not add the profile.', { variant: 'error' });
         }
     });
-    $('#view-logs').addEventListener('click', () => toast('Logs are not wired up yet.', { variant: 'error' }));
+    $('#view-logs').addEventListener('click', showLogs);
 }
 
 init();

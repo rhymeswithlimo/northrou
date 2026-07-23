@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"testing"
+
+	"github.com/rhymeswithlimo/northrou/backend/internal/setup"
 )
 
 func TestAlreadyServing(t *testing.T) {
@@ -41,9 +43,9 @@ func TestAlreadyServing(t *testing.T) {
 }
 
 func TestLocalIPv4sExcludesLoopback(t *testing.T) {
-	for _, ip := range localIPv4s() {
+	for _, ip := range setup.LocalIPv4s() {
 		if ip == "127.0.0.1" {
-			t.Errorf("localIPv4s should exclude loopback, got %v", localIPv4s())
+			t.Errorf("LocalIPv4s should exclude loopback, got %v", setup.LocalIPv4s())
 		}
 	}
 }

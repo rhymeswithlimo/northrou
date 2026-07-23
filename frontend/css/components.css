@@ -172,7 +172,7 @@
 }
 
 .btn--quiet {
-    background-color: hsl(from var(--muted) h s l / 0.15);
+    background-color: hsl(from var(--muted) h s l / 0.12);
     color: var(--contrast);
 
     @media (hover: hover) {
@@ -186,6 +186,18 @@
 
     @media (hover: hover) {
         &:hover { background-color: hsl(from var(--red) h s l / 0.2); }
+    }
+}
+
+.btn--information {
+    width: fit-content;
+
+    font-size: 13px;
+    padding: 0 !important;
+    color: hsl(from var(--muted) h s l / .75);
+
+    @media (hover: hover) {
+        &:hover { text-decoration: underline; }
     }
 }
 

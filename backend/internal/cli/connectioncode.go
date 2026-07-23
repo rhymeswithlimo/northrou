@@ -9,9 +9,10 @@ import (
 
 // newConnectionCodeCmd prints this server's remote connection code - what apps
 // and the web client enter to pair with the box. A convenience so an operator
-// doesn't have to dig it out of config.toml or the admin TUI.
+// doesn't have to dig it out of config.toml or the admin TUI. `cc rotate`
+// replaces it.
 func newConnectionCodeCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     "cc",
 		Aliases: []string{"code", "connection-code"},
 		Short:   "Print this server's connection code (for pairing apps)",
@@ -34,4 +35,6 @@ func newConnectionCodeCmd() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.AddCommand(newRotateCodeCmd())
+	return cmd
 }

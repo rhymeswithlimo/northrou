@@ -39,17 +39,28 @@ func toProfileDTOs(ps []model.Profile) []profileDTO {
 
 // loginResponse is returned by pair and select-profile. pair includes the full
 // profile list so the client can show the picker; the tokens are scoped to
-// Profile (the default until the user picks another).
+// Profile (the default until the user picks another). ServerName lets the
+// client label the server it just paired with ("Living Room NAS").
 type loginResponse struct {
 	Profile      profileDTO   `json:"profile"`
 	Profiles     []profileDTO `json:"profiles,omitempty"`
 	AccessToken  string       `json:"access_token"`
 	RefreshToken string       `json:"refresh_token"`
 	ExpiresAt    string       `json:"expires_at"`
+	ServerName   string       `json:"server_name,omitempty"`
 }
 
 type pairRequest struct {
 	Code string `json:"code"`
+	// DeviceName labels this device in the operator's paired-devices list
+	// ("Kim's iPhone"). Optional; the User-Agent stands in when absent.
+	DeviceName string `json:"device_name"`
+	// Ephemeral asks for an access token with no stored session, so this pair
+	// never appears in the paired-devices list. Honored only for trusted local
+	// requests (the operator's own tooling: status, the TUI, the CLI); a
+	// remote client asking for it would just be dodging the device list, so
+	// there it is ignored.
+	Ephemeral bool `json:"ephemeral"`
 }
 
 // handlePair exchanges the server connection code for a signed-in session and
@@ -62,12 +73,12 @@ type pairRequest struct {
 // attempts are globally rate-limited to bound guessing (per-IP throttling of the
 // tunnel pairing hop lives upstream at the coordinator, which sees real IPs).
 func (a *API) handlePair(w http.ResponseWriter, r *http.Request) {
+	var req pairRequest
 	if !remote.IsLocal(r) {
 		if !a.pairLimiter.allow("*") {
 			writeError(w, http.StatusTooManyRequests, "too many pairing attempts; try again shortly")
 			return
 		}
-		var req pairRequest
 		if err := decodeJSON(r, &req); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid request body")
 			return
@@ -76,9 +87,22 @@ func (a *API) handlePair(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusUnauthorized, "invalid connection code")
 			return
 		}
+	} else {
+		// Local pairs may name themselves too; a bad body is not worth
+		// rejecting a trusted request over.
+		_ = decodeJSON(r, &req)
 	}
 
-	profiles, selected, pair, err := a.Auth.IssueSession(r.Context())
+	// The operator's own tooling pairs ephemerally: no stored session, no
+	// entry in the paired-devices list. Local-only - a remote client gets a
+	// tracked session whatever it asked for.
+	issue := func() ([]model.Profile, *model.Profile, *auth.TokenPair, error) {
+		if req.Ephemeral && remote.IsLocal(r) {
+			return a.Auth.IssueEphemeralSession(r.Context())
+		}
+		return a.Auth.IssueSession(r.Context(), deviceFrom(r, req.DeviceName))
+	}
+	profiles, selected, pair, err := issue()
 	if err != nil {
 		if errors.Is(err, auth.ErrInvalidCredentials) {
 			writeError(w, http.StatusConflict, "server has no profiles yet; finish setup first")
@@ -93,7 +117,23 @@ func (a *API) handlePair(w http.ResponseWriter, r *http.Request) {
 		AccessToken:  pair.AccessToken,
 		RefreshToken: pair.RefreshToken,
 		ExpiresAt:    pair.ExpiresAt.UTC().Format(http.TimeFormat),
+		ServerName:   a.Cfg.DisplayName(),
 	})
+}
+
+// deviceFrom labels the pairing device: the client's own name when it sent
+// one, otherwise a trimmed User-Agent, so the paired-devices list has
+// something better to show than a blank.
+func deviceFrom(r *http.Request, name string) auth.Device {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		name = strings.TrimSpace(r.UserAgent())
+	}
+	const maxName = 120
+	if len(name) > maxName {
+		name = name[:maxName]
+	}
+	return auth.Device{Name: name}
 }
 
 // connectionCodeMatches reports whether the submitted code equals this server's
@@ -182,9 +222,10 @@ func (a *API) handleLogout(w http.ResponseWriter, r *http.Request) {
 // Admin is true only for trusted local requests (see remote.IsLocal); a remote
 // client through the tunnel, or a direct request from a public IP, is not admin.
 type meResponse struct {
-	Profile  profileDTO   `json:"profile"`
-	Profiles []profileDTO `json:"profiles"`
-	Admin    bool         `json:"admin"`
+	Profile    profileDTO   `json:"profile"`
+	Profiles   []profileDTO `json:"profiles"`
+	Admin      bool         `json:"admin"`
+	ServerName string       `json:"server_name"`
 }
 
 func (a *API) handleMe(w http.ResponseWriter, r *http.Request) {
@@ -208,8 +249,9 @@ func (a *API) handleMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, meResponse{
-		Profile:  toProfileDTO(*prof),
-		Profiles: toProfileDTOs(profiles),
-		Admin:    remote.IsLocal(r),
+		Profile:    toProfileDTO(*prof),
+		Profiles:   toProfileDTOs(profiles),
+		Admin:      remote.IsLocal(r),
+		ServerName: a.Cfg.DisplayName(),
 	})
 }

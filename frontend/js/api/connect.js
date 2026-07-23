@@ -36,16 +36,34 @@ export async function connect() {
 
 /**
  * Boot guard for every screen behind the connection.
- * Sends the client to the bootstrap page when there is no reachable server,
+ * Sends the client to the welcome page when there is no reachable server,
  * rather than letting the screen render and fail one request at a time.
  */
 export async function requireServer() {
     const res = await connect();
     if (!res.ok) {
-        window.location.replace('connect.html');
+        window.location.replace('welcome.html');
         return false;
     }
     return true;
+}
+
+/**
+ * Reports whether the server still needs first-run setup. Setup happens on the
+ * box itself (`northrou setup`), so the client can only say so, not do it.
+ * Errors read as "no": an unreachable server is its own problem, reported by
+ * the caller's render path.
+ * @returns {Promise<boolean>}
+ */
+export async function needsSetup() {
+    try {
+        const res = await fetch('/api/setup/status');
+        if (res.ok) {
+            const { needs_setup } = await res.json();
+            return Boolean(needs_setup);
+        }
+    } catch { /* unreachable; the caller's own render reports it */ }
+    return false;
 }
 
 /**
@@ -53,30 +71,23 @@ export async function requireServer() {
  * requireServer has resolved transport, before rendering anything.
  *
  * Authentication is the connection code:
- *   - On the box (same-origin) the request is local and trusted, so a box that
- *     still needs setup goes to the wizard, and an already-set-up box pairs
- *     automatically with no code. A multi-profile household lands on the picker.
- *   - An app/hosted client reaching the box over the tunnel needs the connection
- *     code, which is entered on connect.html; without a session, go there.
+ *   - On the box (same-origin) the request is local and trusted: an already-
+ *     set-up box pairs automatically with no code, and a multi-profile
+ *     household lands on the picker. A box that still needs setup renders
+ *     anyway - the home page checks needsSetup() and says to run
+ *     `northrou setup` on the server, since setup happens there, not here.
+ *     (Only home has that panel; on a needs-setup box any other page bounces
+ *     settings → welcome → index and ends on it. That chain terminates - it
+ *     is not a redirect loop.)
+ *   - An app/hosted client reaching the box over the tunnel needs the
+ *     connection code, which is entered on welcome.html; without a session,
+ *     go there.
  *
  * Returns true only when the caller may proceed to render.
  * @returns {Promise<boolean>}
  */
 export async function requireReady() {
     if (isSameOrigin()) {
-        try {
-            const res = await fetch('/api/setup/status');
-            if (res.ok) {
-                const { needs_setup } = await res.json();
-                if (needs_setup) {
-                    window.location.replace('setup.html');
-                    return false;
-                }
-            }
-        } catch {
-            // Status unreachable: don't guess. Let the caller's own render path
-            // report the unreachable server.
-        }
         // Local access is trusted: pair without a code to get a session.
         if (!isSignedIn()) {
             try {
@@ -93,9 +104,9 @@ export async function requireReady() {
         return true;
     }
     // App / hosted client: reached the box over the tunnel, which needs a paired
-    // session from connect.html.
+    // session from welcome.html.
     if (!isSignedIn()) {
-        window.location.replace('connect.html');
+        window.location.replace('welcome.html');
         return false;
     }
     return true;

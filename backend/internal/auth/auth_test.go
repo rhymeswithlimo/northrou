@@ -39,7 +39,7 @@ func TestIssueSessionDefaultsToFirstProfile(t *testing.T) {
 	ctx := context.Background()
 	pid := setupAccount(t, database, "Alice")
 
-	profiles, selected, pair, err := svc.IssueSession(ctx)
+	profiles, selected, pair, err := svc.IssueSession(ctx, Device{Name: "test"})
 	if err != nil {
 		t.Fatalf("issue session: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestIssueSessionNoProfiles(t *testing.T) {
 	if err := database.CreateAccount(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, _, err := svc.IssueSession(context.Background()); err != ErrInvalidCredentials {
+	if _, _, _, err := svc.IssueSession(context.Background(), Device{Name: "test"}); err != ErrInvalidCredentials {
 		t.Errorf("expected ErrInvalidCredentials with no profiles, got %v", err)
 	}
 }
@@ -71,7 +71,7 @@ func TestRefreshRotationKeepsProfile(t *testing.T) {
 	ctx := context.Background()
 	pid := setupAccount(t, database, "Carol")
 
-	_, _, pair, err := svc.IssueSession(ctx)
+	_, _, pair, err := svc.IssueSession(ctx, Device{Name: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func TestLogoutRevokesRefresh(t *testing.T) {
 	svc, database := newTestService(t)
 	ctx := context.Background()
 	setupAccount(t, database, "Erin")
-	_, _, pair, err := svc.IssueSession(ctx)
+	_, _, pair, err := svc.IssueSession(ctx, Device{Name: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +117,7 @@ func TestSelectProfileSwitches(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, selected, pair, err := svc.IssueSession(ctx)
+	_, selected, pair, err := svc.IssueSession(ctx, Device{Name: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}

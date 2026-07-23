@@ -20,10 +20,9 @@ export default defineConfig({
     rollupOptions: {
       input: {
         index: page('index'),
-        connect: page('connect'),
+        welcome: page('welcome'),
         profiles: page('profiles'),
         settings: page('settings'),
-        setup: page('setup'),
       },
     },
   },

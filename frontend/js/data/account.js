@@ -51,5 +51,5 @@ export async function signOut() {
         // what actually signs this device out, so it happens either way.
     }
     session.clearSession();
-    window.location.assign('connect.html');
+    window.location.assign('welcome.html');
 }

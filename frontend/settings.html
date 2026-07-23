@@ -37,7 +37,7 @@
 
             <div class="setting">
                 <div class="setting__text">
-                    <p class="setting__name">Server</p>
+                    <p class="setting__name">You are connected to</p>
                     <p class="setting__desc" id="account-email"></p>
                 </div>
                 <button type="button" class="btn btn--quiet" id="sign-out">Sign out</button>
@@ -269,6 +269,19 @@
                     </fieldset>
                 </div>
 
+                <div class="setting setting--stack">
+                    <div class="setting__text">
+                        <p class="setting__name">TMDB API key</p>
+                        <p class="setting__desc" id="tmdb-desc"></p>
+                    </div>
+                    <div class="settings__tmdb">
+                        <input type="password" id="tmdb-key" class="settings__input"
+                               autocomplete="off" spellcheck="false" aria-label="TMDB API key">
+                        <button type="button" class="btn btn--primary" id="tmdb-save">Save</button>
+                        <button type="button" class="btn btn--quiet" id="tmdb-remove" hidden>Remove</button>
+                    </div>
+                </div>
+
                 <div class="setting">
                     <div class="setting__text">
                         <p class="setting__name">Remote access</p>
@@ -280,6 +293,33 @@
                         <span class="switch__thumb"></span>
                         <span class="u-visually-hidden">Remote access</span>
                     </label>
+                </div>
+            </section>
+
+            <section class="settings__group" aria-labelledby="h-devices">
+                <h2 class="settings__heading" id="h-devices">Devices &amp; access</h2>
+
+                <div class="setting">
+                    <div class="setting__text">
+                        <p class="setting__name">Connection code</p>
+                        <p class="setting__desc">Anyone with this code can watch your library. Share it like a house key.</p>
+                    </div>
+                    <span class="settings__value u-mono" id="connection-code-value"></span>
+                </div>
+
+                <div class="setting">
+                    <div class="setting__text">
+                        <p class="setting__name">Rotate the code</p>
+                        <p class="setting__desc">Replaces the code and signs every device out. Remote devices need the
+                            new code; devices at home reconnect on their own.</p>
+                    </div>
+                    <button type="button" class="btn btn--danger" id="rotate-code">Rotate</button>
+                </div>
+
+                <div class="settings__devices">
+                    <p class="setting__name">Paired devices</p>
+                    <p class="setting__desc" id="devices-note"></p>
+                    <ul class="devices" id="devices-list"></ul>
                 </div>
             </section>
         </div>

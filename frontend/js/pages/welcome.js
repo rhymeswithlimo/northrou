@@ -1,11 +1,13 @@
-// Connection bootstrap: pair this device with a Northrou server.
+// Welcome: pair this device with a Northrou server.
 //
 // This runs before auth, because there is nothing to sign in to until the
-// client knows which box it is talking to.
+// client knows which box it is talking to. Entering the connection code is the
+// whole ceremony, so landing a successful pair gets the confetti.
 
 import { $, show, hide, setError, reveal } from '../lib/dom.js';
 import { useTunnel } from '../api/transport.js';
 import { pair } from '../data/account.js';
+import { confetti } from '../lib/confetti.js';
 import {
     setServer, normalizeCode, isSameOrigin, DEFAULT_COORD_URL,
 } from '../data/servers.js';
@@ -46,9 +48,16 @@ $('#code-form').addEventListener('submit', async (e) => {
         // Open the tunnel, then authenticate with the same code: the connection
         // code is the credential, exchanged for this device's own session.
         await useTunnel({ coordUrl: DEFAULT_COORD_URL, code });
-        setServer({ code, coordUrl: DEFAULT_COORD_URL, mode: 'tunnel' });
         const res = await pair(code);
-        window.location.replace(res?.profiles?.length > 1 ? 'profiles.html' : 'index.html');
+        // Remember the server together with its name so settings and the
+        // switcher can say "Living Room NAS" rather than echo the code.
+        setServer({ code, coordUrl: DEFAULT_COORD_URL, mode: 'tunnel', name: res?.server_name });
+
+        // You're in: celebrate, let the burst register, then go watch.
+        status.textContent = res?.server_name ? `Connected to ${res.server_name}` : 'Connected';
+        confetti();
+        const dest = res?.profiles?.length > 1 ? 'profiles.html' : 'index.html';
+        setTimeout(() => window.location.replace(dest), 1600);
     } catch (err) {
         // Back to the form with the real reason, rather than a dead spinner.
         hide(stepConnecting);

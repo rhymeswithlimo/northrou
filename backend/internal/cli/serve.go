@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net"
 	"os"
 	"os/signal"
@@ -13,19 +12,17 @@ import (
 
 	"github.com/rhymeswithlimo/northrou/backend/internal/app"
 	"github.com/rhymeswithlimo/northrou/backend/internal/service"
-	"github.com/rhymeswithlimo/northrou/backend/internal/setup"
 	"github.com/spf13/cobra"
 )
 
 func newServeCmd() *cobra.Command {
-	var noBrowser bool
 	cmd := &cobra.Command{
 		Use:   "serve",
 		Short: "Run the Northrou server (daemon)",
 		Long: "Run the Northrou media server. This is the command the installed " +
 			"system service invokes. It loads config, opens the database, and " +
-			"serves the HTTP API until interrupted. On first run it opens the " +
-			"setup wizard in your browser.",
+			"serves the HTTP API until interrupted. On a server that has not " +
+			"been set up yet, it points you at `northrou setup`.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// When launched by the OS service manager (not a terminal), hand
 			// control to kardianos so Start/Stop are dispatched correctly.
@@ -55,16 +52,23 @@ func newServeCmd() *cobra.Command {
 				os.Interrupt, syscall.SIGTERM)
 			defer stop()
 
-			if a.FirstRun && !noBrowser {
-				url := fmt.Sprintf("http://localhost:%d/", port)
-				slog.Warn("opening setup wizard on first run", "url", url)
-				setup.OpenBrowser(url)
+			if a.FirstRun {
+				// The server runs fine unconfigured, but nothing is in the
+				// library yet and there is no connection code. Say what to do
+				// next instead of leaving a silent daemon.
+				notice("This server is not set up yet. In another terminal, run:\n" +
+					"  northrou setup")
 			}
 
 			return portConflict(a.Run(ctx), port)
 		},
 	}
-	cmd.Flags().BoolVar(&noBrowser, "no-browser", false, "do not open the setup wizard in a browser on first run")
+	// Accepted and ignored: older installed services invoke `serve --no-browser`
+	// (their unit files carry the flag), and rejecting it would crash-loop them
+	// after an update. Setup no longer involves a browser at all.
+	var noBrowser bool
+	cmd.Flags().BoolVar(&noBrowser, "no-browser", false, "")
+	_ = cmd.Flags().MarkHidden("no-browser")
 	return cmd
 }
 

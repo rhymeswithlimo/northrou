@@ -24,6 +24,9 @@ const defaultBaseURL = "https://api.themoviedb.org/3"
 
 // Client is a thin TMDB API client.
 type Client struct {
+	// apiKey is guarded by mu: the operator can set or clear it at runtime
+	// (settings/CLI) while a scan reads it from another goroutine.
+	mu       sync.RWMutex
 	apiKey   string
 	language string
 	baseURL  string
@@ -62,7 +65,28 @@ func NewClient(apiKey, language string, opts ...Option) *Client {
 }
 
 // Enabled reports whether an API key is configured.
-func (c *Client) Enabled() bool { return c.apiKey != "" }
+func (c *Client) Enabled() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.apiKey != ""
+}
+
+// SetAPIKey updates the key at runtime (empty string disables TMDB). Lets the
+// operator add or remove the key from settings or the CLI without restarting;
+// the change takes effect on the next request. Callers persist it to config
+// separately.
+func (c *Client) SetAPIKey(key string) {
+	c.mu.Lock()
+	c.apiKey = key
+	c.mu.Unlock()
+}
+
+// key returns the current API key under the read lock.
+func (c *Client) key() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.apiKey
+}
 
 // --- Wire types (subset) ---
 
@@ -337,7 +361,7 @@ func (c *Client) get(ctx context.Context, path string, q url.Values, out any) er
 		return json.Unmarshal(body, out)
 	}
 
-	q.Set("api_key", c.apiKey)
+	q.Set("api_key", c.key())
 	body, err := c.doGet(ctx, path, q)
 	if err != nil {
 		return err

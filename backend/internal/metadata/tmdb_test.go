@@ -87,3 +87,40 @@ func TestGet_GivesUpAfterPersistent429(t *testing.T) {
 		t.Fatal("expected an error after exhausting retries")
 	}
 }
+
+func TestSetAPIKey_TogglesEnabledAndKey(t *testing.T) {
+	var gotKey string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotKey = r.URL.Query().Get("api_key")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":27205,"title":"Inception"}`))
+	}))
+	defer srv.Close()
+
+	// Start with no key: disabled, and calls short-circuit with ErrNoAPIKey.
+	c := NewClient("", "en-US", WithBaseURL(srv.URL))
+	if c.Enabled() {
+		t.Fatal("expected disabled with empty key")
+	}
+	if _, err := c.MovieDetails(context.Background(), 27205); err != ErrNoAPIKey {
+		t.Fatalf("empty key: want ErrNoAPIKey, got %v", err)
+	}
+
+	// Add a key at runtime: now enabled and the key reaches the wire.
+	c.SetAPIKey("live-key")
+	if !c.Enabled() {
+		t.Fatal("expected enabled after SetAPIKey")
+	}
+	if _, err := c.MovieDetails(context.Background(), 27205); err != nil {
+		t.Fatalf("after SetAPIKey: %v", err)
+	}
+	if gotKey != "live-key" {
+		t.Errorf("request used api_key %q, want live-key", gotKey)
+	}
+
+	// Remove it again: back to disabled.
+	c.SetAPIKey("")
+	if c.Enabled() {
+		t.Fatal("expected disabled after clearing the key")
+	}
+}
