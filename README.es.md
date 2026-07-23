@@ -1,5 +1,5 @@
 <div align="center">
-<img alt="Northrou" src="public/repo/Hero_Banner_JPG_v1.1__Northrou.jpg" width="100%">
+<img alt="Northrou" src="public/repo/Hero_Banner_JPG_v1.2__Northrou.jpg" width="100%">
 </div>
 
 <h3 align="center">Northrou</h3>
