@@ -55,7 +55,10 @@ auto_update_disabled = false   # true turns off background self-update
 - **bind_addr** — interface to listen on; empty binds all interfaces. Admin
   actions require a local connection (loopback or private/LAN, not the
   tunnel), so a public-IP request never gets admin and must present the
-  connection code to pair. Still, don't expose this port to the internet —
+  connection code to pair. Admin also requires the request's `Host` to be an IP
+  address or a loopback/`.local`-style name (a DNS-rebinding safeguard), so
+  reach the box for admin by its IP or `localhost`, not through a public domain
+  name pointed at it. Still, don't expose this port to the internet —
   remote clients are meant to reach the box over the peer-to-peer tunnel. On a
   box with a public interface (VPS/seedbox), set this to a LAN/private address
   or loopback. **Docker caveat:** the default userland proxy rewrites the

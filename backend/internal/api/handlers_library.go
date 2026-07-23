@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/rhymeswithlimo/northrou/backend/internal/db"
 	"github.com/rhymeswithlimo/northrou/backend/internal/model"
+	"github.com/rhymeswithlimo/northrou/backend/internal/remote"
 )
 
 // --- DTOs (decoupled from DB rows so the frontend contract is stable) ---
@@ -239,14 +240,16 @@ func (a *API) showToDTO(s *model.Show, detail bool) showDTO {
 	return dto
 }
 
-// unmatchedDTO is an unmatched file as exposed to clients. It deliberately does
-// NOT carry the absolute filesystem path (returning the raw model row leaked the
-// host's directory layout to any signed-in session, including remote tunnel
-// clients). The basename is enough to identify the file in the manual-match UI;
-// the id is what the match call references.
+// unmatchedDTO is an unmatched file as exposed to clients. Name (basename) is
+// always present for display; the absolute Path is included ONLY for trusted
+// local requests, because it is what POST /api/admin/match keys on and manual
+// match is a local-only admin action. Returning the raw model row to any session
+// (including a remote tunnel client) leaked the host's directory layout, so the
+// full path is gated the same way the admin gate is.
 type unmatchedDTO struct {
 	ID          int64  `json:"id"`
 	Name        string `json:"name"`
+	Path        string `json:"path,omitempty"`
 	Kind        string `json:"kind"`
 	Reason      string `json:"reason"`
 	ParsedTitle string `json:"parsed_title,omitempty"`
@@ -259,16 +262,21 @@ func (a *API) handleListUnmatched(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "list unmatched failed")
 		return
 	}
+	local := remote.IsLocal(r)
 	out := make([]unmatchedDTO, 0, len(list))
 	for _, u := range list {
-		out = append(out, unmatchedDTO{
+		dto := unmatchedDTO{
 			ID:          u.ID,
 			Name:        filepath.Base(u.Path),
 			Kind:        string(u.Kind),
 			Reason:      u.Reason,
 			ParsedTitle: u.ParsedTitle,
 			ParsedYear:  u.ParsedYear,
-		})
+		}
+		if local {
+			dto.Path = u.Path // needed by the local-only manual-match flow
+		}
+		out = append(out, dto)
 	}
 	writeJSON(w, http.StatusOK, out)
 }

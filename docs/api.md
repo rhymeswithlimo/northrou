@@ -19,8 +19,11 @@ request arrived: a **local** request — one that did not go through the remote
 tunnel and whose peer address is loopback or private/LAN — may perform admin
 mutations; a tunneled request, or a direct hit from a public IP, may not.
 Admin **reads** (status, config, hardware, scan progress) are open to any
-signed-in session regardless. See [Admin mutations](#admin-mutations) for the
-full rule and its one operational caveat (Docker's userland proxy).
+signed-in session regardless — except `/api/admin/logs`, which is local-only
+because logs can contain host paths and IPs (and `config` returns the
+connection code only to local requests). See
+[Admin mutations](#admin-mutations) for the full rule and its one operational
+caveat (Docker's userland proxy).
 
 | Method | Path | Body | Notes |
 |---|---|---|---|
@@ -178,7 +181,8 @@ immediately browsable. There is no onboarding quiz.
 
 ## Admin
 
-Reads are open to any signed-in session (they expose status, not controls).
+Reads are open to any signed-in session (they expose status, not controls),
+except `/api/admin/logs`, which is local-only.
 **Mutations are local-only** — `403` over the remote tunnel; see
 [Admin mutations](#admin-mutations).
 
@@ -189,7 +193,7 @@ Reads are open to any signed-in session (they expose status, not controls).
 | GET | `/api/admin/streams` | no | Active streams (mode, codecs, backend, client) |
 | GET | `/api/admin/hardware` | no | Detected acceleration + estimated capacity |
 | GET | `/api/admin/update` | no | Check for a newer release |
-| GET | `/api/admin/logs` | no | Tail of the server log, plain text; `?n=` lines (default 200, max 5000) |
+| GET | `/api/admin/logs` | **yes** | Tail of the server log, plain text; `?n=` lines (default 200, max 5000) |
 | GET | `/api/admin/sessions` | no | Paired devices: `[{id, device_name, profile_name, paired_at, last_seen_at}]` |
 | PATCH | `/api/admin/config` | **yes** | Partial configuration update |
 | POST | `/api/admin/scan` | **yes** | Start a library scan of the server-configured folders |
@@ -216,6 +220,8 @@ edits: `server_name`, `prefer_system_ffmpeg`, `max_transcodes` (0 = auto),
 `allow_software_4k`, `tonemap`, `remote_enabled`, `connection_code`, and
 `preferred_audio_lang`/`preferred_subtitle_lang` (ISO-639, default `en`),
 which drive track selection independently of the TMDB metadata language.
+`connection_code` is the master pairing credential, so it is returned only to
+local requests; a remote (tunnel) session gets the config without it.
 
 `PATCH` is a true partial update — only fields you send change, and
 `max_transcodes` applies immediately. Invalid values return `400`.
