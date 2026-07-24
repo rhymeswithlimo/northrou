@@ -129,33 +129,38 @@ function build(data) {
 
 // castCrew builds the ordered "Cast & Crew" list from the separate cast and crew
 // the API ships. Showing everyone is too much, so it's a small hierarchy capped
-// at 12: directors (and TV creators) first, then top-billed actors, then up to
-// two writers at the end. Producers never appear (the scanner already keeps only
-// Director/Writer/Creator crew, so there are none to drop). Writers are deduped
-// against the directors, so an auteur who writes and directs collapses to a
-// single entry -- which is why writers only show up on occasion. Their slots are
-// reserved before the actors fill the rest, or a long billed cast would eat the
-// whole cap and no writer would ever appear.
+// at 12: directors (and TV creators) first, then top-billed actors, then at most
+// one writer. Producers never appear (the scanner already keeps only
+// Director/Writer/Creator crew, so there are none to drop).
+//
+// Writers are the lowest tier and only take space the cast didn't use, so they
+// show up rarely: on short-cast titles that leave a slot free under the cap. On a
+// full billing they simply don't fit, and an auteur who writes and directs is
+// already deduped into the director entry. Everyone is deduped by person id, so a
+// headliner who also has a writing credit stays where the cast placed them.
 const MAX_PEOPLE = 12;
-const MAX_WRITERS = 2;
+const MAX_WRITERS = 1;
 
 function castCrew(cast = [], crew = []) {
     const directors = crew.filter((c) => c.role === 'Director' || c.role === 'Creator');
     const seen = new Set(directors.map((d) => d.id));
 
-    const writers = [];
-    for (const c of crew) {
-        if (c.role !== 'Writer' || seen.has(c.id) || writers.length >= MAX_WRITERS) continue;
-        seen.add(c.id);
-        writers.push(c);
-    }
-
-    const actorBudget = Math.max(0, MAX_PEOPLE - directors.length - writers.length);
+    // Actors fill the list right after the directors, up to the cap.
     const actors = [];
     for (const c of cast) {
-        if (actors.length >= actorBudget || seen.has(c.id)) continue;
+        if (directors.length + actors.length >= MAX_PEOPLE || seen.has(c.id)) continue;
         seen.add(c.id);
         actors.push(c);
+    }
+
+    // Writers claim only what's left over -- never displacing a billed actor.
+    const writers = [];
+    for (const c of crew) {
+        const used = directors.length + actors.length + writers.length;
+        if (c.role !== 'Writer' || seen.has(c.id)
+            || writers.length >= MAX_WRITERS || used >= MAX_PEOPLE) continue;
+        seen.add(c.id);
+        writers.push(c);
     }
 
     return [...directors, ...actors, ...writers].slice(0, MAX_PEOPLE);

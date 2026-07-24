@@ -37,8 +37,8 @@ land the change, not after the fact.
 
 - **Title details show a tighter, ranked Cast & Crew list.** Instead of the full
   billed cast, it now leads with the director (or a show's creators), then
-  top-billed actors, and up to a couple of writers, capped at 12. Producers are
-  never listed.
+  top-billed actors, capped at 12. A writer is shown only occasionally, when a
+  short cast leaves room. Producers are never listed.
 - **Server settings are managed on the server, not in the app.** The client's
   Settings screen no longer duplicates server administration (scanning, streaming
   and ffmpeg options, the TMDB key, remote access, the connection code, and
