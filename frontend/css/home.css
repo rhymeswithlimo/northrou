@@ -143,7 +143,9 @@
     inset: 0;
     transition: opacity .85s ease;
 }
-.hero__link.hero__layer--enter { opacity: 0; }
+/* Also covers the pre-load attach in pickAndShowHero: hidden while the
+   backdrop loads, so it can't catch clicks before it's actually visible. */
+.hero__link.hero__layer--enter { opacity: 0; pointer-events: none; }
 
 @media (prefers-reduced-motion: reduce) {
     .hero__link.hero__layer { transition: none; }

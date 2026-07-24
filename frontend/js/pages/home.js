@@ -64,33 +64,42 @@ function buildHeroNode(item) {
     return el;
 }
 
+// A detached <img> (not yet in the document) has occasionally been observed to
+// never fire load/error in the app's WebView once fed a blob: URL. This bounds
+// the wait so a stalled decode can't hang the hero forever even so - belt and
+// braces alongside attaching the node before loading (see pickAndShowHero).
+const HERO_IMAGE_TIMEOUT_MS = 8000;
+
 /** Resolve the backdrop blob and set it, waiting until the image is decodable
- *  so a cross-fade reveals a ready picture rather than a blank frame. */
+ *  so a cross-fade reveals a ready picture rather than a blank frame. `node`
+ *  must already be attached to the document (see pickAndShowHero). */
 async function loadHeroImage(node, backdropUrl) {
     const img = $('img', node);
     if (!backdropUrl) return;
     try {
         const url = await resolveImageURL(backdropUrl);
-        await new Promise((res) => { img.onload = res; img.onerror = res; img.src = url; });
+        await new Promise((res) => {
+            const timer = setTimeout(res, HERO_IMAGE_TIMEOUT_MS);
+            img.onload = () => { clearTimeout(timer); res(); };
+            img.onerror = () => { clearTimeout(timer); res(); };
+            img.src = url;
+        });
     } catch { /* show the title over an empty frame rather than hang */ }
 }
 
-/** Swap the hero to `node`, cross-fading over the old one when animating. */
-async function showHero(node, { animate }) {
-    if (!animate || !heroEl.firstElementChild) {
-        heroEl.replaceChildren(node);
+/** Reveal an already-attached hero `node`, cross-fading over any other layer
+ *  (the previous hero) when animating. */
+async function revealHero(node, { animate }) {
+    const others = [...heroEl.children].filter((c) => c !== node);
+    if (!animate) {
+        node.classList.remove('hero__layer', 'hero__layer--enter');
+        for (const child of others) child.remove();
         return;
     }
-    // Overlay the new node on the old (which stays in flow, holding the height),
-    // fade it in, then drop everything else and return the new node to flow.
-    node.classList.add('hero__layer', 'hero__layer--enter');
-    heroEl.appendChild(node);
     void node.offsetWidth; // force a reflow so the transition actually runs
     node.classList.remove('hero__layer--enter');
     await new Promise((res) => setTimeout(res, 850));
-    for (const child of [...heroEl.children]) {
-        if (child !== node) child.remove();
-    }
+    for (const child of others) child.remove();
     node.classList.remove('hero__layer');
 }
 
@@ -106,8 +115,17 @@ async function pickAndShowHero({ animate }) {
         const item = await getHeroItem(p.kind, p.id);
         if (!item) continue;
         const node = buildHeroNode(item);
+
+        // Attach hidden-but-connected (opacity 0, absolutely positioned over
+        // whatever's already there) before loading the backdrop, rather than
+        // after: the image pipeline needs the node in the document to reliably
+        // settle load/error at all, let alone promptly.
+        node.classList.add('hero__layer', 'hero__layer--enter');
+        heroEl.appendChild(node);
+        void node.offsetWidth; // force a reflow so the enter state is committed
+
         await loadHeroImage(node, item.backdrop_url);
-        await showHero(node, { animate });
+        await revealHero(node, { animate });
         heroCurrent = `${p.kind}:${p.id}`;
         return true;
     }
@@ -160,14 +178,6 @@ async function render() {
         return;
     }
 
-    // Seed the hero with a random pick (no fade on first paint), then let it
-    // rotate. A fresh render resets the rotation so timers never stack up.
-    stopHeroRotation();
-    heroPool = pool ?? [];
-    heroCurrent = null;
-    if (await pickAndShowHero({ animate: false })) startHeroRotation();
-    else heroEl.replaceChildren();
-
     const nodes = [];
     if (continuing.length) {
         nodes.push(row('Continue Watching', continuing, continueCard, 'row--continue'));
@@ -192,7 +202,23 @@ async function render() {
         return;
     }
 
+    // Rows are the content the page exists to show; put them up first so a
+    // hero failure (or a stalled backdrop image) can never leave the whole
+    // page looking like it's still loading.
     rowsEl.replaceChildren(...nodes);
+
+    // Seed the hero with a random pick (no fade on first paint), then let it
+    // rotate. A fresh render resets the rotation so timers never stack up.
+    // Decorative only: any failure here must not touch the rows above.
+    stopHeroRotation();
+    heroPool = pool ?? [];
+    heroCurrent = null;
+    try {
+        if (await pickAndShowHero({ animate: false })) startHeroRotation();
+        else heroEl.replaceChildren();
+    } catch {
+        heroEl.replaceChildren();
+    }
 }
 
 // One delegated listener for every card and the hero, rather than one per node.

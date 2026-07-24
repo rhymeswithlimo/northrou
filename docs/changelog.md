@@ -13,7 +13,23 @@ and uses it as the GitHub release body, so an entry needs to exist here
 *before* publishing a version — the release fails otherwise. Write it as you
 land the change, not after the fact.
 
-## v0.1.9 - Unreleased
+## v0.1.10 - Unreleased
+
+### Fixed
+
+- **The home screen could get stuck loading forever in the desktop/mobile apps.**
+  The content rows were built and shown only after the featured hero finished
+  loading its backdrop image, so a hero image that stalled (observed over the
+  peer-to-peer tunnel) left the whole page on its skeleton animation
+  indefinitely, even though the actual library data had already arrived. Rows
+  now render first and the hero loads separately afterward. The hero image
+  itself is also more likely to actually load: it's attached to the document
+  (hidden) before the backdrop starts loading rather than after, since a
+  detached `<img>` fed a blob: URL never reliably fired load/error in the
+  app's WebView - plus a timeout so even a stuck decode can't block the hero
+  layer indefinitely.
+
+## v0.1.9 - 2026-07-24
 
 ### Added
 
