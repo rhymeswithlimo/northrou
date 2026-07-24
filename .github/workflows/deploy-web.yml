@@ -45,4 +45,8 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy frontend/dist --project-name=northrou-web
+          # --branch must exactly equal the project's production branch (main),
+          # or the deploy lands as a preview and never reaches app.northrou.sh.
+          # Release/tag runs and workflow_dispatch have no git branch to infer,
+          # so pass it explicitly.
+          command: pages deploy frontend/dist --project-name=northrou-web --branch=main

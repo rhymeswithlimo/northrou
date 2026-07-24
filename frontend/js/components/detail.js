@@ -120,10 +120,45 @@ function build(data) {
     renderEpisodes(el, data);
 
     const rows = $('.detail__rows', el);
-    if (data.cast?.length) rows.append(row('Cast & Crew', data.cast, personCard, 'row--people'));
+    const people = castCrew(data.cast, data.crew);
+    if (people.length) rows.append(row('Cast & Crew', people, personCard, 'row--people'));
     if (data.similar?.length) rows.append(row('More Like This', data.similar, posterCard));
 
     return el;
+}
+
+// castCrew builds the ordered "Cast & Crew" list from the separate cast and crew
+// the API ships. Showing everyone is too much, so it's a small hierarchy capped
+// at 12: directors (and TV creators) first, then top-billed actors, then up to
+// two writers at the end. Producers never appear (the scanner already keeps only
+// Director/Writer/Creator crew, so there are none to drop). Writers are deduped
+// against the directors, so an auteur who writes and directs collapses to a
+// single entry -- which is why writers only show up on occasion. Their slots are
+// reserved before the actors fill the rest, or a long billed cast would eat the
+// whole cap and no writer would ever appear.
+const MAX_PEOPLE = 12;
+const MAX_WRITERS = 2;
+
+function castCrew(cast = [], crew = []) {
+    const directors = crew.filter((c) => c.role === 'Director' || c.role === 'Creator');
+    const seen = new Set(directors.map((d) => d.id));
+
+    const writers = [];
+    for (const c of crew) {
+        if (c.role !== 'Writer' || seen.has(c.id) || writers.length >= MAX_WRITERS) continue;
+        seen.add(c.id);
+        writers.push(c);
+    }
+
+    const actorBudget = Math.max(0, MAX_PEOPLE - directors.length - writers.length);
+    const actors = [];
+    for (const c of cast) {
+        if (actors.length >= actorBudget || seen.has(c.id)) continue;
+        seen.add(c.id);
+        actors.push(c);
+    }
+
+    return [...directors, ...actors, ...writers].slice(0, MAX_PEOPLE);
 }
 
 export function createDetailModal(mount, { onSelect, onOpen, onClose } = {}) {

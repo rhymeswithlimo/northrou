@@ -35,7 +35,7 @@ caveat (Docker's userland proxy).
 | POST | `/api/me/language` | `{audio, subtitle}` | Set the profile's preferred audio/subtitle language (ISO-639; empty clears it) |
 
 The connection code is drawn from a 10-character ambiguity-free alphabet
-(`NR-XXXXX-XXXXX`, ~50 bits), shown during setup, in Server admin, and by
+(`NR-XXXXX-XXXXX`, ~50 bits), shown during setup, by `northrou admin`, and by
 `northrou cc`. Rotating it (`POST /api/admin/connection-code/rotate`, or
 `northrou cc rotate`) revokes every paired device's session, so the old code
 and old devices go together. A `profile` object is `{id, name, avatar?}`.

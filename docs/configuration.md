@@ -174,7 +174,7 @@ that don't parse as episodes on their own.
   derives the cap from detected hardware, which is almost always right; set it
   only to protect a box sharing its CPU with other work. Direct play and remux
   are stream copies and never count against it. Requests over the cap get
-  `503` with `Retry-After` rather than queueing. Editable from Server admin.
+  `503` with `Retry-After` rather than queueing. Also editable with `northrou admin`.
 
 ### `[tmdb]`
 - **api_key** — a free [TMDB](https://www.themoviedb.org/settings/api) key.

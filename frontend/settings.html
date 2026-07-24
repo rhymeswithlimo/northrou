@@ -143,26 +143,13 @@
                         <a href="https://northrou.sh" target="_blank" rel="noopener noreferrer">northrou.sh</a>
                     </p>
                 </div>
-                <div class="setting__control">
-                    <button type="button" class="btn btn--quiet" id="view-logs">View logs</button>
-                </div>
-            </div>
-        </section>
-
-        <!-- ---------- server admin ---------- -->
-        <section class="settings__group settings__group--admin" aria-labelledby="h-admin">
-            <div class="settings__admin-head">
-                <h2 class="settings__heading" id="h-admin">Server admin</h2>
-                <span class="settings__badge u-noselect" id="admin-state" data-state="locked">Local-only</span>
             </div>
 
-            <!-- Admin reads are open to everyone; admin actions (change settings,
-                 scan, delete a profile, install updates) are available only from
-                 a local connection: a browser on the server's own network, or the
-                 CLI. Remote apps see this note instead of the controls. -->
-            <p class="settings__note" id="admin-locked-note" hidden></p>
-
-            <div class="settings__admin" id="admin-panel" hidden></div>
+            <p class="settings__note">
+                Server settings (library folders, streaming, remote access, the
+                connection code, and paired devices) are managed on the server
+                itself. Run <code class="u-mono">northrou admin</code> there.
+            </p>
         </section>
     </main>
 
@@ -182,147 +169,6 @@
                 <button type="button" class="btn btn--danger" data-delete>Delete</button>
             </div>
         </li>
-    </template>
-
-    <template id="tpl-admin">
-        <div class="settings__admin-inner">
-            <section class="settings__group" aria-labelledby="h-server">
-                <h2 class="settings__heading" id="h-server">Server</h2>
-
-                <div class="setting">
-                    <div class="setting__text">
-                        <p class="setting__name" id="server-name"></p>
-                        <p class="setting__desc" id="server-address"></p>
-                    </div>
-                    <span class="settings__status" id="server-status">
-                        <span class="blink" aria-hidden="true">&#9679;</span>
-                        <span id="server-status-text"></span>
-                    </span>
-                </div>
-
-                <div class="setting setting--end">
-                    <div class="setting__control">
-                        <button type="button" class="btn btn--quiet" id="switch-server">Switch server</button>
-                        <button type="button" class="btn btn--danger" id="forget-server">Forget this server</button>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Scanning is an action, so it stays here; choosing what to scan
-                 is not, so it doesn't. Media folders are paths on the server's
-                 own disks and are set there (`northrou admin`). -->
-            <section class="settings__group" aria-labelledby="h-library">
-                <h2 class="settings__heading" id="h-library">Library</h2>
-
-                <div class="setting">
-                    <div class="setting__text">
-                        <p class="setting__name">Scan for new media</p>
-                        <p class="setting__desc" id="scan-note"></p>
-                    </div>
-                    <button type="button" class="btn btn--primary" id="scan-now">Scan now</button>
-                </div>
-
-                <p class="settings__note">
-                    Media folders are set on the server itself. Run
-                    <code class="u-mono">northrou admin</code> there and open the Library tab.
-                </p>
-
-                <div class="settings__unmatched" id="unmatched-section" hidden>
-                    <p class="setting__name">Couldn't be identified</p>
-                    <p class="setting__desc" id="unmatched-note"></p>
-                    <ul class="unmatched" id="unmatched-list"></ul>
-                </div>
-            </section>
-
-            <section class="settings__group" aria-labelledby="h-streaming">
-                <h2 class="settings__heading" id="h-streaming">Streaming</h2>
-
-                <div class="setting">
-                    <div class="setting__text">
-                        <p class="setting__name">Hardware acceleration</p>
-                        <p class="setting__desc" id="hwaccel"></p>
-                    </div>
-                    <span class="settings__value" id="hwaccel-state"></span>
-                </div>
-
-                <div class="setting">
-                    <div class="setting__text">
-                        <p class="setting__name">Max concurrent transcodes</p>
-                        <p class="setting__desc" id="capacity-note"></p>
-                    </div>
-                    <fieldset class="segmented" id="transcode-cap">
-                        <legend class="u-visually-hidden">Max concurrent transcodes</legend>
-                    </fieldset>
-                </div>
-            </section>
-
-            <section class="settings__group" aria-labelledby="h-advanced">
-                <h2 class="settings__heading" id="h-advanced">Advanced</h2>
-
-                <div class="setting">
-                    <div class="setting__text">
-                        <p class="setting__name">ffmpeg</p>
-                        <p class="setting__desc">Managed downloads a known-good build on first run.</p>
-                    </div>
-                    <fieldset class="segmented" id="ffmpeg-mode">
-                        <legend class="u-visually-hidden">ffmpeg source</legend>
-                    </fieldset>
-                </div>
-
-                <div class="setting setting--stack">
-                    <div class="setting__text">
-                        <p class="setting__name">TMDB API key</p>
-                        <p class="setting__desc" id="tmdb-desc"></p>
-                    </div>
-                    <div class="settings__tmdb">
-                        <input type="password" id="tmdb-key" class="settings__input"
-                               autocomplete="off" spellcheck="false" aria-label="TMDB API key">
-                        <button type="button" class="btn btn--primary" id="tmdb-save">Save</button>
-                        <button type="button" class="btn btn--quiet" id="tmdb-remove" hidden>Remove</button>
-                    </div>
-                </div>
-
-                <div class="setting">
-                    <div class="setting__text">
-                        <p class="setting__name">Remote access</p>
-                        <p class="setting__desc">Lets your devices reach this server from outside the house.</p>
-                    </div>
-                    <label class="switch">
-                        <input type="checkbox" id="remote-access">
-                        <span class="switch__track"></span>
-                        <span class="switch__thumb"></span>
-                        <span class="u-visually-hidden">Remote access</span>
-                    </label>
-                </div>
-            </section>
-
-            <section class="settings__group" aria-labelledby="h-devices">
-                <h2 class="settings__heading" id="h-devices">Devices &amp; access</h2>
-
-                <div class="setting">
-                    <div class="setting__text">
-                        <p class="setting__name">Connection code</p>
-                        <p class="setting__desc">Anyone with this code can watch your library. Keep it private, and only share it with people you trust.</p>
-                    </div>
-                    <span class="settings__value u-mono" id="connection-code-value"></span>
-                </div>
-
-                <div class="setting">
-                    <div class="setting__text">
-                        <p class="setting__name">Rotate the code</p>
-                        <p class="setting__desc">Replaces the code and signs every device out. Remote devices need the
-                            new code; devices at home reconnect on their own.</p>
-                    </div>
-                    <button type="button" class="btn btn--danger" id="rotate-code">Rotate</button>
-                </div>
-
-                <div class="settings__devices">
-                    <p class="setting__name">Paired devices</p>
-                    <p class="setting__desc" id="devices-note"></p>
-                    <ul class="devices" id="devices-list"></ul>
-                </div>
-            </section>
-        </div>
     </template>
 
 </body>

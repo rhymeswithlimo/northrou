@@ -18,6 +18,15 @@ export async function setMyLanguage({ audio, subtitle }) {
 }
 
 /**
+ * Server version and whether an update is available. A read, open to any signed-in
+ * session (not an admin mutation). Installing the update is done on the server
+ * itself, not from here.
+ */
+export async function getUpdateInfo() {
+    return get('/api/admin/update');
+}
+
+/**
  * Pair this device and sign in. The server connection code is the sole
  * credential: a remote client (through the tunnel) must pass it; a local request
  * needs none, so `code` is optional. Returns the session, including the profile

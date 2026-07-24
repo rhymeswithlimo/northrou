@@ -27,8 +27,23 @@ land the change, not after the fact.
   get them automatically). Renamed from `backfill-keywords`, which still works.
   Run it once with the service stopped, then restart it.
 
+### Fixed
+
+- **The hosted web client at app.northrou.sh now actually updates on release.**
+  Its deploy was landing as a Cloudflare Pages preview instead of production, so
+  new releases never reached the live domain.
+
 ### Improved
 
+- **Title details show a tighter, ranked Cast & Crew list.** Instead of the full
+  billed cast, it now leads with the director (or a show's creators), then
+  top-billed actors, and up to a couple of writers, capped at 12. Producers are
+  never listed.
+- **Server settings are managed on the server, not in the app.** The client's
+  Settings screen no longer duplicates server administration (scanning, streaming
+  and ffmpeg options, the TMDB key, remote access, the connection code, and
+  paired devices); those live on the server via `northrou admin`. Profiles,
+  playback, language, and update-checking stay in the app.
 - **The cold-start home screen (before any watch history) is far more diverse.**
   Genre rows now surface distinctive genres (Animation, Horror, Romance) instead
   of burying them under Action and Drama; the old per-decade "20X0s Blockbusters"
@@ -38,7 +53,7 @@ land the change, not after the fact.
   browse rows show up to 8 titles, and "Recommended for You" is quality-gated
   (up to 12, never padded with weak picks).
 
-## v0.1.7 - Unreleased
+## v0.1.7 - 2026-07-24
 
 ### Added
 
@@ -103,7 +118,7 @@ land the change, not after the fact.
   (previously only visible at `-v`/Debug log level, or by querying
   `GET /api/unmatched` directly).
 
-## v0.1.6 - Unreleased
+## v0.1.6 - 2026-07-23
 
 ### Added
 
