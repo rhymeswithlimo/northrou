@@ -90,6 +90,34 @@ func TestPairingAndRelay(t *testing.T) {
 	}
 }
 
+// TestPairingCanonicalizesCode proves a box that registers a dashed, mixed-case
+// code still pairs with a client that connects using a dash-stripped upper-case
+// form - the exact mismatch the web client produces (it normalizes the code to
+// "NRXXXXXXXXXX" before signaling, while the box registers its config value
+// "NR-XXXXX-XXXXX" verbatim). Without canonicalization this pairing fails with
+// "no server registered for that code".
+func TestPairingCanonicalizesCode(t *testing.T) {
+	url := newBrokerServer(t)
+
+	server := dial(t, url)
+	write(t, server, Message{Type: TypeRegister, Role: "server", Code: "NR-TWUUC-QKF8Y", ServerID: "srv-1"})
+	if m := read(t, server); m.Type != TypeRegistered {
+		t.Fatalf("expected registered, got %+v", m)
+	}
+
+	client := dial(t, url)
+	write(t, client, Message{Type: TypeConnect, Role: "client", Code: "nrtwuucqkf8y"})
+
+	serverPaired := read(t, server)
+	clientPaired := read(t, client)
+	if serverPaired.Type != TypePaired || clientPaired.Type != TypePaired {
+		t.Fatalf("expected paired on both sides: server=%+v client=%+v", serverPaired, clientPaired)
+	}
+	if serverPaired.Session == "" || serverPaired.Session != clientPaired.Session {
+		t.Fatalf("session ids differ: %q vs %q", serverPaired.Session, clientPaired.Session)
+	}
+}
+
 func TestConnectUnknownCode(t *testing.T) {
 	url := newBrokerServer(t)
 	client := dial(t, url)

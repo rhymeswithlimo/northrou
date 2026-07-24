@@ -13,7 +13,35 @@ and uses it as the GitHub release body, so an entry needs to exist here
 *before* publishing a version — the release fails otherwise. Write it as you
 land the change, not after the fact.
 
-## v0.1.8 - Unreleased
+## v0.1.9 - Unreleased
+
+### Added
+
+- **The featured hero on the home screen now rotates.** It fades to a different,
+  randomly chosen movie or show from your library every 24 seconds instead of
+  sitting on one fixed pick.
+- **Title logos on the detail screen.** When TMDB has a logo (the stylized title
+  treatment) for a movie or show, the detail view shows it in place of the plain
+  text title, and falls back to the text when there isn't one. Existing titles
+  pick up their logos on the next scan.
+
+### Fixed
+
+- **Remote connection codes work again.** Pairing a device from outside your home
+  network failed with "No server registered for that code": the coordinator
+  matched the code character for character, so the dashes in `NR-XXXXX-XXXXX` had
+  to line up exactly against the dash-stripped code the app sends. It now ignores
+  dashes, spaces, and case on both ends.
+- **`northrou cc` prints the code the running server is actually using.** On a box
+  where Northrou runs as a system service, `cc` could read a different config file
+  and show a stale code while `northrou admin` and `cc rotate` showed the real
+  one. It now asks the running server first.
+- **`northrou admin` rotates the code on `r`.** The Remote tab's rotate action
+  only fired on a capital `R`; a lowercase `r` just refreshed the view.
+- **The web client's code box groups the full code.** It was grouping in blocks of
+  four, which no longer matches the `NR-XXXXX-XXXXX` format.
+
+## v0.1.8 - 2026-07-24
 
 ### Added
 

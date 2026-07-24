@@ -96,10 +96,10 @@ the server itself (`northrou admin` → Library).
 | Method | Path | Notes |
 |---|---|---|
 | GET | `/api/movies` | List movies. Optional `?limit=&offset=` pagination; missing/non-positive `limit` returns the whole library. Newest-added first. |
-| GET | `/api/movies/{id}` | Detail incl. media info, cast/crew, tagline, certification |
+| GET | `/api/movies/{id}` | Detail incl. media info, cast/crew, tagline, certification, `logo_url` (title logo, when available) |
 | GET | `/api/movies/{id}/similar` | Related titles from your own library |
 | GET | `/api/shows` | List shows. Same pagination as movies. |
-| GET | `/api/shows/{id}` | Detail incl. seasons, episodes, cast/crew |
+| GET | `/api/shows/{id}` | Detail incl. seasons, episodes, cast/crew, `logo_url` (title logo, when available) |
 | GET | `/api/shows/{id}/similar` | Related shows from your own library |
 | GET | `/api/search?q=&limit=` | Case-insensitive title search, prefix matches first. Empty `q` → `[]`. |
 | GET | `/api/unmatched` | Files needing manual correction |

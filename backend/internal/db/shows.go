@@ -16,16 +16,16 @@ func (d *DB) UpsertShow(ctx context.Context, s *model.Show) (int64, error) {
 	var id int64
 	err := d.WithTx(ctx, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO shows (tmdb_id, title, year, overview, original_lang, poster_path, backdrop_path,
+			INSERT INTO shows (tmdb_id, title, year, overview, original_lang, poster_path, backdrop_path, logo_path,
 				vote_average, popularity, country, tagline, certification)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(tmdb_id) DO UPDATE SET
 				title=excluded.title, year=excluded.year, overview=excluded.overview,
 				original_lang=excluded.original_lang, poster_path=excluded.poster_path,
-				backdrop_path=excluded.backdrop_path, vote_average=excluded.vote_average,
+				backdrop_path=excluded.backdrop_path, logo_path=excluded.logo_path, vote_average=excluded.vote_average,
 				popularity=excluded.popularity, country=excluded.country,
 				tagline=excluded.tagline, certification=excluded.certification`,
-			s.TMDBID, s.Title, s.Year, s.Overview, s.OriginalLang, s.PosterPath, s.BackdropPath,
+			s.TMDBID, s.Title, s.Year, s.Overview, s.OriginalLang, s.PosterPath, s.BackdropPath, s.LogoPath,
 			s.Rating, s.Popularity, s.Country, s.Tagline, s.Certification); err != nil {
 			return err
 		}
@@ -130,12 +130,12 @@ func (d *DB) ListShows(ctx context.Context, limit, offset int) ([]model.Show, er
 // GetShow loads a show with its seasons and episodes.
 func (d *DB) GetShow(ctx context.Context, id int64) (*model.Show, error) {
 	row := d.QueryRowContext(ctx, `
-		SELECT id, tmdb_id, title, year, overview, original_lang, poster_path, backdrop_path, added_at,
+		SELECT id, tmdb_id, title, year, overview, original_lang, poster_path, backdrop_path, logo_path, added_at,
 			vote_average, popularity, country, tagline, certification
 		FROM shows WHERE id = ?`, id)
 	var s model.Show
 	err := row.Scan(&s.ID, &s.TMDBID, &s.Title, &s.Year, &s.Overview,
-		&s.OriginalLang, &s.PosterPath, &s.BackdropPath, &s.AddedAt,
+		&s.OriginalLang, &s.PosterPath, &s.BackdropPath, &s.LogoPath, &s.AddedAt,
 		&s.Rating, &s.Popularity, &s.Country, &s.Tagline, &s.Certification)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound

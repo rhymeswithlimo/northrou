@@ -179,6 +179,11 @@ func (h *Hub) register(ctx context.Context, c *conn, msg Message) error {
 	if msg.ServerID == "" {
 		return errors.New("register requires a server_id")
 	}
+	// Match on a canonical form so a box that registers "NR-ABCDE-FGHJK" pairs
+	// with a client that connects with "NRABCDEFGHJK" (the web client strips the
+	// internal dash before sending). Both sides must agree, so canonicalize here
+	// - the single point where register and connect meet.
+	code := canonicalCode(msg.Code)
 	h.mu.Lock()
 	// A conn registers exactly one code; refuse a second (would leak the first's
 	// map entry, since cleanup only removes the current code).
@@ -186,7 +191,7 @@ func (h *Hub) register(ctx context.Context, c *conn, msg Message) error {
 		h.mu.Unlock()
 		return errors.New("already registered")
 	}
-	if existing, ok := h.servers[msg.Code]; ok && existing != c && existing.serverID != msg.ServerID {
+	if existing, ok := h.servers[code]; ok && existing != c && existing.serverID != msg.ServerID {
 		h.mu.Unlock()
 		return errors.New("code already registered to another server")
 	}
@@ -195,9 +200,9 @@ func (h *Hub) register(ctx context.Context, c *conn, msg Message) error {
 		return errors.New("server capacity reached")
 	}
 	c.role = "server"
-	c.code = msg.Code
+	c.code = code
 	c.serverID = msg.ServerID
-	h.servers[msg.Code] = c
+	h.servers[code] = c
 	h.mu.Unlock()
 	// Never log the raw code: it is the household's master pairing credential and
 	// the coordinator sees every server's. Identify the registration by server id.
@@ -226,7 +231,7 @@ func (h *Hub) connect(ctx context.Context, client *conn, msg Message) error {
 		return errors.New("too many attempts; try again shortly")
 	}
 	h.mu.Lock()
-	server, ok := h.servers[msg.Code]
+	server, ok := h.servers[canonicalCode(msg.Code)]
 	if !ok {
 		h.mu.Unlock()
 		return errors.New("no server registered for that code")
@@ -293,6 +298,23 @@ func (h *Hub) Stats() (servers, sessions int) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return len(h.servers), len(h.sessions)
+}
+
+// canonicalCode normalizes a connection code for matching: uppercased, with
+// every non-alphanumeric character (dashes, spaces) removed. A home server may
+// register "NR-ABCDE-FGHJK" while a client connects with "nr abcde fghjk" or a
+// dash-stripped "NRABCDEFGHJK"; all must resolve to the same key. This mirrors
+// the box's own normalizeConnectionCode, so the credential the client presents
+// at the coordinator and later at the box are judged by the same rule.
+func canonicalCode(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range strings.ToUpper(s) {
+		if (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 func randomID() string {

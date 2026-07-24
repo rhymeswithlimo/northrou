@@ -27,28 +27,47 @@ export async function getHomeRows() {
 }
 
 /**
- * The hero is the first item of the first home row: the strongest single
- * recommendation the engine has. There is no separate "featured" endpoint, and
- * inventing one would just be /api/home's top pick under another name.
+ * The hero pool is every title across the home rows, deduped. The featured
+ * hero rotates through these at random, so it draws from the whole set of
+ * recommendations rather than just /api/home's single top pick. Returns
+ * lightweight {kind, id} refs; getHeroItem hydrates one when it's shown.
  */
-export async function getHero() {
+export async function getHeroPool() {
     const rows = await fetchHome();
-    const item = rows?.[0]?.items?.[0];
-    if (!item) return null;
+    const seen = new Set();
+    const pool = [];
+    for (const r of rows ?? []) {
+        for (const it of r.items ?? []) {
+            if (!it.kind || it.id == null) continue;
+            const key = `${it.kind}:${it.id}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            pool.push({ kind: it.kind, id: it.id });
+        }
+    }
+    return pool;
+}
 
-    // Home items are poster-shaped summaries; the hero needs a backdrop and a
-    // meta line, so fetch the detail for the one title we're featuring.
+/**
+ * Hero-shaped data for a single title. Lightweight on purpose: it hits only the
+ * movie/show endpoint (not getDetail, which also fans out to similar + resume),
+ * because the hero just needs a backdrop and a meta line. Returns null when the
+ * title is gone or has no backdrop to show.
+ */
+export async function getHeroItem(kind, id) {
     try {
-        const detail = await getDetail(item.kind, item.id);
-        return detail && {
-            kind: item.kind,
-            id: item.id,
-            title: detail.title,
-            year: detail.year,
-            genres: detail.genres,
-            runtime: detail.runtime,
-            episode_count: detail.seasons?.reduce((n, s) => n + (s.episodes?.length ?? 0), 0),
-            backdrop_url: detail.backdrop_url,
+        const path = kind === 'show' ? `/api/shows/${id}` : `/api/movies/${id}`;
+        const d = await get(path);
+        if (!d || !d.backdrop_url) return null;
+        return {
+            kind,
+            id,
+            title: d.title,
+            year: d.year,
+            genres: d.genres,
+            runtime: d.runtime,
+            episode_count: d.seasons?.reduce((n, s) => n + (s.episodes?.length ?? 0), 0),
+            backdrop_url: d.backdrop_url,
         };
     } catch {
         // A hero is decoration; never let it take the page down.
@@ -119,6 +138,7 @@ export async function getDetail(kind, id) {
         runtime: d.runtime,
         backdrop_url: d.backdrop_url,
         poster_url: d.poster_url,
+        logo_url: d.logo_url,
         stream_url: d.stream_url,
         // Cast and crew render in one row, director first: on a detail screen
         // "who made this" belongs beside "who's in it".

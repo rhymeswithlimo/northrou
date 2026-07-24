@@ -37,6 +37,7 @@ type movieDTO struct {
 	CollectionID  int64         `json:"collection_id,omitempty"`
 	PosterURL     string        `json:"poster_url,omitempty"`
 	BackdropURL   string        `json:"backdrop_url,omitempty"`
+	LogoURL       string        `json:"logo_url,omitempty"`
 	StreamURL     string        `json:"stream_url,omitempty"`
 	Cast          []creditDTO   `json:"cast,omitempty"`
 	Crew          []creditDTO   `json:"crew,omitempty"`
@@ -55,6 +56,7 @@ type showDTO struct {
 	Genres        []string    `json:"genres,omitempty"`
 	PosterURL     string      `json:"poster_url,omitempty"`
 	BackdropURL   string      `json:"backdrop_url,omitempty"`
+	LogoURL       string      `json:"logo_url,omitempty"`
 	Cast          []creditDTO `json:"cast,omitempty"`
 	Crew          []creditDTO `json:"crew,omitempty"`
 	Seasons       []seasonDTO `json:"seasons,omitempty"`
@@ -154,6 +156,7 @@ func (a *API) movieToDTO(m *model.Movie, detail bool) movieDTO {
 		dto.Tagline = m.Tagline
 		dto.Certification = m.Certification
 		dto.CollectionID = m.CollectionID
+		dto.LogoURL = a.imageURL(m.LogoPath)
 		dto.Cast = a.creditsToDTO(m.Cast)
 		dto.Crew = a.creditsToDTO(m.Crew)
 	}
@@ -218,6 +221,7 @@ func (a *API) showToDTO(s *model.Show, detail bool) showDTO {
 		dto.Overview = s.Overview
 		dto.Tagline = s.Tagline
 		dto.Certification = s.Certification
+		dto.LogoURL = a.imageURL(s.LogoPath)
 		dto.Cast = a.creditsToDTO(s.Cast)
 		dto.Crew = a.creditsToDTO(s.Crew)
 		for _, sea := range s.Seasons {

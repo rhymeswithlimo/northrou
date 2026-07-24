@@ -66,6 +66,7 @@ type Movie struct {
 	CollectionID  int64  // TMDB collection id, 0 if none
 	PosterPath    string // local cached path
 	BackdropPath  string
+	LogoPath      string // local cached path to the title logo (transparent PNG), if any
 	Cast          []Credit
 	Crew          []Credit
 	OriginalLang  string
@@ -93,6 +94,7 @@ type Show struct {
 	Certification string // e.g. "TV-MA", resolved to one country
 	PosterPath    string
 	BackdropPath  string
+	LogoPath      string // local cached path to the title logo (transparent PNG), if any
 	OriginalLang  string
 	Rating        float64 // TMDB vote average (0-10)
 	Popularity    float64 // TMDB popularity

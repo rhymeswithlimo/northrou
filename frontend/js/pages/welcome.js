@@ -24,11 +24,11 @@ const status = $('#connect-status');
 if (isSameOrigin()) window.location.replace('index.html');
 else reveal();
 
-/** Group the code as NR-XXXX-XXXX-... while typing, without fighting the caret. */
+/** Group the code as NR-XXXXX-XXXXX while typing, without fighting the caret. */
 codeInput.addEventListener('input', () => {
     const raw = codeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
     const body = raw.startsWith('NR') ? raw.slice(2) : raw;
-    const groups = body.match(/.{1,4}/g) ?? [];
+    const groups = body.match(/.{1,5}/g) ?? [];
     codeInput.value = body.length ? ['NR', ...groups].join('-') : '';
 
     connectBtn.disabled = !normalizeCode(codeInput.value);

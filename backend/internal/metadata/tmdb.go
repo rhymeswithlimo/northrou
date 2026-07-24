@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -108,6 +109,45 @@ type SearchItem struct {
 type Genre struct {
 	ID   int64  `json:"id"`
 	Name string `json:"name"`
+}
+
+// Image is one entry in a TMDB images response. We only consume logos, but the
+// shape is shared across poster/backdrop/logo arrays.
+type Image struct {
+	FilePath    string  `json:"file_path"`
+	ISO6391     string  `json:"iso_639_1"` // language, "" for language-neutral
+	VoteAverage float64 `json:"vote_average"`
+}
+
+// Images is the append_to_response=images payload; only logos are read.
+type Images struct {
+	Logos []Image `json:"logos"`
+}
+
+// bestLogo picks the title logo to cache: the highest-voted raster logo,
+// preferring English, then language-neutral, then any language. SVG logos are
+// skipped - a sized fetch of one (w500/x.svg) 404s, and the detail header only
+// needs a raster wordmark. Returns "" when there is no usable logo.
+func bestLogo(imgs Images) string {
+	pick := func(pred func(Image) bool) string {
+		best, bestVote := "", -1.0
+		for _, l := range imgs.Logos {
+			if l.FilePath == "" || strings.HasSuffix(strings.ToLower(l.FilePath), ".svg") {
+				continue
+			}
+			if pred(l) && l.VoteAverage > bestVote {
+				best, bestVote = l.FilePath, l.VoteAverage
+			}
+		}
+		return best
+	}
+	if p := pick(func(l Image) bool { return l.ISO6391 == "en" }); p != "" {
+		return p
+	}
+	if p := pick(func(l Image) bool { return l.ISO6391 == "" }); p != "" {
+		return p
+	}
+	return pick(func(Image) bool { return true })
 }
 
 type Collection struct {
@@ -304,7 +344,11 @@ type MovieDetails struct {
 	ProductionCountries []struct {
 		ISO31661 string `json:"iso_3166_1"`
 	} `json:"production_countries"`
+	Images Images `json:"images"`
 }
+
+// LogoPath returns the TMDB path of the best title logo, or "".
+func (m *MovieDetails) LogoPath() string { return bestLogo(m.Images) }
 
 // PrimaryCountry returns the first production country code, or "".
 func (m *MovieDetails) PrimaryCountry() string {
@@ -338,7 +382,11 @@ type TVDetails struct {
 	OriginCountry    []string       `json:"origin_country"`
 	ProductionCompanies []Company    `json:"production_companies"`
 	CreatedBy           []Creator    `json:"created_by"`
+	Images              Images       `json:"images"`
 }
+
+// LogoPath returns the TMDB path of the best title logo, or "".
+func (t *TVDetails) LogoPath() string { return bestLogo(t.Images) }
 
 // CompanyNames returns the show's production company names.
 func (t *TVDetails) CompanyNames() []string { return companyNames(t.ProductionCompanies) }
@@ -383,7 +431,14 @@ func (c *Client) SearchMovie(ctx context.Context, title string, year int) ([]Sea
 
 // MovieDetails fetches full movie metadata including credits and collection.
 func (c *Client) MovieDetails(ctx context.Context, id int64) (*MovieDetails, error) {
-	q := url.Values{"append_to_response": {"credits,release_dates,keywords"}}
+	// include_image_language broadens the images beyond the request language so
+	// logos.logos carries English plus language-neutral title treatments (the
+	// default would filter to the request language only, dropping the common
+	// null-language wordmark).
+	q := url.Values{
+		"append_to_response":     {"credits,release_dates,keywords,images"},
+		"include_image_language": {"en,null"},
+	}
 	var out MovieDetails
 	if err := c.get(ctx, fmt.Sprintf("/movie/%d", id), q, &out); err != nil {
 		return nil, err
@@ -406,7 +461,11 @@ func (c *Client) SearchTV(ctx context.Context, title string, year int) ([]Search
 
 // TVDetails fetches full show metadata including credits.
 func (c *Client) TVDetails(ctx context.Context, id int64) (*TVDetails, error) {
-	q := url.Values{"append_to_response": {"credits,content_ratings,keywords"}}
+	// See MovieDetails for why include_image_language is widened for logos.
+	q := url.Values{
+		"append_to_response":     {"credits,content_ratings,keywords,images"},
+		"include_image_language": {"en,null"},
+	}
 	var out TVDetails
 	if err := c.get(ctx, fmt.Sprintf("/tv/%d", id), q, &out); err != nil {
 		return nil, err

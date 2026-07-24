@@ -18,7 +18,9 @@ const (
 	// large cast list.
 	profileSize = "w185"
 	stillSize   = "w300"
-	maxCast     = 20
+	// Title logos are wide, low wordmarks; w500 is plenty for the detail header.
+	logoSize = "w500"
+	maxCast  = 20
 )
 
 // crewJobs are the crew roles we persist (drives director/creator affinity).
@@ -109,6 +111,7 @@ func (s *Scanner) storeMovieByID(ctx context.Context, tmdbID int64, mf *model.Me
 		Companies:     details.CompanyNames(),
 		PosterPath:    s.cacheImage(ctx, details.PosterPath, posterSize),
 		BackdropPath:  s.cacheImage(ctx, details.BackdropPath, backdropSize),
+		LogoPath:      s.cacheImage(ctx, details.LogoPath(), logoSize),
 		Tagline:       details.Tagline,
 		Certification: details.ReleaseDates.Certification(),
 		Cast:          s.topCast(ctx, details.Credits.Cast),
@@ -247,6 +250,7 @@ func (s *Scanner) resolveShowByTMDB(ctx context.Context, tmdbID int64) (int64, e
 		Creators:      details.CreatorNames(),
 		PosterPath:    s.cacheImage(ctx, details.PosterPath, posterSize),
 		BackdropPath:  s.cacheImage(ctx, details.BackdropPath, backdropSize),
+		LogoPath:      s.cacheImage(ctx, details.LogoPath(), logoSize),
 		Tagline:       details.Tagline,
 		Certification: details.ContentRatings.Certification(),
 		Cast:          s.topCast(ctx, details.Credits.Cast),

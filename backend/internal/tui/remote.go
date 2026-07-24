@@ -63,7 +63,10 @@ func (m model) updateRemoteKeys(msg tea.KeyMsg) (bool, tea.Model, tea.Cmd) {
 		m.remoteMsg, m.remoteErr = "", ""
 		return true, m, m.toggleRemoteCmd(!m.data.info.RemoteEnabled)
 
-	case "R":
+	case "r", "R":
+		// Rotate on either case. The Remote tab consumes "r" before the shared
+		// "r: refresh" binding, and losing manual refresh here costs nothing: the
+		// dashboard already refetches every couple of seconds on its own tick.
 		m.confirmRotate = true
 		return true, m, nil
 	}
@@ -165,7 +168,7 @@ func (m model) remoteHelp() string {
 	if m.confirmRotate {
 		return "y: rotate the code • any other key: cancel"
 	}
-	return "d: revoke device • t: remote on/off • R: rotate code • ↑/↓: select • tab: switch view • q: quit"
+	return "d: revoke device • t: remote on/off • r: rotate code • ↑/↓: select • tab: switch view • q: quit"
 }
 
 func trunc(s string, n int) string {

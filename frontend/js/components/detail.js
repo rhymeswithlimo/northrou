@@ -93,10 +93,16 @@ function build(data) {
     const titleText = $('.detail__title-text', el);
     titleText.textContent = data.title;
     if (data.logo_url) {
-        logo.src = data.logo_url;
         logo.alt = data.title;
-        logo.hidden = false;
-        titleText.classList.add('u-visually-hidden');
+        // /api/images needs Bearer auth, so the logo goes through the
+        // authenticated blob fetch (setImageSrc), never a raw src. And it only
+        // replaces the visible text once the image actually loads: a failed or
+        // missing logo then falls back to the text title, not to nothing.
+        logo.addEventListener('load', () => {
+            logo.hidden = false;
+            titleText.classList.add('u-visually-hidden');
+        });
+        setImageSrc(logo, data.logo_url);
     } else {
         logo.remove();
     }
