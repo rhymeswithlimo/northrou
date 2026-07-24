@@ -6,12 +6,19 @@ import { setImageSrc } from '../api/images.js';
 
 const tpl = (id) => $(`#${id}`).content.firstElementChild;
 
-/** Poster-only card. */
+/** Poster-only card. Shows a per-item "reason" caption when present (e.g. the
+ *  "why this is here" line on More Like This results). */
 export function posterCard(item) {
     const el = tpl('tpl-card').cloneNode(true);
     const img = $('img', el);
     setImageSrc(img, item.poster_url);
     img.alt = item.title;
+    if (item.reason) {
+        const reason = $('.card__reason', el);
+        reason.textContent = item.reason;
+        reason.hidden = false;
+        el.title = item.reason; // also a native tooltip, for truncated captions
+    }
     el.dataset.kind = item.kind;
     el.dataset.id = item.id;
     return el;
@@ -53,11 +60,17 @@ export function personCard(person) {
  * @param {Array} items
  * @param {(item) => Element} render
  * @param {string} [modifier] e.g. 'row--continue', 'row--people'
+ * @param {string} [subtitle] optional one-line "why" under the title
  */
-export function row(title, items, render, modifier) {
+export function row(title, items, render, modifier, subtitle) {
     const el = tpl('tpl-row').cloneNode(true);
     if (modifier) el.classList.add(modifier);
     $('.row__title', el).textContent = title;
+    if (subtitle) {
+        const sub = $('.row__subtitle', el);
+        sub.textContent = subtitle;
+        sub.hidden = false;
+    }
     const items_ = $('.row__items', el);
     for (const item of items) items_.append(render(item));
     return el;

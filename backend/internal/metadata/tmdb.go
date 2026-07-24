@@ -159,6 +159,39 @@ type ContentRatings struct {
 	} `json:"results"`
 }
 
+// MovieKeywords is the append_to_response=keywords payload for a movie, and the
+// body of the dedicated /movie/{id}/keywords endpoint. TMDB nests the list
+// under "keywords" for movies (but "results" for TV; see TVKeywords).
+type MovieKeywords struct {
+	Keywords []Keyword `json:"keywords"`
+}
+
+// TVKeywords is the append_to_response=keywords payload for a show, and the body
+// of /tv/{id}/keywords. TMDB nests the list under "results" for TV.
+type TVKeywords struct {
+	Results []Keyword `json:"results"`
+}
+
+// Keyword is a single TMDB keyword tag.
+type Keyword struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+// names returns the keyword names, preserving TMDB order.
+func (k MovieKeywords) names() []string { return keywordNames(k.Keywords) }
+func (k TVKeywords) names() []string    { return keywordNames(k.Results) }
+
+func keywordNames(ks []Keyword) []string {
+	out := make([]string, 0, len(ks))
+	for _, k := range ks {
+		if k.Name != "" {
+			out = append(out, k.Name)
+		}
+	}
+	return out
+}
+
 // certPreference is the country order used to pick one certification to show.
 // TMDB returns every country's rating; the UI has room for a single badge.
 var certPreference = []string{"US", "GB", "CA", "AU"}
@@ -227,9 +260,10 @@ type MovieDetails struct {
 	BackdropPath        string       `json:"backdrop_path"`
 	Genres              []Genre      `json:"genres"`
 	Collection          *Collection  `json:"belongs_to_collection"`
-	Credits             Credits      `json:"credits"`
-	Tagline             string       `json:"tagline"`
-	ReleaseDates        ReleaseDates `json:"release_dates"`
+	Credits             Credits       `json:"credits"`
+	Keywords            MovieKeywords `json:"keywords"`
+	Tagline             string        `json:"tagline"`
+	ReleaseDates        ReleaseDates  `json:"release_dates"`
 	VoteAverage         float64      `json:"vote_average"`
 	VoteCount           int          `json:"vote_count"`
 	Popularity          float64      `json:"popularity"`
@@ -247,6 +281,9 @@ func (m *MovieDetails) PrimaryCountry() string {
 	return ""
 }
 
+// KeywordNames returns the movie's TMDB keyword tags in TMDB order.
+func (m *MovieDetails) KeywordNames() []string { return m.Keywords.names() }
+
 type TVDetails struct {
 	ID               int64          `json:"id"`
 	Name             string         `json:"name"`
@@ -257,6 +294,7 @@ type TVDetails struct {
 	BackdropPath     string         `json:"backdrop_path"`
 	Genres           []Genre        `json:"genres"`
 	Credits          Credits        `json:"credits"`
+	Keywords         TVKeywords     `json:"keywords"`
 	Tagline          string         `json:"tagline"`
 	ContentRatings   ContentRatings `json:"content_ratings"`
 	VoteAverage      float64        `json:"vote_average"`
@@ -271,6 +309,9 @@ func (t *TVDetails) PrimaryCountry() string {
 	}
 	return ""
 }
+
+// KeywordNames returns the show's TMDB keyword tags in TMDB order.
+func (t *TVDetails) KeywordNames() []string { return t.Keywords.names() }
 
 type EpisodeDetails struct {
 	ID            int64  `json:"id"`
@@ -298,7 +339,7 @@ func (c *Client) SearchMovie(ctx context.Context, title string, year int) ([]Sea
 
 // MovieDetails fetches full movie metadata including credits and collection.
 func (c *Client) MovieDetails(ctx context.Context, id int64) (*MovieDetails, error) {
-	q := url.Values{"append_to_response": {"credits,release_dates"}}
+	q := url.Values{"append_to_response": {"credits,release_dates,keywords"}}
 	var out MovieDetails
 	if err := c.get(ctx, fmt.Sprintf("/movie/%d", id), q, &out); err != nil {
 		return nil, err
@@ -321,12 +362,31 @@ func (c *Client) SearchTV(ctx context.Context, title string, year int) ([]Search
 
 // TVDetails fetches full show metadata including credits.
 func (c *Client) TVDetails(ctx context.Context, id int64) (*TVDetails, error) {
-	q := url.Values{"append_to_response": {"credits,content_ratings"}}
+	q := url.Values{"append_to_response": {"credits,content_ratings,keywords"}}
 	var out TVDetails
 	if err := c.get(ctx, fmt.Sprintf("/tv/%d", id), q, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
+}
+
+// MovieKeywords fetches only a movie's keyword tags via the dedicated endpoint.
+// Used to backfill existing titles cheaply without re-fetching full details.
+func (c *Client) MovieKeywords(ctx context.Context, id int64) ([]string, error) {
+	var out MovieKeywords
+	if err := c.get(ctx, fmt.Sprintf("/movie/%d/keywords", id), nil, &out); err != nil {
+		return nil, err
+	}
+	return out.names(), nil
+}
+
+// TVKeywords fetches only a show's keyword tags via the dedicated endpoint.
+func (c *Client) TVKeywords(ctx context.Context, id int64) ([]string, error) {
+	var out TVKeywords
+	if err := c.get(ctx, fmt.Sprintf("/tv/%d/keywords", id), nil, &out); err != nil {
+		return nil, err
+	}
+	return out.names(), nil
 }
 
 // EpisodeDetails fetches metadata for a single episode.

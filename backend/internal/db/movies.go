@@ -47,6 +47,9 @@ func (d *DB) UpsertMovie(ctx context.Context, m *model.Movie) (int64, error) {
 		if err := setGenres(ctx, tx, "movie_genres", "movie_id", id, m.Genres); err != nil {
 			return err
 		}
+		if err := setKeywords(ctx, tx, "movie_keywords", "movie_id", id, m.Keywords); err != nil {
+			return err
+		}
 		return setCredits(ctx, tx, model.KindMovie, id, m.Cast, m.Crew)
 	})
 	if err != nil {
@@ -118,6 +121,7 @@ func (d *DB) GetMovie(ctx context.Context, id int64) (*model.Movie, error) {
 		return nil, err
 	}
 	m.Genres, _ = d.getGenres(ctx, "movie_genres", "movie_id", id)
+	m.Keywords, _ = d.getKeywords(ctx, "movie_keywords", "movie_id", id)
 	m.Cast, m.Crew, _ = d.getCredits(ctx, model.KindMovie, id)
 	if fileID != 0 {
 		if mf, err := d.GetMediaFile(ctx, fileID); err == nil {

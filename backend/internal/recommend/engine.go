@@ -22,6 +22,7 @@ type Engine struct {
 
 	mu   sync.RWMutex
 	home map[int64]cachedHome // per-user computed home rows
+	cat  *catalog             // memoized library features + content vectors
 }
 
 type cachedHome struct {
@@ -29,9 +30,45 @@ type cachedHome struct {
 	expires time.Time
 }
 
+// catalog is the library-wide snapshot shared across users: every movie/show's
+// scoring features plus their content vectors. Unlike home rows (per-user,
+// short-TTL) it changes only when the library does, so it is memoized until a
+// scan/catalog change clears it via InvalidateAll. Building it loads the whole
+// library, so sharing one copy across users and requests matters on a low-RAM
+// box with a big library.
+type catalog struct {
+	movies []db.MovieFeature
+	shows  []db.ShowFeature
+	space  *vectorSpace
+}
+
 // New builds a recommendation Engine.
 func New(database *db.DB) *Engine {
 	return &Engine{db: database, home: map[int64]cachedHome{}}
+}
+
+// loadCatalog returns the memoized catalog, building it (and the content-vector
+// space) on first use after a scan.
+func (e *Engine) loadCatalog(ctx context.Context) (*catalog, error) {
+	e.mu.RLock()
+	c := e.cat
+	e.mu.RUnlock()
+	if c != nil {
+		return c, nil
+	}
+	movies, err := e.db.LoadMovieFeatures(ctx)
+	if err != nil {
+		return nil, err
+	}
+	shows, err := e.db.LoadShowFeatures(ctx)
+	if err != nil {
+		return nil, err
+	}
+	c = &catalog{movies: movies, shows: shows, space: buildVectorSpace(movies, shows)}
+	e.mu.Lock()
+	e.cat = c
+	e.mu.Unlock()
+	return c, nil
 }
 
 // cachedRows returns a user's cached home rows if still fresh.
@@ -64,6 +101,7 @@ func (e *Engine) invalidate(userID int64) {
 func (e *Engine) InvalidateAll() {
 	e.mu.Lock()
 	clear(e.home)
+	e.cat = nil // the library changed; rebuild features + content vectors
 	e.mu.Unlock()
 }
 
@@ -147,6 +185,11 @@ func (e *Engine) RecordWatch(ctx context.Context, userID int64, kind model.Media
 	if kind != model.KindMovie {
 		return nil
 	}
+
+	// Playing a movie is the engagement signal for the home rows that surfaced
+	// it: credit them so the lifecycle can tell working rows from ignored ones.
+	// Non-fatal - a failure here must not fail recording the watch.
+	_, _ = e.db.CreditHomeCollectionWatch(ctx, userID, mediaID)
 
 	mf, ok, err := e.movieFeature(ctx, mediaID)
 	if err != nil {

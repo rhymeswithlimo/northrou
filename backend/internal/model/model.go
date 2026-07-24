@@ -59,6 +59,7 @@ type Movie struct {
 	Overview      string
 	Runtime       int // minutes
 	Genres        []string
+	Keywords      []string // TMDB keyword tags (thematic/tonal signal)
 	Tagline       string
 	Certification string // e.g. "R", resolved to one country
 	CollectionID  int64  // TMDB collection id, 0 if none
@@ -84,6 +85,7 @@ type Show struct {
 	Year          int
 	Overview      string
 	Genres        []string
+	Keywords      []string // TMDB keyword tags (thematic/tonal signal)
 	Tagline       string
 	Certification string // e.g. "TV-MA", resolved to one country
 	PosterPath    string

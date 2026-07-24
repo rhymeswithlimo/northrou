@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/rhymeswithlimo/northrou/backend/internal/db"
+	"github.com/rhymeswithlimo/northrou/backend/internal/recommend"
 )
 
 // searchItemDTO is one library hit. It matches the home-row item shape
@@ -16,6 +17,10 @@ type searchItemDTO struct {
 	Title     string `json:"title"`
 	Year      int    `json:"year,omitempty"`
 	PosterURL string `json:"poster_url,omitempty"`
+	// Reason is a short "why this is here" line, set only for similar-title
+	// results (e.g. "Directed by ...", "Shares the theme ..."). Omitted for
+	// plain search hits.
+	Reason string `json:"reason,omitempty"`
 }
 
 func (a *API) searchResultsToDTO(rs []db.SearchResult) []searchItemDTO {
@@ -47,7 +52,26 @@ func (a *API) handleSearch(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, a.searchResultsToDTO(results))
 }
 
-// handleSimilarMovies returns titles related to a movie.
+// simResultsToDTO maps recommend.SimResult (thematic similarity + reason) to the
+// shared search-item DTO.
+func (a *API) simResultsToDTO(rs []recommend.SimResult) []searchItemDTO {
+	out := make([]searchItemDTO, 0, len(rs))
+	for _, r := range rs {
+		out = append(out, searchItemDTO{
+			Kind:      r.Kind,
+			ID:        r.ID,
+			Title:     r.Title,
+			Year:      r.Year,
+			PosterURL: a.imageURL(r.PosterPath),
+			Reason:    r.Reason,
+		})
+	}
+	return out
+}
+
+// handleSimilarMovies returns titles related to a movie, ranked by thematic
+// (keyword) similarity when the recommendation engine is available, falling back
+// to the genre-overlap query otherwise.
 func (a *API) handleSimilarMovies(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(w, r)
 	if !ok {
@@ -55,6 +79,15 @@ func (a *API) handleSimilarMovies(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, err := a.DB.GetMovie(r.Context(), id); err != nil {
 		notFoundOr500(w, err, "get movie failed")
+		return
+	}
+	if a.Recommend != nil {
+		results, err := a.Recommend.SimilarMovies(r.Context(), id, 12)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "similar failed")
+			return
+		}
+		writeJSON(w, http.StatusOK, a.simResultsToDTO(results))
 		return
 	}
 	results, err := a.DB.SimilarMovies(r.Context(), id, 12)
@@ -73,6 +106,15 @@ func (a *API) handleSimilarShows(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, err := a.DB.GetShow(r.Context(), id); err != nil {
 		notFoundOr500(w, err, "get show failed")
+		return
+	}
+	if a.Recommend != nil {
+		results, err := a.Recommend.SimilarShows(r.Context(), id, 12)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "similar failed")
+			return
+		}
+		writeJSON(w, http.StatusOK, a.simResultsToDTO(results))
 		return
 	}
 	results, err := a.DB.SimilarShows(r.Context(), id, 12)

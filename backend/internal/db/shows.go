@@ -35,6 +35,9 @@ func (d *DB) UpsertShow(ctx context.Context, s *model.Show) (int64, error) {
 		if err := setGenres(ctx, tx, "show_genres", "show_id", id, s.Genres); err != nil {
 			return err
 		}
+		if err := setKeywords(ctx, tx, "show_keywords", "show_id", id, s.Keywords); err != nil {
+			return err
+		}
 		return setCredits(ctx, tx, model.KindShow, id, s.Cast, s.Crew)
 	})
 	if err != nil {
@@ -135,6 +138,7 @@ func (d *DB) GetShow(ctx context.Context, id int64) (*model.Show, error) {
 		return nil, err
 	}
 	s.Genres, _ = d.getGenres(ctx, "show_genres", "show_id", id)
+	s.Keywords, _ = d.getKeywords(ctx, "show_keywords", "show_id", id)
 	s.Cast, s.Crew, _ = d.getCredits(ctx, model.KindShow, id)
 
 	rows, err := d.QueryContext(ctx, `

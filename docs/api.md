@@ -112,9 +112,14 @@ Detail responses carry `rating` (TMDB vote average), `tagline`,
 carry `still_url` and `air_date`. Every image is an `/api/images/...` URL —
 the client never talks to TMDB directly.
 
-`/similar` is computed from the local library only (same TMDB collection
-first, then shared genres, tie-broken by rating), so it only ever surfaces
-titles the household actually owns.
+`/similar` is computed from the local library only, ranked by **thematic
+similarity**: each title is a TF-IDF vector over its TMDB keywords (plus a
+lighter genre backbone), and results are ordered by cosine proximity blended
+with same-collection and shared-director priors. Each result carries an
+optional `reason` string for the UI ("From the same collection", "Directed by
+…", "Shares the theme …"). Before keywords are ingested for a title (see
+`northrou backfill-keywords`) it falls back to the old shared-genre ranking
+with no `reason`. It only ever surfaces titles the household actually owns.
 
 JSON responses are gzip-compressed when the client sends
 `Accept-Encoding: gzip`. Media, HLS segments, images, and WebVTT are not
@@ -157,8 +162,10 @@ Direct-play and remux requests are stream copies and are never rejected.
 | GET | `/api/continue-watching` | - | Started but unfinished items for this profile |
 | POST | `/api/watch` | `{media_kind, media_id, position, duration}` | Record progress; updates the taste profile |
 
-Each row is `{key, title, confidence, items}` where an item is
+Each row is `{key, title, subtitle?, confidence, items}` where an item is
 `{kind, id, title, year, poster_path}` (`kind` is `"movie"` or `"show"`).
+`subtitle` is an optional one-line explanation for the row (e.g. "Thematically
+closest to …" under a "Because You Watched …" row).
 
 `POST /api/watch` takes `media_kind` of `"movie"` or `"episode"` (defaults to
 `"movie"`; `movie_id` is still accepted as an alias for `media_id`). Recording
@@ -173,8 +180,10 @@ backdrop_url, stream_url}`. For an episode, the display identity is the show
 (`title`/`backdrop_url`, opened via `show_id`) while `id` and `season`/`number`
 identify what actually resumes.
 
-With watch history, rows are personalized (Recommended for You, director rows,
-decade×genre, collection completion, etc.). With none, `/api/home` returns
+With watch history, rows are personalized (Recommended for You, **Because You
+Watched …** and **Movies About …** thematic rows driven by TMDB keywords,
+director rows, decade×genre, collection completion, etc.). With none,
+`/api/home` returns
 library-composition **category rows** instead — "Critically Acclaimed Films",
 "2000s Blockbusters", "American TV Shows", and similar — so a fresh install is
 immediately browsable. There is no onboarding quiz.

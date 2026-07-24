@@ -78,6 +78,20 @@ the highest-confidence rows over time. Computed rows are cached briefly and
 invalidated on a watch or library scan, so the full-library feature load runs
 once per burst rather than on every request.
 
+On top of the profile, each title is also a **content vector**: a TF-IDF
+vector over its normalized TMDB keywords plus a lighter genre backbone (pure
+Go, no SVD or external services). Cosine proximity in this space is thematic
+and tonal, not just genre-level, so it powers "More Like This", a thematic-fit
+term in scoring, and keyword-driven rows ("Because You Watched …", "Movies
+About …"). Existing libraries populate keywords via `northrou
+backfill-keywords`; new scans fetch them automatically, and titles without
+keywords fall back to shared-genre similarity.
+
+A lightweight lifecycle layer remembers what was shown: repeatedly-shown but
+never-played titles are down-weighted (fatigue), and rows the household
+consistently ignores rest for a while and later return — with guards so the
+foundational rows and the home screen itself can never be emptied.
+
 Before any history exists, a **cold-start** path organizes the library into
 browsable category rows by decade + box office ("2000s Blockbusters"),
 critical acclaim, genre, origin country ("American TV Shows"), language,

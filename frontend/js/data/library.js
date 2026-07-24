@@ -15,12 +15,13 @@ const fetchHome = () => {
 /** Drop the shared home response so the next read re-fetches. */
 export const invalidateHome = () => { homePromise = null; };
 
-/** Home rows come back as [{key, title, confidence, items}]. */
+/** Home rows come back as [{key, title, subtitle?, confidence, items}]. */
 export async function getHomeRows() {
     const rows = await fetchHome();
     return (rows ?? []).map((r) => ({
         key: r.key,
         title: r.title,
+        subtitle: r.subtitle,
         items: (r.items ?? []).map(toCard),
     }));
 }
@@ -88,6 +89,9 @@ function toCard(item) {
         year: item.year,
         // Home rows use poster_path; search and similar use poster_url.
         poster_url: toImageURL(item.poster_url ?? item.poster_path),
+        // Similar-title results carry a "why this is here" reason; other
+        // endpoints omit it and this stays undefined.
+        reason: item.reason,
     };
 }
 

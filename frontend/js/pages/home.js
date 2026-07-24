@@ -81,7 +81,7 @@ async function render() {
         nodes.push(row('Continue Watching', continuing, continueCard, 'row--continue'));
     }
     for (const r of rows) {
-        if (r.items?.length) nodes.push(row(r.title, r.items, posterCard));
+        if (r.items?.length) nodes.push(row(r.title, r.items, posterCard, undefined, r.subtitle));
     }
 
     // A fresh install with no media at all: say so, rather than showing a page

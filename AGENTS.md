@@ -118,6 +118,23 @@ There is **no** taste quiz (removed intentionally). Computed home rows are cache
 in the `Engine` (TTL + invalidation on watch and scan-complete); new write paths
 that change the catalog should invalidate it.
 
+**Content vectors (`embed.go`).** Each title is a TF-IDF vector over its
+normalized TMDB keywords (`keywords_alias.go`) plus a lighter genre backbone;
+cosine proximity = thematic/tonal similarity, not just shared genre. Pure Go, no
+SVD, **no new deps**. The library's features + vectors are memoized in the
+`Engine` as the `catalog`, rebuilt only on `InvalidateAll`. This drives thematic
+scoring, keyword-cosine `SimilarMovies`/`SimilarShows` (with a genre-overlap
+fallback before keywords are ingested), and the **Because You Watched** /
+**Movies About** generators. Size-relative cutoffs and the embedding weight are
+heuristics - read the comments before changing them. Run `northrou
+backfill-keywords` to populate keywords for a pre-existing library.
+
+**Persistence/lifecycle (`lifecycle.go`).** `item_impressions` feeds a
+subtractive fatigue penalty; `home_collections` records per-row served/click
+counts so rows the household ignores go dormant and revive later. Retirement
+never fires without engagement evidence, and the `for-you` row is never rested -
+both guard against emptying the home screen.
+
 ## Conventions & key decisions
 
 - **Pure-Go SQLite** (`modernc.org/sqlite`), so all 6 targets cross-compile with

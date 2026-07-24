@@ -88,6 +88,7 @@ COMMANDS:
    admin                    open the live admin dashboard (TUI)
    scan [path...]           scan a folder or drive now (no path scans the configured dirs)
    match <file>             force a file to a specific TMDB title
+   backfill-keywords        fetch keyword tags for existing titles (improves recommendations)
    cc                       print this server's connection code (for pairing apps)
    cc rotate                replace the connection code and sign every device out
    devices                  list paired devices

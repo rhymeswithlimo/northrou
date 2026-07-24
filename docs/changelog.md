@@ -15,6 +15,21 @@ land the change, not after the fact.
 
 ## v0.1.7 - Unreleased
 
+### Added
+
+- **Recommendations now understand theme and tone, not just genre.** Northrou
+  ingests each title's TMDB keyword tags and builds a local content vector per
+  title (TF-IDF over keywords with a genre backbone, pure Go, no external
+  services), so it can tell "small-town dread" from "small-town comedy" where
+  before both were just "Drama". This powers new personalized home rows -
+  **Because You Watched …** (the unwatched titles thematically closest to
+  something you just finished) and **Movies About …** (rows built from the
+  keywords that dominate your history) - each with a one-line subtitle
+  explaining why it's there.
+- **`northrou backfill-keywords`** fetches keyword tags for titles that were
+  matched before this release (new scans get them automatically). Run it once,
+  ideally with the service stopped, then restart the service so it reloads.
+
 ### Fixed
 
 - **`northrou scan` now warns when a running service is detected on the
@@ -47,6 +62,14 @@ land the change, not after the fact.
 
 ### Improved
 
+- **"More Like This" is now ranked by thematic similarity, not just shared
+  genre.** Related titles are ordered by how close their keyword content vectors
+  sit, blended with same-collection and same-director signals, and each result
+  shows a short reason ("From the same collection", "Directed by …", "Shares the
+  theme …"). Titles without keywords yet fall back to the old shared-genre
+  ranking. Recommendations also learn from what you skip: a title shown
+  repeatedly on the home screen but never played drifts down so fresher picks
+  surface, and home rows the household consistently ignores are quietly rested.
 - **`northrou scan` now shows live progress and reports why files didn't
   match.** A real library scan (ffprobe + TMDB per file) can run tens of
   minutes with no output at all until now. It redraws a `processed/total`

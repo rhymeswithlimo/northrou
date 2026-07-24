@@ -23,6 +23,7 @@ type Item struct {
 type Row struct {
 	Key        string  `json:"key"`
 	Title      string  `json:"title"`
+	Subtitle   string  `json:"subtitle,omitempty"` // one-line "why", optional
 	Confidence float64 `json:"confidence"`
 	Items      []Item  `json:"items"`
 }
@@ -41,19 +42,20 @@ func (e *Engine) Home(ctx context.Context, userID int64) ([]Row, error) {
 	if err != nil {
 		return nil, err
 	}
-	features, err := e.db.LoadMovieFeatures(ctx)
+	cat, err := e.loadCatalog(ctx)
 	if err != nil {
 		return nil, err
 	}
-	shows, err := e.db.LoadShowFeatures(ctx)
-	if err != nil {
-		return nil, err
-	}
+	features, shows := cat.movies, cat.shows
 	history, err := e.db.GetMovieWatchHistory(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
 	collections, err := e.db.LoadCollections(ctx)
+	if err != nil {
+		return nil, err
+	}
+	impressions, err := e.db.GetMovieImpressions(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -66,6 +68,10 @@ func (e *Engine) Home(ctx context.Context, userID int64) ([]Row, error) {
 		collections: collections,
 		now:         time.Now(),
 		names:       buildNameIndex(features),
+		movieByID:   indexMovies(features),
+		space:       cat.space,
+		taste:       tasteVector(cat.space, history, time.Now()),
+		impressions: impressions,
 	}
 
 	var rows []Row
@@ -73,6 +79,8 @@ func (e *Engine) Home(ctx context.Context, userID int64) ([]Row, error) {
 		rows = coldStartRows(rc) // library-composition rows
 	} else {
 		rows = append(rows, rc.genRecommended()...)
+		rows = append(rows, rc.genBecauseYouWatched()...)
+		rows = append(rows, rc.genKeywordThemes()...)
 		rows = append(rows, rc.genDirectorRows()...)
 		rows = append(rows, rc.genDecadeGenreRows()...)
 		rows = append(rows, rc.genCollectionRows()...)
@@ -87,7 +95,21 @@ func (e *Engine) Home(ctx context.Context, userID int64) ([]Row, error) {
 	for i := range rows {
 		rows[i].Confidence *= rotationPenalty(state[rows[i].Key], rc.now)
 	}
+
+	// Lifecycle: drop resting rows, revive rested ones, and re-weight by
+	// historical engagement before ranking.
+	registry, _ := e.db.GetHomeCollections(ctx, userID)
+	var revive []string
+	rows, revive = applyLifecycle(rows, registry, rc.now)
+	for _, key := range revive {
+		_ = e.db.SetHomeCollectionState(ctx, userID, key, "active", time.Time{})
+		delete(registry, key) // revived: treat as fresh for the retirement check
+	}
+
 	rows = dedupeAndRank(rows)
+
+	// Persist what we're about to show: impressions, served counts, retirement.
+	_ = e.recordServe(ctx, userID, rows, registry, rc.now)
 
 	keys := make([]string, 0, len(rows))
 	for _, r := range rows {
@@ -106,7 +128,41 @@ type rowContext struct {
 	history     map[int64]db.WatchRow
 	collections map[int64]string
 	now         time.Time
-	names       map[int64]string // person id -> name
+	names       map[int64]string             // person id -> name
+	movieByID   map[int64]*db.MovieFeature   // movie id -> feature
+	space       *vectorSpace                 // library content vectors
+	taste       sparseVec                    // user's unit taste vector (empty if no history/vectors)
+	impressions map[int64]int                // movie id -> prior served count (fatigue)
+}
+
+// tasteVector builds a user's content taste vector from movie watch history:
+// the recency- and completion-weighted average of the vectors of movies they
+// watched. Reuses the same signal weighting as the affinity engine
+// (signalFromCompletion x amplifyRewatch x time decay) so the two views of
+// taste agree. Returns an empty vector when there is no usable history.
+func tasteVector(space *vectorSpace, history map[int64]db.WatchRow, now time.Time) sparseVec {
+	if space == nil {
+		return sparseVec{}
+	}
+	weights := map[titleKey]float64{}
+	for id, wr := range history {
+		c := 0.0
+		if wr.DurationSec > 0 {
+			c = wr.PositionSec / wr.DurationSec
+		}
+		if wr.Completed && c < 0.95 {
+			c = 0.95
+		}
+		signal := amplifyRewatch(signalFromCompletion(c), wr.RewatchCount)
+		if signal <= 0 {
+			continue // an abandoned title shouldn't pull the taste toward itself
+		}
+		w := signal * decayFactor(now.Sub(wr.UpdatedAt))
+		if w > 0 {
+			weights[movieKey(id)] = w
+		}
+	}
+	return space.taste(weights)
 }
 
 // completed reports whether the user finished a movie.
@@ -162,7 +218,40 @@ func (rc *rowContext) scoreMovie(m db.MovieFeature) float64 {
 	// Language and runtime.
 	score += 0.10 * p.Affinity(DimLanguage, m.Language)
 	score += 0.05 * p.Affinity(DimRuntime, runtimeBucket(m.Runtime))
+
+	// Thematic fit: cosine between the user's taste vector and this movie's
+	// content vector. This is the term the old engine lacked entirely - it sees
+	// keyword-level theme/tone, not just genre. Weighted to matter alongside
+	// genre without swamping the explicit director signal. Both vectors are unit
+	// length, so the cosine is in [0,1]; it's 0 when either side has no vector
+	// (no history, or a title with no surviving keywords), leaving the classic
+	// affinity score untouched.
+	score += embedWeight * rc.themeFit(m.ID)
+
+	// Fatigue: a title shown repeatedly but never played drifts down so fresher
+	// candidates surface. Purely subtractive, so it can never empty a row.
+	score -= rc.fatiguePenalty(m.ID)
 	return score
+}
+
+// embedWeight scales the thematic (content-vector) term in scoreMovie. Sized so
+// a strong thematic match (cosine ~0.4) contributes ~0.28, comparable to a
+// strong single-genre affinity (0.30 x ~1.0) - keywords are meant to be a
+// first-class signal, not a tiebreaker. Heuristic; the cosine/affinity scales
+// aren't commensurable, so this is worth revisiting against a real library.
+const embedWeight = 0.7
+
+// themeFit returns the cosine between the user's taste vector and a movie's
+// content vector, or 0 if either is absent.
+func (rc *rowContext) themeFit(movieID int64) float64 {
+	if rc.space == nil || len(rc.taste) == 0 {
+		return 0
+	}
+	v, ok := rc.space.vecOf(movieKey(movieID))
+	if !ok {
+		return 0
+	}
+	return cosine(rc.taste, v)
 }
 
 func (rc *rowContext) toItem(m db.MovieFeature) Item {
@@ -386,8 +475,21 @@ func (rc *rowContext) genTimeContextRows() []Row {
 	return []Row{{Key: "timectx-" + bucket, Title: title, Confidence: conf, Items: rc.itemsOf(movies)}}
 }
 
-// genContrastRows: deliberately off-profile picks for novelty.
+// genContrastRows: novelty picks. With a taste vector it becomes "one step
+// outside" - well-regarded titles thematically adjacent to but outside the
+// user's cluster, rather than simply the lowest-scoring films (which tends to
+// dredge up junk they'll never play). Falls back to the old lowest-score
+// behavior when there's no usable vector.
 func (rc *rowContext) genContrastRows() []Row {
+	if items := rc.explorationItems(); len(items) >= 3 {
+		return []Row{{
+			Key: "contrast", Title: "One Step Outside",
+			Subtitle:   "Adjacent to your taste, but new territory",
+			Confidence: 0.4, Items: items,
+		}}
+	}
+
+	// Fallback: least-like-the-profile unseen titles.
 	type scored struct {
 		m db.MovieFeature
 		s float64
@@ -401,7 +503,6 @@ func (rc *rowContext) genContrastRows() []Row {
 	if len(cands) < 3 {
 		return nil
 	}
-	// Lowest-scoring (least like the profile) but still unseen.
 	sort.Slice(cands, func(i, j int) bool { return cands[i].s < cands[j].s })
 	var items []Item
 	for i, c := range cands {
@@ -411,6 +512,64 @@ func (rc *rowContext) genContrastRows() []Row {
 		items = append(items, rc.toItem(c.m))
 	}
 	return []Row{{Key: "contrast", Title: "Something Different", Confidence: 0.35, Items: items}}
+}
+
+// explorationBand bounds how far outside the taste cluster an "adjacent" title
+// sits: near enough to be relatable, far enough to be new. Cosine to taste.
+const (
+	explorationMinCosine = 0.05
+	explorationMaxCosine = 0.30
+)
+
+// explorationItems returns high-quality unwatched titles at a moderate thematic
+// distance from the taste vector, ranked by quality. Empty when there's no
+// taste vector (cold-ish user) so the caller falls back.
+func (rc *rowContext) explorationItems() []Item {
+	if rc.space == nil || len(rc.taste) == 0 {
+		return nil
+	}
+	type scored struct {
+		m db.MovieFeature
+		q float64
+	}
+	var cands []scored
+	for _, m := range rc.features {
+		if !rc.candidate(m) {
+			continue
+		}
+		v, ok := rc.space.vecOf(movieKey(m.ID))
+		if !ok {
+			continue
+		}
+		c := cosine(rc.taste, v)
+		if c < explorationMinCosine || c > explorationMaxCosine {
+			continue
+		}
+		// Quality prior: rating tempered by vote count, so obscure 9.0s with two
+		// votes don't dominate.
+		q := m.Rating
+		if m.Votes < 50 {
+			q -= 1.0
+		}
+		cands = append(cands, scored{m, q})
+	}
+	if len(cands) < 3 {
+		return nil
+	}
+	sort.Slice(cands, func(i, j int) bool {
+		if cands[i].q != cands[j].q {
+			return cands[i].q > cands[j].q
+		}
+		return cands[i].m.ID < cands[j].m.ID
+	})
+	items := make([]Item, 0, maxItemsPerRow)
+	for _, c := range cands {
+		if len(items) >= maxItemsPerRow {
+			break
+		}
+		items = append(items, rc.toItem(c.m))
+	}
+	return items
 }
 
 // itemsOf caps and converts a movie slice to items.
@@ -444,10 +603,12 @@ func rotationPenalty(lastShown, now time.Time) float64 {
 }
 
 // dedupeAndRank sorts rows by confidence, drops empties/tiny rows, dedupes by
-// key, and returns the top rows.
+// key, caps how many rows of one strategy appear (so near-duplicates don't
+// stack), and returns the top rows.
 func dedupeAndRank(rows []Row) []Row {
 	sort.SliceStable(rows, func(i, j int) bool { return rows[i].Confidence > rows[j].Confidence })
 	seen := map[string]bool{}
+	byStrategy := map[string]int{}
 	var out []Row
 	for _, r := range rows {
 		if seen[r.Key] || len(r.Items) == 0 {
@@ -456,7 +617,11 @@ func dedupeAndRank(rows []Row) []Row {
 		if len(r.Items) < 2 && r.Key != "for-you" {
 			continue
 		}
+		if s := strategyOf(r.Key); byStrategy[s] >= maxSameStrategyRows {
+			continue // don't stack three "Because You Watched" rows
+		}
 		seen[r.Key] = true
+		byStrategy[strategyOf(r.Key)]++
 		out = append(out, r)
 		if len(out) >= 10 {
 			break

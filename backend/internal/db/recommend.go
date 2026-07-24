@@ -23,6 +23,7 @@ type MovieFeature struct {
 	Revenue      int64
 	Country      string
 	Genres       []string
+	Keywords     []string // TMDB keyword tags (thematic signal)
 	Directors    []Person
 	Actors       []Person
 	Playable     bool // has a linked media file
@@ -40,6 +41,7 @@ type ShowFeature struct {
 	Popularity float64
 	Country    string
 	Genres     []string
+	Keywords   []string // TMDB keyword tags (thematic signal)
 	Playable   bool // has at least one episode with a media file
 }
 
@@ -97,6 +99,31 @@ func (d *DB) LoadMovieFeatures(ctx context.Context) ([]MovieFeature, error) {
 		}
 	}
 	gr.Close()
+	if err := gr.Err(); err != nil {
+		return nil, err
+	}
+
+	// Keywords.
+	kr, err := d.QueryContext(ctx, `
+		SELECT mk.movie_id, k.name FROM movie_keywords mk JOIN keywords k ON k.id = mk.keyword_id`)
+	if err != nil {
+		return nil, err
+	}
+	for kr.Next() {
+		var mid int64
+		var name string
+		if err := kr.Scan(&mid, &name); err != nil {
+			kr.Close()
+			return nil, err
+		}
+		if m := byID[mid]; m != nil {
+			m.Keywords = append(m.Keywords, name)
+		}
+	}
+	kr.Close()
+	if err := kr.Err(); err != nil {
+		return nil, err
+	}
 
 	// Credits (directors + actors).
 	cr, err := d.QueryContext(ctx, `
@@ -240,6 +267,31 @@ func (d *DB) LoadShowFeatures(ctx context.Context) ([]ShowFeature, error) {
 		}
 	}
 	gr.Close()
+	if err := gr.Err(); err != nil {
+		return nil, err
+	}
+
+	// Keywords.
+	kr, err := d.QueryContext(ctx, `
+		SELECT sk.show_id, k.name FROM show_keywords sk JOIN keywords k ON k.id = sk.keyword_id`)
+	if err != nil {
+		return nil, err
+	}
+	for kr.Next() {
+		var sid int64
+		var name string
+		if err := kr.Scan(&sid, &name); err != nil {
+			kr.Close()
+			return nil, err
+		}
+		if s := byID[sid]; s != nil {
+			s.Keywords = append(s.Keywords, name)
+		}
+	}
+	kr.Close()
+	if err := kr.Err(); err != nil {
+		return nil, err
+	}
 
 	out := make([]ShowFeature, 0, len(order))
 	for _, id := range order {
