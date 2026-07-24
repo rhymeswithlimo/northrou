@@ -13,6 +13,15 @@ Override the location with `--config /path/to/config.toml` or the
 for you; edit it directly for advanced tweaks and restart the service. It's
 for the person running the server — client apps need nothing from it.
 
+**This path is per-user.** If the installed service runs as a different user
+than your shell (e.g. it was installed with `sudo`, so it runs as `root`),
+running `northrou scan`, `doctor`, or `admin` in your own shell resolves
+*your own* config file, not the service's — a different, unrelated
+config/database, silently. Either run the command as the same user the
+service does (`sudo northrou ...`), or pass `--config` pointing at the
+service's file explicitly. `northrou scan`/`doctor`/`admin` warn when they
+detect this.
+
 ## Example
 
 ```toml
@@ -68,7 +77,12 @@ auto_update_disabled = false   # true turns off background self-update
 - **port** — HTTP port (default `8674`).
 - **data_dir** — where Northrou stores everything mutable: the SQLite
   database, cached images, managed FFmpeg binaries, generated subtitles, and
-  HLS transcode scratch space.
+  HLS transcode scratch space. **Use an absolute path.** A relative one
+  resolves against whatever the invoking process's working directory happens
+  to be — `/` for a systemd service with no `WorkingDirectory` set, but
+  wherever your shell was `cd`'d to for a manual `northrou scan`/`serve` — so
+  the same config file can silently point at two different directories
+  depending on how it's launched.
 
 ### `[media]`
 - **movie_dirs** / **show_dirs** — folders the daemon scans automatically and

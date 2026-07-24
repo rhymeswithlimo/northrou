@@ -71,6 +71,15 @@ export async function getContinueWatching() {
     }));
 }
 
+// Home rows ship a bare cache-relative path ("w500/xxx.jpg", see
+// docs/architecture.md's home-row shape); every other endpoint already
+// returns a ready-to-use "/api/images/..." URL. Normalize both to the latter,
+// or the raw path renders as a broken image with the API prefix missing.
+function toImageURL(path) {
+    if (!path) return undefined;
+    return path.startsWith('/api/images/') ? path : `/api/images/${path}`;
+}
+
 function toCard(item) {
     return {
         kind: item.kind,
@@ -78,7 +87,7 @@ function toCard(item) {
         title: item.title,
         year: item.year,
         // Home rows use poster_path; search and similar use poster_url.
-        poster_url: item.poster_url ?? item.poster_path,
+        poster_url: toImageURL(item.poster_url ?? item.poster_path),
     };
 }
 

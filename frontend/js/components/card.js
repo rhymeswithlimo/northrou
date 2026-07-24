@@ -2,6 +2,7 @@
 
 import { $ } from '../lib/dom.js';
 import { remaining, progressPct, episodeCode, dotted } from '../lib/format.js';
+import { setImageSrc } from '../api/images.js';
 
 const tpl = (id) => $(`#${id}`).content.firstElementChild;
 
@@ -9,7 +10,7 @@ const tpl = (id) => $(`#${id}`).content.firstElementChild;
 export function posterCard(item) {
     const el = tpl('tpl-card').cloneNode(true);
     const img = $('img', el);
-    img.src = item.poster_url;
+    setImageSrc(img, item.poster_url);
     img.alt = item.title;
     el.dataset.kind = item.kind;
     el.dataset.id = item.id;
@@ -20,7 +21,7 @@ export function posterCard(item) {
 export function continueCard(item) {
     const el = tpl('tpl-card-continue').cloneNode(true);
     const img = $('img', el);
-    img.src = item.backdrop_url;
+    setImageSrc(img, item.backdrop_url);
     img.alt = item.title;
 
     $('.progress__bar', el).style.width = `${progressPct(item.position_sec, item.duration_sec)}%`;
@@ -39,7 +40,7 @@ export function continueCard(item) {
 export function personCard(person) {
     const el = tpl('tpl-card-person').cloneNode(true);
     const img = $('img', el);
-    img.src = person.profile_url;
+    setImageSrc(img, person.profile_url);
     img.alt = person.name;
     $('.card__title', el).textContent = person.name;
     $('.card__meta', el).textContent = person.role;

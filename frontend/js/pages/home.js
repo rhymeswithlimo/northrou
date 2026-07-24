@@ -10,6 +10,7 @@ import { getHero, getContinueWatching, getHomeRows, getDetail } from '../data/li
 import { requireServer, requireReady, needsSetup } from '../api/connect.js';
 import { isSameOrigin } from '../data/servers.js';
 import { mountNativeChrome, setNativeChromeVisible } from '../components/native-chrome.js';
+import { setImageSrc } from '../api/images.js';
 
 const rowsEl = $('#rows');
 const heroEl = $('#hero');
@@ -35,7 +36,7 @@ async function openDetail(kind, id) {
 function renderHero(item) {
     const el = $('#tpl-hero').content.firstElementChild.cloneNode(true);
     const img = $('img', el);
-    img.src = item.backdrop_url;
+    setImageSrc(img, item.backdrop_url);
     // The title sits in .hero__info right beside it, so the image adds nothing
     // for a screen reader.
     img.alt = '';

@@ -97,7 +97,7 @@ async function refreshTokens() {
  *          signal?: AbortSignal, query?: Record<string, any>}} [opts]
  */
 export async function request(path, opts = {}) {
-    const { method = 'GET', body, auth = true, text = false, signal, query } = opts;
+    const { method = 'GET', body, auth = true, text = false, blob = false, signal, query } = opts;
 
     let url = apiUrl(path);
     if (query) {
@@ -146,6 +146,8 @@ export async function request(path, opts = {}) {
 
     if (!res.ok) throw await toError(res);
     if (res.status === 204) return null;
+    // Cached images: the caller wants raw bytes, not a JSON body.
+    if (blob) return res.blob();
     // Plain-text endpoints (the server log tail) opt out of JSON parsing.
     if (text) return res.text();
     return parseBody(res);
@@ -155,3 +157,4 @@ export const get = (path, opts) => request(path, { ...opts, method: 'GET' });
 export const post = (path, body, opts) => request(path, { ...opts, method: 'POST', body });
 export const patch = (path, body, opts) => request(path, { ...opts, method: 'PATCH', body });
 export const del = (path, opts) => request(path, { ...opts, method: 'DELETE' });
+export const getBlob = (path, opts) => request(path, { ...opts, method: 'GET', blob: true });

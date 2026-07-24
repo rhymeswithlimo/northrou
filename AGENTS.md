@@ -198,6 +198,15 @@ that change the catalog should invalidate it.
 - `goreleaser` and Docker builds are configured but were validated by
   cross-compile + `goreleaser check`-equivalent, not a full release/build in
   this environment.
+- **`scan`/`doctor`/`admin` resolve `config.toml` per invoking user's
+  `$HOME`/XDG dirs, same as the installed service does** (see
+  docs/configuration.md) — so running one as a different user than the
+  service (e.g. a systemd service installed via `sudo` runs as root; running
+  `northrou scan` in your own shell resolves *your* config, not root's)
+  silently operates on a config/database the service never reads. This is by
+  design, not a bug to fix away, but it's a real footgun: all three commands
+  now warn when something is already listening on the configured port
+  (`internal/cli/scan.go`, `doctor.go`, `stubs.go`'s `admin` command).
 
 ## Watch-outs added by the client work
 
@@ -229,6 +238,18 @@ that change the catalog should invalidate it.
   remote peer (`App.RestartRemote`) so the coordinator learns the new code
   immediately. Don't decouple those: a rotation that leaves old devices
   connected, or that the coordinator hasn't heard about, is broken.
+- **`/api/images/*` requires the same Bearer auth as everything else, so it
+  can never be a plain `<img src="...">`** — a browser can't attach an
+  `Authorization` header to an image tag; it'll 401 silently with no console
+  error. Images are fetched through the authenticated client and handed to
+  `<img>` as a `blob:` object URL instead (`frontend/js/api/images.js`,
+  `setImageSrc`). Any new image-bearing field must go through this, never a
+  direct `.src =` assignment.
+- **Home rows (`GET /api/home`) ship a bare cache-relative `poster_path`**
+  (e.g. `w500/x.jpg`, no prefix), while every other endpoint (movies/shows/
+  similar/search) sends a ready-to-use `poster_url` (`/api/images/w500/x.jpg`).
+  `library.js`'s `toCard()` normalizes both into a real URL - don't
+  reintroduce a plain `??` fallback between them, they are not the same shape.
 
 ## Further reading
 

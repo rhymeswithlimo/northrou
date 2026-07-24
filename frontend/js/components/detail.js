@@ -8,6 +8,7 @@
 import { $, $$ } from '../lib/dom.js';
 import { runtime, minutes, remaining, progressPct, seasonCount } from '../lib/format.js';
 import { posterCard, personCard, row } from './card.js';
+import { setImageSrc } from '../api/images.js';
 
 const FOCUSABLE = 'a[href], button:not([disabled]), select, input, [tabindex]:not([tabindex="-1"])';
 
@@ -62,7 +63,7 @@ function renderEpisodes(el, data) {
         for (const ep of season?.episodes ?? []) {
             const node = $('#tpl-episode').content.firstElementChild.cloneNode(true);
             const img = $('img', node);
-            img.src = ep.still_url;
+            setImageSrc(img, ep.still_url);
             img.alt = ep.title;
             $('.progress__bar', node).style.width = `${progressPct(ep.position_sec, ep.duration_sec)}%`;
             $('.episode__num', node).textContent = String(ep.number);
@@ -83,7 +84,7 @@ function build(data) {
     $('.detail__dialog', el).setAttribute('aria-label', `${data.title} details`);
 
     const heroImg = $('.detail__hero img', el);
-    heroImg.src = data.backdrop_url;
+    setImageSrc(heroImg, data.backdrop_url);
     heroImg.alt = `${data.title} backdrop`;
 
     // A logo image stands in for the heading visually; the text stays for

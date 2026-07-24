@@ -34,6 +34,16 @@ land the change, not after the fact.
   `systemd-logind` into a CPU-pegging suspend-retry loop instead. The warning
   includes the one-line fix (`HandleLidSwitch`/`HandleLidSwitchExternalPower`
   in `/etc/systemd/logind.conf`).
+- **Poster, backdrop, still, and cast images never rendered anywhere in the
+  web client.** Two independent bugs: (1) `/api/images/*` requires the same
+  Bearer auth as the rest of the API, but every image was a plain
+  `<img src="/api/images/...">` - a browser can't attach an Authorization
+  header to that, so every image request 401'd silently. Images are now
+  fetched through the authenticated client and handed to `<img>` as a `blob:`
+  object URL. (2) Separately, home-row items ship a bare cache-relative
+  `poster_path` (no `/api/images/` prefix) while every other endpoint sends a
+  ready-to-use `poster_url`; the frontend treated them as interchangeable, so
+  even authenticated home-row image requests pointed at the wrong path.
 
 ### Improved
 
