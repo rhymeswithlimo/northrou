@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/rhymeswithlimo/northrou/backend/internal/db"
 )
@@ -143,5 +144,51 @@ func TestSelectProfileSwitches(t *testing.T) {
 	// Switching to a nonexistent profile fails.
 	if _, _, err := svc.SelectProfile(ctx, newPair.RefreshToken, 9999); err != ErrInvalidCredentials {
 		t.Errorf("expected unknown profile rejected, got %v", err)
+	}
+}
+
+func TestStreamTokenScopingAndFileBinding(t *testing.T) {
+	svc, database := newTestService(t)
+	pid := setupAccount(t, database, "Alice")
+
+	tok, exp, err := svc.IssueStreamToken(pid, 42)
+	if err != nil {
+		t.Fatalf("issue stream token: %v", err)
+	}
+	if time.Until(exp) < 10*time.Hour {
+		t.Fatalf("stream token should be long-lived; expires in %s", time.Until(exp))
+	}
+
+	// A stream token must NOT authenticate a full API session.
+	if _, err := svc.VerifyAccess(tok); err == nil {
+		t.Fatal("VerifyAccess accepted a stream token; it must reject scoped tokens")
+	}
+
+	// It IS valid on the media routes, and bound to its file.
+	claims, err := svc.VerifyMedia(tok)
+	if err != nil {
+		t.Fatalf("VerifyMedia rejected a stream token: %v", err)
+	}
+	if claims.ProfileID != pid {
+		t.Errorf("stream token profile = %d, want %d", claims.ProfileID, pid)
+	}
+	if !claims.AllowsFile(42) {
+		t.Error("stream token should allow its own file 42")
+	}
+	if claims.AllowsFile(43) {
+		t.Error("stream token must NOT allow a different file 43")
+	}
+
+	// A normal session token works on media routes too, and is file-agnostic.
+	_, _, apair, err := svc.IssueSession(context.Background(), Device{Name: "t"})
+	if err != nil {
+		t.Fatalf("issue session: %v", err)
+	}
+	acc, err := svc.VerifyMedia(apair.AccessToken)
+	if err != nil {
+		t.Fatalf("VerifyMedia rejected a normal token: %v", err)
+	}
+	if !acc.AllowsFile(999) {
+		t.Error("a full-access token should allow any file")
 	}
 }

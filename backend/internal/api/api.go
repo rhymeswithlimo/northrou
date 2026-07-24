@@ -149,10 +149,12 @@ func (a *API) Mount(r chi.Router) {
 			r.Get("/unmatched", a.handleListUnmatched)
 			r.Get("/admin/tmdb-search", a.handleTMDBSearch)
 
-			// Streaming.
-			r.Get("/media/{id}/stream", a.handleStream)
+			// Streaming. The plan preflight and the stream-token mint are JSON
+			// calls the client makes with its normal bearer token; the byte
+			// routes themselves live in the media group below (they're loaded by
+			// a <video>/HLS element that can't send an Authorization header).
 			r.Get("/media/{id}/plan", a.handlePlan)
-			r.Get("/media/{id}/hls/{session}/{file}", a.handleHLSFile)
+			r.Get("/media/{id}/stream-token", a.handleStreamToken)
 
 			// Home / recommendations.
 			r.Get("/home", a.handleHome)
@@ -191,7 +193,17 @@ func (a *API) Mount(r chi.Router) {
 				r.Delete("/admin/sessions/{id}", a.handleRevokeSession)
 				r.Delete("/profiles/{id}", a.handleDeleteProfile)
 			})
-			// stream / subtitles / home mount here in P3-P6.
+		})
+
+		// Media byte routes: the raw stream and HLS segments. These are loaded
+		// directly by a browser <video>/HLS player, which can't attach an
+		// Authorization header, so they use MediaMiddleware (token via header or
+		// ?access_token= query) instead of the header-only Middleware above. Each
+		// handler additionally enforces the stream token's per-file binding.
+		r.Group(func(r chi.Router) {
+			r.Use(a.Auth.MediaMiddleware)
+			r.Get("/media/{id}/stream", a.handleStream)
+			r.Get("/media/{id}/hls/{session}/{file}", a.handleHLSFile)
 		})
 	})
 }

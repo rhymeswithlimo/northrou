@@ -34,10 +34,45 @@ func parseCapabilities(r *http.Request) transcode.ClientCapabilities {
 	return caps
 }
 
+// handleStreamToken mints a long-lived, file-bound stream token the browser
+// player puts in the media URL (a <video>/HLS request can't send an
+// Authorization header). It is scoped to this one file and to media bytes only.
+func (a *API) handleStreamToken(w http.ResponseWriter, r *http.Request) {
+	fileID, ok := mediaID(w, r)
+	if !ok {
+		return
+	}
+	claims, ok := auth.ClaimsFrom(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not signed in")
+		return
+	}
+	tok, exp, err := a.Auth.IssueStreamToken(claims.ProfileID, fileID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not issue stream token")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"token": tok, "expires_at": exp})
+}
+
+// requireFileAccess rejects a request whose (stream) token is bound to a
+// different file. A normal session token always passes.
+func requireFileAccess(w http.ResponseWriter, r *http.Request, fileID int64) bool {
+	claims, ok := auth.ClaimsFrom(r.Context())
+	if !ok || !claims.AllowsFile(fileID) {
+		writeError(w, http.StatusForbidden, "token not valid for this file")
+		return false
+	}
+	return true
+}
+
 // handleStream serves a media file using the transcode decision cascade.
 func (a *API) handleStream(w http.ResponseWriter, r *http.Request) {
 	fileID, ok := mediaID(w, r)
 	if !ok {
+		return
+	}
+	if !requireFileAccess(w, r, fileID) {
 		return
 	}
 	mf, err := a.DB.GetMediaFile(r.Context(), fileID)
@@ -71,6 +106,13 @@ func (a *API) profileAudioLangs(r *http.Request) []string {
 
 // handleHLSFile serves a playlist or segment for an active HLS session.
 func (a *API) handleHLSFile(w http.ResponseWriter, r *http.Request) {
+	fileID, ok := mediaID(w, r)
+	if !ok {
+		return
+	}
+	if !requireFileAccess(w, r, fileID) {
+		return
+	}
 	streamer := a.getStreamer()
 	if streamer == nil {
 		writeError(w, http.StatusServiceUnavailable, "streaming not ready")

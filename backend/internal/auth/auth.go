@@ -37,7 +37,18 @@ var (
 const (
 	defaultAccessTTL  = 15 * time.Minute
 	defaultRefreshTTL = 30 * 24 * time.Hour
+	// streamTTL is how long a media stream token stays valid. A browser <video>
+	// element bakes the token into the media URL (it can't send an Authorization
+	// header), and it can't refresh it mid-playback, so the token has to outlast
+	// a long movie plus pauses. It is safe to make it this long because a
+	// stream-scoped token can only fetch media bytes, and only for the one file
+	// it was minted for - never the rest of the API.
+	streamTTL = 12 * time.Hour
 )
+
+// scopeStream marks a token that may fetch media bytes but nothing else. A
+// normal (full-access) token carries no scope.
+const scopeStream = "stream"
 
 // Service issues and verifies tokens against the database.
 type Service struct {
@@ -60,9 +71,25 @@ func NewService(database *db.DB, secret []byte) *Service {
 // Claims are the JWT claims carried in an access token. ProfileID scopes all
 // per-viewer data. There is deliberately no admin claim: admin is derived from
 // the request transport, not carried in the token.
+//
+// Scope is empty for a normal session token and "stream" for a media stream
+// token (see IssueStreamToken); FileID, when set on a stream token, binds it to
+// a single media file so a leaked stream URL can't range over the whole library.
 type Claims struct {
-	ProfileID int64 `json:"pid"`
+	ProfileID int64  `json:"pid"`
+	Scope     string `json:"scope,omitempty"`
+	FileID    int64  `json:"fid,omitempty"`
 	jwt.RegisteredClaims
+}
+
+// AllowsFile reports whether these claims may fetch bytes for fileID. A normal
+// session token (no scope) may fetch anything; a file-bound stream token may
+// fetch only its own file.
+func (c *Claims) AllowsFile(fileID int64) bool {
+	if c.Scope == scopeStream && c.FileID != 0 {
+		return c.FileID == fileID
+	}
+	return true
 }
 
 // TokenPair is what a successful pair/refresh/profile-switch returns.
@@ -202,6 +229,35 @@ func (s *Service) Logout(ctx context.Context, rawRefresh string) error {
 
 // VerifyAccess parses and validates an access token, returning its claims.
 func (s *Service) VerifyAccess(tokenString string) (*Claims, error) {
+	claims, err := s.parseToken(tokenString)
+	if err != nil {
+		return nil, err
+	}
+	// A stream token is media-only and long-lived; it must never authenticate a
+	// full API session (its whole safety argument is that leaking one in a media
+	// URL grants nothing but that file's bytes).
+	if claims.Scope != "" {
+		return nil, ErrInvalidToken
+	}
+	return claims, nil
+}
+
+// VerifyMedia verifies a token presented on a media byte route. It accepts both
+// a normal session token and a stream token, but nothing with an unknown scope.
+func (s *Service) VerifyMedia(tokenString string) (*Claims, error) {
+	claims, err := s.parseToken(tokenString)
+	if err != nil {
+		return nil, err
+	}
+	if claims.Scope != "" && claims.Scope != scopeStream {
+		return nil, ErrInvalidToken
+	}
+	return claims, nil
+}
+
+// parseToken verifies a JWT's signature and expiry and returns its claims,
+// without any scope check.
+func (s *Service) parseToken(tokenString string) (*Claims, error) {
 	claims := &Claims{}
 	tok, err := jwt.ParseWithClaims(tokenString, claims, func(t *jwt.Token) (any, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -229,12 +285,28 @@ func (s *Service) issuePair(ctx context.Context, profileID int64, device Device)
 	return &TokenPair{AccessToken: access, RefreshToken: refresh, ExpiresAt: exp}, nil
 }
 
-// issueAccess mints a signed access JWT scoped to a profile, valid for ttl.
+// issueAccess mints a signed full-access JWT scoped to a profile, valid for ttl.
 func (s *Service) issueAccess(profileID int64, ttl time.Duration) (string, time.Time, error) {
+	return s.issueToken(profileID, "", 0, ttl)
+}
+
+// IssueStreamToken mints a long-lived, media-only token bound to a single file.
+// It is what a browser <video>/HLS player carries in the media URL, since those
+// requests can't send an Authorization header. It can fetch bytes for fileID and
+// nothing else - VerifyAccess rejects it on every other route.
+func (s *Service) IssueStreamToken(profileID, fileID int64) (string, time.Time, error) {
+	return s.issueToken(profileID, scopeStream, fileID, streamTTL)
+}
+
+// issueToken mints a signed JWT scoped to a profile, with an optional scope and
+// file binding, valid for ttl.
+func (s *Service) issueToken(profileID int64, scope string, fileID int64, ttl time.Duration) (string, time.Time, error) {
 	now := time.Now()
 	exp := now.Add(ttl)
 	claims := Claims{
 		ProfileID: profileID,
+		Scope:     scope,
+		FileID:    fileID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   fmt.Sprint(profileID),
 			IssuedAt:  jwt.NewNumericDate(now),

@@ -34,6 +34,33 @@ func (s *Service) Middleware(next http.Handler) http.Handler {
 	})
 }
 
+// MediaMiddleware guards the media byte routes (stream, HLS segments). Unlike
+// Middleware it also accepts the token as an `access_token` query parameter,
+// because a browser <video> element and native HLS fetch these URLs directly and
+// can't attach an Authorization header. It accepts a normal session token or a
+// stream token (see VerifyMedia); the per-file binding is enforced in the
+// handlers, which know the requested media id. Must be used in place of, not on
+// top of, Middleware.
+func (s *Service) MediaMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tok := bearerToken(r)
+		if tok == "" {
+			tok = strings.TrimSpace(r.URL.Query().Get("access_token"))
+		}
+		if tok == "" {
+			http.Error(w, "missing token", http.StatusUnauthorized)
+			return
+		}
+		claims, err := s.VerifyMedia(tok)
+		if err != nil {
+			http.Error(w, "invalid token", http.StatusUnauthorized)
+			return
+		}
+		ctx := context.WithValue(r.Context(), claimsKey, claims)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
 // RequireLocal wraps a handler so only trusted local requests may proceed: a
 // request that did not arrive over the tunnel and whose peer is loopback or a
 // private/link-local address (see remote.IsLocal). Requests tunneled in from a

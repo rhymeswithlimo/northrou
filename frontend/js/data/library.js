@@ -203,6 +203,9 @@ async function resumeFor(kind, id) {
         position_sec: match.position_sec,
         duration_sec: match.duration_sec,
         stream_url: match.stream_url,
+        // What playback should record progress against: for a show this is the
+        // in-progress episode (match.id is the episode id), not the show.
+        watch: { kind: match.kind, id: match.id },
     };
 }
 

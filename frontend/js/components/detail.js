@@ -70,6 +70,15 @@ function renderEpisodes(el, data) {
             $('.episode__title', node).textContent = ep.title;
             $('.episode__dur', node).textContent = minutes(ep.runtime);
             $('.episode__desc', node).textContent = ep.overview;
+            // A downloaded episode is clickable to play; one that isn't in the
+            // library yet is shown but disabled.
+            if (ep.stream_url) {
+                node.dataset.streamUrl = ep.stream_url;
+                node.dataset.episodeId = String(ep.id);
+                node.dataset.title = ep.title || `Episode ${ep.number}`;
+            } else {
+                node.disabled = true;
+            }
             list.append(node);
         }
     };
@@ -172,7 +181,39 @@ function castCrew(cast = [], crew = []) {
     return [...directors, ...actors, ...writers].slice(0, MAX_PEOPLE);
 }
 
-export function createDetailModal(mount, { onSelect, onOpen, onClose } = {}) {
+// resolvePlay works out what the PLAY button should start for a title, and
+// where. A movie plays its own file; a title in progress resumes at its saved
+// position (for a show that's the in-progress episode); a fresh show plays its
+// first downloaded episode. Returns null when nothing is actually playable
+// (a movie whose file isn't present, a show with no downloaded episodes).
+function resolvePlay(data) {
+    const r = data.resume;
+    if (r?.stream_url && r.watch?.id) {
+        return { streamUrl: r.stream_url, title: data.title, watch: r.watch,
+            startPosition: r.position_sec ?? 0 };
+    }
+    if (data.stream_url) { // a movie not yet started
+        return { streamUrl: data.stream_url, title: data.title,
+            watch: { kind: 'movie', id: Number(data.id) }, startPosition: 0 };
+    }
+    const ep = firstPlayableEpisode(data); // a show with no progress
+    if (ep) {
+        return { streamUrl: ep.stream_url, title: data.title,
+            watch: { kind: 'episode', id: Number(ep.id) }, startPosition: 0 };
+    }
+    return null;
+}
+
+function firstPlayableEpisode(data) {
+    for (const s of data.seasons ?? []) {
+        for (const ep of s.episodes ?? []) {
+            if (ep.stream_url) return ep;
+        }
+    }
+    return null;
+}
+
+export function createDetailModal(mount, { onSelect, onOpen, onClose, onPlay } = {}) {
     let el = null;
     let lastFocused = null;
 
@@ -211,6 +252,24 @@ export function createDetailModal(mount, { onSelect, onOpen, onClose } = {}) {
         el.addEventListener('click', (e) => {
             if (e.target === el || e.target.closest('[data-close]')) {
                 close();
+                return;
+            }
+            // PLAY (or the resume progress bar) starts the title.
+            if (e.target.closest('.detail__play, .detail__resume')) {
+                e.preventDefault();
+                onPlay?.(resolvePlay(data));
+                return;
+            }
+            // An episode in the list plays that episode directly.
+            const ep = e.target.closest('.episode[data-stream-url]');
+            if (ep) {
+                e.preventDefault();
+                onPlay?.({
+                    streamUrl: ep.dataset.streamUrl,
+                    title: ep.dataset.title,
+                    watch: { kind: 'episode', id: Number(ep.dataset.episodeId) },
+                    startPosition: 0,
+                });
                 return;
             }
             // Cards inside the modal swap its contents rather than stacking a

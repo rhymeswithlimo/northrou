@@ -131,7 +131,17 @@ JSON responses are gzip-compressed when the client sends
 |---|---|---|
 | GET | `/api/media/{id}/stream` | Serve the file. Direct/remux/audio paths stream directly; full-transcode returns an HLS playlist URL |
 | GET | `/api/media/{id}/plan` | Preflight: returns the transcode decision without streaming |
+| GET | `/api/media/{id}/stream-token` | Mint a stream token for this file (see below) |
 | GET | `/api/media/{id}/hls/{session}/{file}` | HLS playlist and segments |
+
+**Stream tokens.** `/stream` and `/hls/...` are loaded directly by a browser
+`<video>`/HLS player, which can't attach an `Authorization` header. So they also
+accept the token as an `?access_token=` query parameter. Because a token in a URL
+is easier to leak, the player first calls `/stream-token` (with its normal bearer
+token) to mint a dedicated token: it is valid for **media bytes only** (never the
+rest of the API) and **bound to that one file**, and it is long-lived (12h) so it
+outlasts a full movie without a mid-playback refresh. `/plan` and
+`/stream-token` themselves are normal bearer-only JSON endpoints.
 
 **Client capabilities** are passed as query params on `/stream` and `/plan`:
 

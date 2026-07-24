@@ -5,6 +5,7 @@ import { heroMeta } from '../lib/format.js';
 import { mountNavAutoHide } from '../components/nav.js';
 import { posterCard, continueCard, row } from '../components/card.js';
 import { createDetailModal } from '../components/detail.js';
+import { openPlayer } from '../components/player.js';
 import { statePanel, skeletonRow, toast, mountOfflineBanner } from '../components/states.js';
 import { getHeroPool, getHeroItem, getContinueWatching, getHomeRows, getDetail } from '../data/library.js';
 import { requireServer, requireReady, needsSetup } from '../api/connect.js';
@@ -17,6 +18,13 @@ const heroEl = $('#hero');
 
 const modal = createDetailModal($('#detail-root'), {
     onSelect: openDetail,
+    onPlay: (opts) => {
+        if (!opts) {
+            toast("That title isn't available to play yet.", { variant: 'error' });
+            return;
+        }
+        openPlayer(opts);
+    },
     // A detail view is immersive. Native chrome hides while it is open and
     // comes back with it, the same way a presented view controller behaves.
     // The hero also stops rotating under the open sheet, and resumes on close.

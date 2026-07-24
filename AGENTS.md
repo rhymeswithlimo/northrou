@@ -275,6 +275,28 @@ both guard against emptying the home screen.
   similar/search) sends a ready-to-use `poster_url` (`/api/images/w500/x.jpg`).
   `library.js`'s `toCard()` normalizes both into a real URL - don't
   reintroduce a plain `??` fallback between them, they are not the same shape.
+- **Media bytes can't use the Bearer header, so `/stream` and `/hls/...` accept
+  a token via `?access_token=` too** (`auth.MediaMiddleware`, a sibling route
+  group to the header-only one - not stacked on it). A `<video>`/HLS element
+  can't set headers. The player mints a **stream token** first
+  (`GET /api/media/{id}/stream-token`): media-bytes-only scope and bound to that
+  one file (`Claims.AllowsFile`, enforced in the handlers), 12h TTL so it
+  outlasts a movie without a mid-play refresh. `VerifyAccess` rejects any scoped
+  token, so a leaked stream URL grants nothing but that file. `plan` and
+  `stream-token` stay header-only. Don't move the byte routes back under the
+  header-only middleware - HLS.js injects the stream token as a bearer header and
+  it must land on `MediaMiddleware`.
+- **The player probes real browser codec support (`video.canPlayType` +
+  `MediaSource.isTypeSupported`) to build the capability query** (`api/stream.js`).
+  Over-claiming a codec = the server direct-plays something the browser can't
+  decode = a black screen, which reads exactly like "Play does nothing." Keep the
+  probe conservative; add a codec only when both checks pass.
+- **hls.js is a real dependency, dynamically imported** (`await import('hls.js')`
+  inside the HLS path) so the ~500KB only loads when a transcode actually plays,
+  not on the home screen. It's the one client dep; the byte-copy paths
+  (direct/remux) use a native `<video src>` with no library. Native HLS (Safari
+  without MSE) isn't wired yet - the token would have to ride every relative
+  segment URL. Every MSE-capable browser takes the hls.js path.
 
 ## Further reading
 

@@ -17,6 +17,16 @@ land the change, not after the fact.
 
 ### Added
 
+- **The Play button plays.** The web player is here: press Play (or an episode,
+  or a Continue Watching title) and it opens full screen and starts. It picks the
+  cheapest path your browser can handle - playing the file directly when it can,
+  transcoding on the fly (adaptive HLS) when it can't - reads your capabilities
+  from the browser so it won't hand you something that decodes to a black screen,
+  resumes where you left off, shows subtitles, and remembers your position as you
+  watch. Works in any current browser (Chrome, Firefox, Edge, Safari) served from
+  the box or on your home network. (Playback in the desktop/mobile apps, which
+  reach the server over the peer-to-peer tunnel, is a separate piece still to
+  come.)
 - **The featured hero on the home screen now rotates.** It fades to a different,
   randomly chosen movie or show from your library every 24 seconds instead of
   sitting on one fixed pick.
@@ -40,6 +50,15 @@ land the change, not after the fact.
   only fired on a capital `R`; a lowercase `r` just refreshed the view.
 - **The web client's code box groups the full code.** It was grouping in blocks of
   four, which no longer matches the `NR-XXXXX-XXXXX` format.
+- **Hardware acceleration is detected correctly instead of guessed.** The server
+  reported whichever encoders were *compiled into* ffmpeg, so a box with an Intel
+  iGPU (or no GPU at all) falsely claimed NVENC. That wasn't just a wrong label on
+  the dashboard: the transcoder then tried to run every transcode on a GPU that
+  wasn't there (`-hwaccel cuda`) and ffmpeg failed outright, so transcoded titles
+  wouldn't play. Each backend is now confirmed with a real test-encode against the
+  actual device before it's offered, and the estimated capacity follows from what
+  truly works. When a usable-looking backend is rejected (for example a service
+  account without access to `/dev/dri`), the reason is written to the log.
 
 ## v0.1.8 - 2026-07-24
 

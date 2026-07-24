@@ -16,6 +16,7 @@
 
     <link rel="stylesheet" href="css/base.css">
     <link rel="stylesheet" href="css/components.css">
+    <link rel="stylesheet" href="css/player.css">
     <link rel="stylesheet" href="css/home.css">
 
     <script type="module" src="js/pages/home.js"></script>
@@ -51,6 +52,9 @@
 
     <!-- Detail modals are rendered here on demand, one at a time. -->
     <div id="detail-root"></div>
+
+    <!-- The full-screen player mounts here, one at a time. -->
+    <div id="player-root"></div>
 
     <!-- ==================== TEMPLATES ==================== -->
 
@@ -169,6 +173,20 @@
                     <div class="detail__rows"></div>
                 </div>
             </div>
+        </div>
+    </template>
+
+    <template id="tpl-player">
+        <div class="player" role="dialog" aria-modal="true" aria-label="Video player">
+            <video class="player__video" controls playsinline></video>
+            <div class="player__chrome">
+                <button class="player__close" type="button" data-close aria-label="Close player">
+                    <span aria-hidden="true">&larr;</span>
+                </button>
+                <span class="player__title"></span>
+            </div>
+            <div class="player__spinner" aria-hidden="true"></div>
+            <p class="player__error u-hidden" role="alert"></p>
         </div>
     </template>
 </body>
