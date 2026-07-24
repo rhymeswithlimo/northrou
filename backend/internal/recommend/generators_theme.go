@@ -113,7 +113,9 @@ func (rc *rowContext) genKeywordThemes() []Row {
 		kw := rc.space.kw[movieKey(id)]
 		s := amplifyRewatch(1.0, wr.RewatchCount) * decayFactor(rc.now.Sub(wr.UpdatedAt))
 		for k := range kw {
-			weight[k] += s
+			if isThematicKeyword(k) { // skip production/format/franchise tags
+				weight[k] += s
+			}
 		}
 	}
 	if len(weight) == 0 {
@@ -159,7 +161,7 @@ func (rc *rowContext) genKeywordThemes() []Row {
 		conf := 0.65 - 0.05*float64(len(rows))
 		rows = append(rows, Row{
 			Key:        "theme-" + r.name,
-			Title:      "Movies About " + humanKeyword(r.name),
+			Title:      themeRowTitle(r.name),
 			Confidence: conf,
 			Items:      rc.itemsOf(cands),
 		})

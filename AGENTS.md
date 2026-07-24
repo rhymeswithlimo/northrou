@@ -126,8 +126,16 @@ SVD, **no new deps**. The library's features + vectors are memoized in the
 scoring, keyword-cosine `SimilarMovies`/`SimilarShows` (with a genre-overlap
 fallback before keywords are ingested), and the **Because You Watched** /
 **Movies About** generators. Size-relative cutoffs and the embedding weight are
-heuristics - read the comments before changing them. Run `northrou
-backfill-keywords` to populate keywords for a pre-existing library.
+heuristics - read the comments before changing them.
+
+**Cold start (`coldstart.go`).** With no history, family generators (director,
+keyword theme, genre, studio, TV creator, franchise, acclaimed, country…) are
+assembled by `balanceColdRows`, which round-robins across families with per-
+family caps + repetition guardrails so no one dominates and movies/shows
+interleave. Director/creator rows are auteur-ranked; studio rows use a
+`brandStudios` allowlist, not a frequency cutoff. Keywords, production companies
+(studios), and TV `created_by` (creators) are pulled on scan; run `northrou
+backfill-metadata` to populate them for a pre-existing library.
 
 **Persistence/lifecycle (`lifecycle.go`).** `item_impressions` feeds a
 subtractive fatigue penalty; `home_collections` records per-row served/click

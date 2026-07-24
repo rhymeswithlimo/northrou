@@ -192,6 +192,38 @@ func keywordNames(ks []Keyword) []string {
 	return out
 }
 
+// Company is a TMDB production company.
+type Company struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+func companyNames(cs []Company) []string {
+	out := make([]string, 0, len(cs))
+	for _, c := range cs {
+		if c.Name != "" {
+			out = append(out, c.Name)
+		}
+	}
+	return out
+}
+
+// Creator is a TMDB TV creator (created_by entry).
+type Creator struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+func creatorNames(cs []Creator) []string {
+	out := make([]string, 0, len(cs))
+	for _, c := range cs {
+		if c.Name != "" {
+			out = append(out, c.Name)
+		}
+	}
+	return out
+}
+
 // certPreference is the country order used to pick one certification to show.
 // TMDB returns every country's rating; the UI has room for a single badge.
 var certPreference = []string{"US", "GB", "CA", "AU"}
@@ -268,6 +300,7 @@ type MovieDetails struct {
 	VoteCount           int          `json:"vote_count"`
 	Popularity          float64      `json:"popularity"`
 	Revenue             int64        `json:"revenue"`
+	ProductionCompanies []Company    `json:"production_companies"`
 	ProductionCountries []struct {
 		ISO31661 string `json:"iso_3166_1"`
 	} `json:"production_countries"`
@@ -283,6 +316,9 @@ func (m *MovieDetails) PrimaryCountry() string {
 
 // KeywordNames returns the movie's TMDB keyword tags in TMDB order.
 func (m *MovieDetails) KeywordNames() []string { return m.Keywords.names() }
+
+// CompanyNames returns the movie's production company names.
+func (m *MovieDetails) CompanyNames() []string { return companyNames(m.ProductionCompanies) }
 
 type TVDetails struct {
 	ID               int64          `json:"id"`
@@ -300,7 +336,15 @@ type TVDetails struct {
 	VoteAverage      float64        `json:"vote_average"`
 	Popularity       float64        `json:"popularity"`
 	OriginCountry    []string       `json:"origin_country"`
+	ProductionCompanies []Company    `json:"production_companies"`
+	CreatedBy           []Creator    `json:"created_by"`
 }
+
+// CompanyNames returns the show's production company names.
+func (t *TVDetails) CompanyNames() []string { return companyNames(t.ProductionCompanies) }
+
+// CreatorNames returns the show's created_by names.
+func (t *TVDetails) CreatorNames() []string { return creatorNames(t.CreatedBy) }
 
 // PrimaryCountry returns the first origin country code, or "".
 func (t *TVDetails) PrimaryCountry() string {

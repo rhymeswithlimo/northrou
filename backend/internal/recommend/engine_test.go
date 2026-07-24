@@ -3,6 +3,7 @@ package recommend
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/rhymeswithlimo/northrou/backend/internal/db"
@@ -166,7 +167,7 @@ func TestColdStartRows(t *testing.T) {
 	}
 	found := false
 	for _, r := range rows {
-		if r.Key == "cold-genre-film-Action" || r.Key == "cold-all-movies" || r.Key == "cold-blockbusters-2000" {
+		if strings.HasPrefix(r.Key, "cold-") {
 			found = true
 		}
 	}

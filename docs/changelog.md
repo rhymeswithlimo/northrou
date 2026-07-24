@@ -13,6 +13,31 @@ and uses it as the GitHub release body, so an entry needs to exist here
 *before* publishing a version — the release fails otherwise. Write it as you
 land the change, not after the fact.
 
+## v0.1.8 - Unreleased
+
+### Added
+
+- **New browse rows on the home screen**, driven by richer TMDB metadata:
+  **"Directed by …"** rows (auteur-ranked, so they favor filmmakers over
+  franchise assemblers), **theme rows** from keywords that span both movies and
+  TV, **studio rows** for recognizable labels (Marvel Studios, DreamWorks, A24…),
+  and **"Created by …"** rows for TV showrunners.
+- **`northrou backfill-metadata`** fetches keywords, production companies, and TV
+  creators for titles matched before those were ingested (newly scanned titles
+  get them automatically). Renamed from `backfill-keywords`, which still works.
+  Run it once with the service stopped, then restart it.
+
+### Improved
+
+- **The cold-start home screen (before any watch history) is far more diverse.**
+  Genre rows now surface distinctive genres (Animation, Horror, Romance) instead
+  of burying them under Action and Drama; the old per-decade "20X0s Blockbusters"
+  rows are collapsed into a single demoted "Blockbusters" row; franchise rows
+  appear in a stable order; and movies and shows are interleaved rather than
+  segregated, so no one category crowds out the rest. Rows are capped tighter -
+  browse rows show up to 8 titles, and "Recommended for You" is quality-gated
+  (up to 12, never padded with weak picks).
+
 ## v0.1.7 - Unreleased
 
 ### Added

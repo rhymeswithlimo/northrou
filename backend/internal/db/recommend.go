@@ -24,6 +24,7 @@ type MovieFeature struct {
 	Country      string
 	Genres       []string
 	Keywords     []string // TMDB keyword tags (thematic signal)
+	Companies    []string // production company names (studio rows)
 	Directors    []Person
 	Actors       []Person
 	Playable     bool // has a linked media file
@@ -42,6 +43,8 @@ type ShowFeature struct {
 	Country    string
 	Genres     []string
 	Keywords   []string // TMDB keyword tags (thematic signal)
+	Companies  []string // production company names (studio rows)
+	Creators   []string // created_by names ("Created by X" rows)
 	Playable   bool // has at least one episode with a media file
 }
 
@@ -122,6 +125,28 @@ func (d *DB) LoadMovieFeatures(ctx context.Context) ([]MovieFeature, error) {
 	}
 	kr.Close()
 	if err := kr.Err(); err != nil {
+		return nil, err
+	}
+
+	// Companies.
+	cor, err := d.QueryContext(ctx, `
+		SELECT mc.movie_id, c.name FROM movie_companies mc JOIN production_companies c ON c.id = mc.company_id`)
+	if err != nil {
+		return nil, err
+	}
+	for cor.Next() {
+		var mid int64
+		var name string
+		if err := cor.Scan(&mid, &name); err != nil {
+			cor.Close()
+			return nil, err
+		}
+		if m := byID[mid]; m != nil {
+			m.Companies = append(m.Companies, name)
+		}
+	}
+	cor.Close()
+	if err := cor.Err(); err != nil {
 		return nil, err
 	}
 
@@ -290,6 +315,49 @@ func (d *DB) LoadShowFeatures(ctx context.Context) ([]ShowFeature, error) {
 	}
 	kr.Close()
 	if err := kr.Err(); err != nil {
+		return nil, err
+	}
+
+	// Companies.
+	cor, err := d.QueryContext(ctx, `
+		SELECT sc.show_id, c.name FROM show_companies sc JOIN production_companies c ON c.id = sc.company_id`)
+	if err != nil {
+		return nil, err
+	}
+	for cor.Next() {
+		var sid int64
+		var name string
+		if err := cor.Scan(&sid, &name); err != nil {
+			cor.Close()
+			return nil, err
+		}
+		if s := byID[sid]; s != nil {
+			s.Companies = append(s.Companies, name)
+		}
+	}
+	cor.Close()
+	if err := cor.Err(); err != nil {
+		return nil, err
+	}
+
+	// Creators.
+	crr, err := d.QueryContext(ctx, `SELECT show_id, name FROM show_creators`)
+	if err != nil {
+		return nil, err
+	}
+	for crr.Next() {
+		var sid int64
+		var name string
+		if err := crr.Scan(&sid, &name); err != nil {
+			crr.Close()
+			return nil, err
+		}
+		if s := byID[sid]; s != nil {
+			s.Creators = append(s.Creators, name)
+		}
+	}
+	crr.Close()
+	if err := crr.Err(); err != nil {
 		return nil, err
 	}
 

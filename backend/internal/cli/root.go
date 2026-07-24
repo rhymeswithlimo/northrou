@@ -51,7 +51,7 @@ func NewRootCmd() *cobra.Command {
 		newAdminCmd(),
 		newScanCmd(),
 		newMatchCmd(),
-		newBackfillKeywordsCmd(),
+		newBackfillMetadataCmd(),
 		newUpdateCmd(),
 		newConnectionCodeCmd(),
 		newDevicesCmd(),

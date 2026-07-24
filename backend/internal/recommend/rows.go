@@ -28,8 +28,27 @@ type Row struct {
 	Items      []Item  `json:"items"`
 }
 
-// maxItemsPerRow caps how many titles a row carries.
-const maxItemsPerRow = 24
+// maxItemsPerRow caps how many titles a browse/category row carries. Kept tight
+// so rows read as curated rather than as a dumped genre bucket.
+const maxItemsPerRow = 8
+
+// maxForYouitems caps the flagship "Recommended for You" row. It gets more room
+// than a browse row because it's the single most important row, but it's still
+// quality-gated (see genRecommended) rather than padded to this length.
+const maxForYouItems = 12
+
+// forYouRelFraction: an item joins "Recommended for You" only if it scores at
+// least this fraction of the top candidate's score (and above forYouMinScore).
+// This keeps the flagship row genuinely relevant instead of padding it out.
+const forYouRelFraction = 0.4
+
+// forYouMinScore is an absolute floor so a weak profile (small top score) still
+// filters obvious non-matches rather than letting everything through.
+const forYouMinScore = 0.15
+
+// forYouMinItems: below this the threshold is relaxed toward the top items, so
+// the always-on for-you row never collapses to near-empty on a thin profile.
+const forYouMinItems = 3
 
 // Home builds the ranked, rotated set of home-screen rows for a user. Results
 // are cached briefly (see homeCacheTTL) because building them loads the whole
@@ -281,13 +300,21 @@ func (rc *rowContext) genRecommended() []Row {
 	}
 	sort.Slice(cands, func(i, j int) bool { return cands[i].s > cands[j].s })
 
+	// Quality gate: only genuinely relevant titles make the flagship row, capped
+	// at maxForYouItems. Padding it with weak picks is how a recommender loses
+	// trust, so we'd rather show a short strong row than a long mediocre one -
+	// but never fewer than forYouMinItems, since for-you is always on.
+	top := cands[0].s
+	threshold := forYouMinScore
+	if rel := forYouRelFraction * top; rel > threshold {
+		threshold = rel
+	}
 	var items []Item
-	var top float64
-	for i, c := range cands {
-		if i == 0 {
-			top = c.s
+	for _, c := range cands {
+		if len(items) >= maxForYouItems {
+			break
 		}
-		if len(items) >= maxItemsPerRow {
+		if c.s < threshold && len(items) >= forYouMinItems {
 			break
 		}
 		items = append(items, rc.toItem(c.m))
