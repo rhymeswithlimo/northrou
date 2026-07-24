@@ -14,6 +14,7 @@ import (
 
 	"github.com/rhymeswithlimo/northrou/backend/internal/config"
 	"github.com/rhymeswithlimo/northrou/backend/internal/ffmpeg"
+	"github.com/rhymeswithlimo/northrou/backend/internal/service"
 	"github.com/rhymeswithlimo/northrou/backend/internal/subtitles"
 	"github.com/spf13/cobra"
 )
@@ -135,12 +136,23 @@ func runChecks(ctx context.Context, configPath string) []checkResult {
 	// Port / running server.
 	port := cfg.Server.Port
 	if alreadyServing(port) {
-		add("server", checkPass, "running and healthy on port %d", port)
+		add("server", checkPass, "running and healthy on port %d (this only confirms "+
+			"something answers on %d, not that it's using this config's data_dir: %s)",
+			port, port, cfg.Server.DataDir)
 	} else if ln, err := net.Listen("tcp", net.JoinHostPort("", strconv.Itoa(port))); err == nil {
 		ln.Close()
 		add("server", checkWarn, "not running (port %d is free) - 'northrou start' or 'northrou serve'", port)
 	} else {
 		add("server", checkFail, "port %d is taken by another program and Northrou is not answering on it - change [server] port in %s", port, configPath)
+	}
+
+	// Lid switch. A laptop pressed into service as a home server that still
+	// suspends (or loops retrying a masked suspend) on lid close will drop
+	// streams and interrupt scans; surfaced here since this is the check an
+	// already-installed, already-running server hits, unlike the one at
+	// `northrou install` time.
+	if w := service.LidSwitchWarning(); w != "" {
+		add("lid switch", checkWarn, "%s", w)
 	}
 
 	// ffmpeg. Locate only - doctor diagnoses, it does not kick off downloads.

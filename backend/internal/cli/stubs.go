@@ -21,6 +21,9 @@ func newInstallCmd() *cobra.Command {
 				return needsRoot(cmd, err)
 			}
 			notice("Northrou installed and started as a system service.")
+			if warning := service.LidSwitchWarning(); warning != "" {
+				notice("warning: %s", warning)
+			}
 			return nil
 		},
 	}
@@ -53,8 +56,16 @@ func newAdminCmd() *cobra.Command {
 			"this machine's own disks. With --addr the dashboard is read-only: " +
 			"another server's folders are edited from that server.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// No --addr means we are the box: the config we would edit is the
-			// config the daemon reads, so folder editing is safe to offer.
+			// No --addr means we are the box: the config we would edit is
+			// meant to be the config the daemon reads, so folder editing is
+			// offered - but that's only true if this process resolved the
+			// same config file the daemon did, which depends on running as
+			// the same user (config paths are per-user $HOME/XDG dirs). A
+			// mismatch here silently edits a file the daemon never reads,
+			// so flag it whenever a server already answers on the port:
+			// that's the daemon, and it's worth a beat to confirm this is
+			// its config before changing folders "successfully" into the
+			// void.
 			local := addr == ""
 			base := addr
 			if local {
@@ -64,6 +75,14 @@ func newAdminCmd() *cobra.Command {
 				}
 				port := cfg.Server.Port
 				base = fmt.Sprintf("http://localhost:%d", port)
+				if alreadyServing(port) {
+					notice("A northrou service is already running on port %d. Library "+
+						"changes made here are written to:\n  %s\n"+
+						"If the running service was installed for a different user (e.g. "+
+						"it runs as root), this is NOT its config file and folder changes "+
+						"here won't reach it - the service will keep reporting no folders "+
+						"configured. Match it with:  sudo northrou admin", port, flagConfigPath)
+				}
 			}
 			return tui.Run(base, flagConfigPath, local)
 		},

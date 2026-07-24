@@ -31,13 +31,18 @@ func wantColor(out *os.File, lookupEnv func(string) (string, bool)) bool {
 	if _, ok := lookupEnv("NO_COLOR"); ok {
 		return false
 	}
+	return isTerminal(out)
+}
+
+// isTerminal reports whether out is a real terminal rather than a pipe or
+// redirected file - the pure-Go isatty check (no CGo, see CLAUDE.md). Used
+// beyond color decisions too: anything that redraws a line in place (a
+// progress bar) must not do that to a log file or piped output.
+func isTerminal(out *os.File) bool {
 	fi, err := out.Stat()
 	if err != nil {
 		return false
 	}
-	// A character device is a terminal; a pipe or regular file is not. This is
-	// the pure-Go isatty check, so it adds no dependency (see CLAUDE.md: never
-	// introduce a CGo dependency).
 	return fi.Mode()&os.ModeCharDevice != 0
 }
 

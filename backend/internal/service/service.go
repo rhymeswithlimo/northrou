@@ -4,10 +4,15 @@
 package service
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"os"
+	"runtime"
+	"strings"
 
 	"github.com/kardianos/service"
 	"github.com/rhymeswithlimo/northrou/backend/internal/app"
@@ -187,6 +192,78 @@ func GetStatus(configPath string) (Status, error) {
 		return StatusStopped, nil
 	}
 	return StatusUnknown, nil
+}
+
+// logindConfPath is systemd-logind's config file; a var so tests can point it
+// elsewhere without touching the real system file.
+const logindConfPath = "/etc/systemd/logind.conf"
+
+// LidSwitchWarning returns a message when this machine is configured to
+// suspend on lid close, empty otherwise (including on non-Linux, or if the
+// setting can't be determined). Northrou is often installed on a laptop
+// pressed into service as a home server; a closed lid then either actually
+// suspends it (streaming and scans stop cold) or, if suspend.target happens
+// to be masked, sends systemd-logind into a tight suspend-retry loop that
+// starves the CPU instead. Neither is fixed here: editing /etc/systemd/
+// logind.conf is a system-wide, hard-to-notice change to make on someone's
+// behalf, so this only surfaces it and lets the operator decide.
+func LidSwitchWarning() string {
+	f, err := os.Open(logindConfPath)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	return lidSwitchWarning(runtime.GOOS, f)
+}
+
+// lidSwitchWarning is the testable core: it takes goos and an already-open
+// reader over a logind.conf-formatted file, so behavior can be checked with a
+// table test on any platform (see CLAUDE.md's goos-parameter convention).
+//
+// A home server is effectively always on AC power, so the setting that
+// governs it is HandleLidSwitchExternalPower - and per logind.conf(5), that
+// key defaults to whatever HandleLidSwitch is set to when left unset itself.
+func lidSwitchWarning(goos string, conf io.Reader) string {
+	if goos != "linux" {
+		return ""
+	}
+	lidSwitch := "suspend" // systemd's documented default when unset
+	extPower := ""         // "" = not explicitly set; falls back to lidSwitch
+	sc := bufio.NewScanner(conf)
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if strings.HasPrefix(line, "#") || line == "" {
+			continue
+		}
+		k, v, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		val := strings.ToLower(strings.TrimSpace(v))
+		switch {
+		case strings.EqualFold(strings.TrimSpace(k), "HandleLidSwitchExternalPower"):
+			extPower = val
+		case strings.EqualFold(strings.TrimSpace(k), "HandleLidSwitch"):
+			lidSwitch = val
+		}
+	}
+	if sc.Err() != nil {
+		return ""
+	}
+	handling := extPower
+	if handling == "" {
+		handling = lidSwitch
+	}
+	if handling == "" || handling == "ignore" {
+		return ""
+	}
+	return fmt.Sprintf("this machine is configured to %q on lid close (systemd-logind's "+
+		"HandleLidSwitchExternalPower, falling back to HandleLidSwitch). If it's running "+
+		"Northrou as a server, closing the lid will interrupt streams and in-progress "+
+		"scans. To keep it running headless:\n"+
+		"  sudo sed -i 's/^#\\?HandleLidSwitch=.*/HandleLidSwitch=ignore/; "+
+		"s/^#\\?HandleLidSwitchExternalPower=.*/HandleLidSwitchExternalPower=ignore/' "+logindConfPath+"\n"+
+		"  sudo systemctl restart systemd-logind", handling)
 }
 
 // Uninstall stops and removes the service.

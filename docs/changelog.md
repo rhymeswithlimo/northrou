@@ -13,6 +13,38 @@ and uses it as the GitHub release body, so an entry needs to exist here
 *before* publishing a version — the release fails otherwise. Write it as you
 land the change, not after the fact.
 
+## v0.1.7 - Unreleased
+
+### Fixed
+
+- **`northrou scan` now warns when a running service is detected on the
+  configured port.** `scan` opens its own database connection directly rather
+  than talking to a running server, so running it as a different user (e.g.
+  the invoking user's own `$HOME` instead of the root the installed service
+  runs as) silently scanned an unrelated, empty database while the real
+  service's library never got touched. It now prints the resolved config path
+  and data_dir and tells you how to point `--config` at the running service
+  if they differ. `northrou doctor`'s "server: running and healthy" check is
+  reworded to make clear it only confirms something answers on that port, not
+  that it's the same config/data_dir this invocation resolved.
+- **`northrou doctor` (and `northrou install`) now warn if the machine is
+  configured to suspend on lid close.** Northrou is often installed on a
+  laptop repurposed as a home server; closing the lid either suspends it
+  mid-stream/scan, or, if `suspend.target` happens to be masked, sends
+  `systemd-logind` into a CPU-pegging suspend-retry loop instead. The warning
+  includes the one-line fix (`HandleLidSwitch`/`HandleLidSwitchExternalPower`
+  in `/etc/systemd/logind.conf`).
+
+### Improved
+
+- **`northrou scan` now shows live progress and reports why files didn't
+  match.** A real library scan (ffprobe + TMDB per file) can run tens of
+  minutes with no output at all until now. It redraws a `processed/total`
+  line in place on a terminal (plain periodic lines when piped/redirected),
+  and once done, lists each currently-unmatched file with its actual reason
+  (previously only visible at `-v`/Debug log level, or by querying
+  `GET /api/unmatched` directly).
+
 ## v0.1.6 - Unreleased
 
 ### Added
