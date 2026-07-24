@@ -67,7 +67,9 @@ COMANDOS:
    logs                     muestra o sigue el registro reciente del servidor
    admin                    abre el panel de administración en vivo (TUI)
    scan [path...]           escanea una carpeta o unidad ahora (sin ruta escanea los directorios configurados)
+   rescan [path...]         re-escanea y vuelve a obtener los metadatos de cada archivo, incluso los que no han cambiado
    match <file>             fuerza un archivo a un título concreto de TMDB
+   backfill-metadata        obtiene palabras clave/estudios/creadores de títulos existentes (mejora las recomendaciones)
    cc                       imprime el código de conexión de este servidor (para emparejar apps)
    cc rotate                sustituye el código de conexión y cierra la sesión en todos los dispositivos
    devices                  lista los dispositivos emparejados
@@ -88,7 +90,7 @@ LOGS:
 ADMIN:
    --addr string            URL base del servidor (por defecto la de la configuración, p. ej. http://localhost:8674)
 
-SCAN:
+SCAN / RESCAN:
    --tv                     trata las rutas indicadas como episodios de TV (por defecto: se detecta por el nombre del archivo)
 
 MATCH:

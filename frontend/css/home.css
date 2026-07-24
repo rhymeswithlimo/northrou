@@ -141,7 +141,8 @@
 .hero__link.hero__layer {
     position: absolute;
     inset: 0;
-    transition: opacity .85s ease;
+    /* Kept in lock-step with the setTimeout in home.js's revealHero (1.5s). */
+    transition: opacity 1.5s ease;
 }
 /* Also covers the pre-load attach in pickAndShowHero: hidden while the
    backdrop loads, so it can't catch clicks before it's actually visible. */
@@ -155,7 +156,10 @@
     width: 100%;
     height: 100%;
 
-    object-fit: cover;
+    /* contain, not cover: show the whole backdrop rather than zooming/cropping
+       it to fill (which oversized it on wide screens). Any leftover space sits
+       on the black stage behind. */
+    object-fit: contain;
     object-position: center;
     display: block;
 

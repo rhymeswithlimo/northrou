@@ -52,57 +52,59 @@ type Library struct {
 
 // Movie is a matched film with TMDB metadata plus its physical file.
 type Movie struct {
-	ID            int64
-	TMDBID        int64
-	Title         string
-	Year          int
-	Overview      string
-	Runtime       int // minutes
-	Genres        []string
-	Keywords      []string // TMDB keyword tags (thematic/tonal signal)
-	Companies     []string // production company names (for studio rows)
-	Tagline       string
-	Certification string // e.g. "R", resolved to one country
-	CollectionID  int64  // TMDB collection id, 0 if none
-	PosterPath    string // local cached path
-	BackdropPath  string
-	LogoPath      string // local cached path to the title logo (transparent PNG), if any
-	Cast          []Credit
-	Crew          []Credit
-	OriginalLang  string
-	Rating        float64 // TMDB vote average (0-10)
-	Votes         int     // TMDB vote count
-	Popularity    float64 // TMDB popularity
-	Revenue       int64   // box office revenue (USD), 0 if unknown
-	Country       string  // primary production country (ISO 3166-1, e.g. "US")
-	AddedAt       time.Time
-	File          *MediaFile
+	ID               int64
+	TMDBID           int64
+	Title            string
+	Year             int
+	Overview         string
+	Runtime          int // minutes
+	Genres           []string
+	Keywords         []string // TMDB keyword tags (thematic/tonal signal)
+	Companies        []string // production company names (for studio rows)
+	Tagline          string
+	Certification    string // e.g. "R", resolved to one country
+	CollectionID     int64  // TMDB collection id, 0 if none
+	PosterPath       string // local cached path
+	BackdropPath     string // modest size (w1280) for cards + detail sheet
+	HeroBackdropPath string // full-res backdrop for the home hero (>=2560x1440), if any
+	LogoPath         string // local cached path to the title logo (transparent PNG), if any
+	Cast             []Credit
+	Crew             []Credit
+	OriginalLang     string
+	Rating           float64 // TMDB vote average (0-10)
+	Votes            int     // TMDB vote count
+	Popularity       float64 // TMDB popularity
+	Revenue          int64   // box office revenue (USD), 0 if unknown
+	Country          string  // primary production country (ISO 3166-1, e.g. "US")
+	AddedAt          time.Time
+	File             *MediaFile
 }
 
 // Show is a matched TV series.
 type Show struct {
-	ID            int64
-	TMDBID        int64
-	Title         string
-	Year          int
-	Overview      string
-	Genres        []string
-	Keywords      []string // TMDB keyword tags (thematic/tonal signal)
-	Companies     []string // production company names (for studio rows)
-	Creators      []string // created_by names (for "Created by X" rows)
-	Tagline       string
-	Certification string // e.g. "TV-MA", resolved to one country
-	PosterPath    string
-	BackdropPath  string
-	LogoPath      string // local cached path to the title logo (transparent PNG), if any
-	OriginalLang  string
-	Rating        float64 // TMDB vote average (0-10)
-	Popularity    float64 // TMDB popularity
-	Country       string  // primary origin country (ISO 3166-1, e.g. "US")
-	AddedAt       time.Time
-	Cast          []Credit
-	Crew          []Credit
-	Seasons       []Season
+	ID               int64
+	TMDBID           int64
+	Title            string
+	Year             int
+	Overview         string
+	Genres           []string
+	Keywords         []string // TMDB keyword tags (thematic/tonal signal)
+	Companies        []string // production company names (for studio rows)
+	Creators         []string // created_by names (for "Created by X" rows)
+	Tagline          string
+	Certification    string // e.g. "TV-MA", resolved to one country
+	PosterPath       string
+	BackdropPath     string // modest size (w1280) for cards + detail sheet
+	HeroBackdropPath string // full-res backdrop for the home hero (>=2560x1440), if any
+	LogoPath         string // local cached path to the title logo (transparent PNG), if any
+	OriginalLang     string
+	Rating           float64 // TMDB vote average (0-10)
+	Popularity       float64 // TMDB popularity
+	Country          string  // primary origin country (ISO 3166-1, e.g. "US")
+	AddedAt          time.Time
+	Cast             []Credit
+	Crew             []Credit
+	Seasons          []Season
 }
 
 // Season groups episodes.

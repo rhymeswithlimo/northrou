@@ -45,7 +45,7 @@ async function openDetail(kind, id) {
 // The hero rotates through the whole home-row pool at random, cross-fading to a
 // fresh title on an interval. State lives at module scope so the timer and the
 // modal's pause/resume hooks can reach it.
-const HERO_INTERVAL_MS = 24000;
+const HERO_INTERVAL_MS = 45000;
 let heroPool = [];
 let heroCurrent = null; // "kind:id" of what's on screen, so we don't repeat it
 let heroTimer = null;
@@ -98,7 +98,9 @@ async function revealHero(node, { animate }) {
     }
     void node.offsetWidth; // force a reflow so the transition actually runs
     node.classList.remove('hero__layer--enter');
-    await new Promise((res) => setTimeout(res, 850));
+    // Kept in lock-step with the .hero__link.hero__layer CSS transition (1.5s):
+    // remove the outgoing layer only once the cross-fade has fully finished.
+    await new Promise((res) => setTimeout(res, 1500));
     for (const child of others) child.remove();
     node.classList.remove('hero__layer');
 }

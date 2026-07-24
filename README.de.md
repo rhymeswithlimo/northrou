@@ -67,7 +67,9 @@ BEFEHLE:
    logs                     zeigt die letzten Server-Logs an oder folgt ihnen live
    admin                    öffnet das Live-Admin-Dashboard (TUI)
    scan [path...]           scannt sofort einen Ordner oder ein Laufwerk (ohne Pfad werden die konfigurierten Verzeichnisse gescannt)
+   rescan [path...]         scannt erneut und lädt die Metadaten jeder Datei neu, auch bei unveränderten
    match <file>             ordnet eine Datei fest einem bestimmten TMDB-Titel zu
+   backfill-metadata        lädt Schlagwörter/Studios/Creator für vorhandene Titel nach (verbessert Empfehlungen)
    cc                       gibt den Verbindungscode dieses Servers aus (zum Koppeln von Apps)
    cc rotate                ersetzt den Verbindungscode und meldet alle Geräte ab
    devices                  listet gekoppelte Geräte auf
@@ -88,7 +90,7 @@ LOGS:
 ADMIN:
    --addr string            Basis-URL des Servers (Standard aus der Konfiguration, z. B. http://localhost:8674)
 
-SCAN:
+SCAN / RESCAN:
    --tv                     behandelt die angegebenen Pfade als TV-Episoden (Standard: Erkennung anhand des Dateinamens)
 
 MATCH:

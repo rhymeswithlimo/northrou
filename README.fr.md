@@ -67,7 +67,9 @@ COMMANDES :
    logs                     affiche ou suit les journaux récents du serveur
    admin                    ouvre le tableau de bord d'administration en direct (TUI)
    scan [path...]           scanne un dossier ou un disque immédiatement (sans chemin, scanne les dossiers configurés)
+   rescan [path...]         réanalyse et récupère à nouveau les métadonnées de chaque fichier, même inchangé
    match <file>             force un fichier vers un titre TMDB précis
+   backfill-metadata        récupère mots-clés/studios/créateurs pour les titres existants (améliore les recommandations)
    cc                       affiche le code de connexion de ce serveur (pour associer des applis)
    cc rotate                remplace le code de connexion et déconnecte tous les appareils
    devices                  liste les appareils associés
@@ -88,7 +90,7 @@ LOGS :
 ADMIN :
    --addr string            URL de base du serveur (par défaut celle de la configuration, ex. http://localhost:8674)
 
-SCAN :
+SCAN / RESCAN :
    --tv                     traite les chemins donnés comme des épisodes de série (par défaut : détection via le nom de fichier)
 
 MATCH :

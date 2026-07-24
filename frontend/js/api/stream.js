@@ -13,8 +13,14 @@
 // as a bearer header injected per-request for HLS.js. See docs/api.md.
 
 import { get } from './client.js';
-import { apiUrl } from './transport.js';
+import { apiUrl, getMode, getTransport } from './transport.js';
 import { getPrefs } from '../data/prefs.js';
+
+// True when this client reaches the box over the peer-to-peer tunnel (a desktop
+// or mobile app), rather than same-origin in a browser. Media bytes then cannot
+// be loaded by a plain URL - there is no HTTP route to the box and the app's CSP
+// forbids one - so playback rides the tunnel as segmented HLS (see tunnelLoader).
+const isTunnel = () => getMode() === 'tunnel';
 
 // mediaBase turns "/api/media/42/stream" into "/api/media/42", so the plan,
 // token and hls URLs all derive from the one field the library DTOs ship.
@@ -61,6 +67,11 @@ export function capabilityQuery() {
     if (prefs.maxQuality && prefs.maxQuality !== 'auto') {
         q.max_resolution = Number(prefs.maxQuality) || 0;
     }
+    // Tell the server this is a tunnel client so it delivers segmented HLS (the
+    // only path the tunnel can carry) instead of a progressive stream.
+    if (isTunnel()) {
+        q.remote = 1;
+    }
     return q;
 }
 
@@ -87,7 +98,11 @@ export async function attachStream(video, streamUrl, { onFatal } = {}) {
     const token = ticket?.token;
     if (!token) throw new Error('Could not authorize playback.');
 
-    if (plan?.mode === 'video') {
+    // Over the tunnel the server always returns the HLS path (see the `remote`
+    // capability); a progressive stream can't ride the data channel, so a
+    // non-video plan there would be unplayable. Guard by routing tunnel clients
+    // to HLS regardless.
+    if (plan?.mode === 'video' || isTunnel()) {
         return attachHLS(video, base, query, token, onFatal);
     }
     return attachProgressive(video, base, query, token);
@@ -120,14 +135,30 @@ async function attachHLS(video, base, query, token, onFatal) {
     const playlist = apiUrl(info.playlist);
 
     if (Hls.isSupported()) {
-        const hls = new Hls({
-            xhrSetup: (xhr) => xhr.setRequestHeader('Authorization', `Bearer ${token}`),
-        });
+        // On the tunnel, hls.js can't fetch the playlist/segments itself: they'd
+        // resolve to the app's own origin (there is no HTTP route to the box, and
+        // the CSP blocks one anyway). Hand it a loader that pulls every request
+        // through the data channel instead. Same-origin browsers keep the fast
+        // native XHR path with the token as a bearer header.
+        const hls = new Hls(isTunnel()
+            ? { loader: makeTunnelLoader(token) }
+            : { xhrSetup: (xhr) => xhr.setRequestHeader('Authorization', `Bearer ${token}`) });
+        // Network/media errors are often transient, so try to recover the way
+        // HLS.js recommends - but bounded to consecutive failures, so a genuinely
+        // dead source surfaces an error instead of retrying forever behind a
+        // spinner (the original "stuck loading" symptom). Any successful fragment
+        // resets the count, so a long playback with the odd blip never trips it.
+        let netRetries = 0;
+        const MAX_NET_RETRIES = 4;
+        hls.on(Hls.Events.FRAG_BUFFERED, () => { netRetries = 0; });
         hls.on(Hls.Events.ERROR, (_evt, data) => {
             if (!data.fatal) return;
-            // Network and media errors are often transient; try once to recover
-            // before giving up, the way HLS.js recommends.
             if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+                if (++netRetries > MAX_NET_RETRIES) {
+                    hls.destroy();
+                    onFatal?.('Lost the connection to your server.');
+                    return;
+                }
                 hls.startLoad();
             } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
                 hls.recoverMediaError();
@@ -147,4 +178,73 @@ async function attachHLS(video, base, query, token, onFatal) {
     // that yet; every MSE-capable browser (Chrome, Firefox, Edge, desktop
     // Safari) takes the path above.
     throw new Error("This browser can't play this transcoded title yet.");
+}
+
+// makeTunnelLoader builds an HLS.js Loader class that fetches playlists and
+// segments over the peer-to-peer tunnel instead of the network. HLS.js resolves
+// segment URLs against the playlist's (app-origin) base, so each request is
+// normalized back to a bare "/api/..." path the tunnel forwards to the box. The
+// media-only stream `token` rides as a bearer header, exactly as the browser
+// path injects it via xhrSetup.
+function makeTunnelLoader(token) {
+    const newStats = () => ({
+        aborted: false, loaded: 0, retry: 0, total: 0, chunkCount: 1, bwEstimate: 0,
+        loading: { start: 0, first: 0, end: 0 },
+        parsing: { start: 0, end: 0 },
+        buffering: { start: 0, first: 0, end: 0 },
+    });
+
+    return class TunnelLoader {
+        constructor() {
+            this.stats = newStats();
+            this.context = null;
+            this.aborted = false;
+        }
+        destroy() { this.aborted = true; }
+        abort() { this.aborted = true; this.stats.aborted = true; }
+
+        load(context, config, callbacks) {
+            this.context = context;
+            const stats = this.stats;
+            const now = () => (performance ?? Date).now();
+            stats.loading.start = now();
+
+            // HLS.js hands absolute (app-origin) URLs; the box only knows paths.
+            let path = context.url;
+            try {
+                const u = new URL(context.url, document.baseURI);
+                path = u.pathname + u.search;
+            } catch { /* already a bare path */ }
+
+            const init = { headers: { Authorization: `Bearer ${token}` } };
+            // Byte-range requests (rare for our full-segment playlists, but HLS.js
+            // may use them) are forwarded as a Range header.
+            if (context.rangeEnd) {
+                init.headers.Range = `bytes=${context.rangeStart || 0}-${context.rangeEnd - 1}`;
+            }
+
+            getTransport()(path, init)
+                .then(async (resp) => {
+                    if (this.aborted) return;
+                    stats.loading.first = now();
+                    if (!resp.ok) {
+                        callbacks.onError({ code: resp.status, text: resp.statusText || 'tunnel error' },
+                            context, null, stats);
+                        return;
+                    }
+                    const data = context.responseType === 'arraybuffer'
+                        ? await resp.arrayBuffer()
+                        : await resp.text();
+                    if (this.aborted) return;
+                    stats.loading.end = now();
+                    stats.loaded = stats.total = data.byteLength ?? data.length ?? 0;
+                    callbacks.onSuccess({ url: context.url, data }, stats, context, null);
+                })
+                .catch((err) => {
+                    if (this.aborted) return;
+                    callbacks.onError({ code: 0, text: err?.message || 'tunnel load failed' },
+                        context, null, stats);
+                });
+        }
+    };
 }

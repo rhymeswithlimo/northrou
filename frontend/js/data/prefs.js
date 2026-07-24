@@ -10,6 +10,14 @@ const DEFAULTS = {
     maxQuality: 'auto',      // auto | 2160 | 1080 | 720
     cellularQuality: '1080', // 2160 | 1080 | 720 | 480
     directPlay: true,
+
+    // Player state, persisted per-device so the next title opens the way the
+    // last one was left.
+    volume: 1,               // 0..1
+    muted: false,
+    subtitleSize: 'md',      // sm | md | lg | xl
+    subtitleBackground: true, // draw a scrim behind subtitle text
+    subtitleLang: '',        // preferred track language/label, '' = off
 };
 
 export const QUALITY_OPTIONS = [

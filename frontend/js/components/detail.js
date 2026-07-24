@@ -144,16 +144,20 @@ function build(data) {
 
 // castCrew builds the ordered "Cast & Crew" list from the separate cast and crew
 // the API ships. Showing everyone is too much, so it's a small hierarchy capped
-// at 12: directors (and TV creators) first, then top-billed actors, then at most
-// one writer. Producers never appear (the scanner already keeps only
-// Director/Writer/Creator crew, so there are none to drop).
+// at 10: directors (and TV creators) first, then top-billed actors, then at most
+// one writer.
+//
+// The scanner keeps Director/Writer/Creator/Screenplay/Producer crew, so this
+// filter is what actually decides who shows: only Director/Creator lead, and a
+// single Writer fills a leftover slot - producers and screenplay credits are
+// dropped here rather than at scan time.
 //
 // Writers are the lowest tier and only take space the cast didn't use, so they
 // show up rarely: on short-cast titles that leave a slot free under the cap. On a
 // full billing they simply don't fit, and an auteur who writes and directs is
 // already deduped into the director entry. Everyone is deduped by person id, so a
 // headliner who also has a writing credit stays where the cast placed them.
-const MAX_PEOPLE = 12;
+const MAX_PEOPLE = 10;
 const MAX_WRITERS = 1;
 
 function castCrew(cast = [], crew = []) {

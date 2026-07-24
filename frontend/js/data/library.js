@@ -58,7 +58,11 @@ export async function getHeroItem(kind, id) {
     try {
         const path = kind === 'show' ? `/api/shows/${id}` : `/api/movies/${id}`;
         const d = await get(path);
-        if (!d || !d.backdrop_url) return null;
+        // The hero fills the screen, so prefer the dedicated high-res backdrop
+        // (>=2560x1440) when a re-scan has cached one; fall back to the regular
+        // w1280 backdrop otherwise. Either is fine; no backdrop at all skips it.
+        const backdrop = d?.hero_backdrop_url || d?.backdrop_url;
+        if (!d || !backdrop) return null;
         return {
             kind,
             id,
@@ -67,7 +71,7 @@ export async function getHeroItem(kind, id) {
             genres: d.genres,
             runtime: d.runtime,
             episode_count: d.seasons?.reduce((n, s) => n + (s.episodes?.length ?? 0), 0),
-            backdrop_url: d.backdrop_url,
+            backdrop_url: backdrop,
         };
     } catch {
         // A hero is decoration; never let it take the page down.
@@ -140,12 +144,17 @@ export async function getDetail(kind, id) {
         poster_url: d.poster_url,
         logo_url: d.logo_url,
         stream_url: d.stream_url,
-        // Cast and crew render in one row, director first: on a detail screen
-        // "who made this" belongs beside "who's in it".
-        cast: [...(d.crew ?? []), ...(d.cast ?? [])].map((c) => ({
-            name: c.name,
-            role: c.role,
-            profile_url: c.profile_url,
+        // Cast and crew stay as SEPARATE arrays, each with its person `id`
+        // preserved: detail.js's castCrew() merges them (directors first, then
+        // top-billed actors) and dedupes by id. Flattening them into one array
+        // here - or dropping the id - makes that dedupe collapse everyone whose
+        // id is undefined into a single entry, which is why the row once showed
+        // just the director. Keep the id.
+        cast: (d.cast ?? []).map((c) => ({
+            id: c.id, name: c.name, role: c.role, profile_url: c.profile_url,
+        })),
+        crew: (d.crew ?? []).map((c) => ({
+            id: c.id, name: c.name, role: c.role, profile_url: c.profile_url,
         })),
         seasons: d.seasons?.map((s) => ({
             number: s.number,

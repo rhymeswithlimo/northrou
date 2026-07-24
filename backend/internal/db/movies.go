@@ -23,20 +23,21 @@ func (d *DB) UpsertMovie(ctx context.Context, m *model.Movie) (int64, error) {
 	err := d.WithTx(ctx, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO movies (tmdb_id, title, year, overview, runtime, original_lang,
-				collection_id, poster_path, backdrop_path, logo_path, file_id,
+				collection_id, poster_path, backdrop_path, hero_backdrop_path, logo_path, file_id,
 				vote_average, vote_count, popularity, revenue, country,
 				tagline, certification)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(tmdb_id) DO UPDATE SET
 				title=excluded.title, year=excluded.year, overview=excluded.overview,
 				runtime=excluded.runtime, original_lang=excluded.original_lang,
 				collection_id=excluded.collection_id, poster_path=excluded.poster_path,
-				backdrop_path=excluded.backdrop_path, logo_path=excluded.logo_path, file_id=excluded.file_id,
+				backdrop_path=excluded.backdrop_path, hero_backdrop_path=excluded.hero_backdrop_path,
+				logo_path=excluded.logo_path, file_id=excluded.file_id,
 				vote_average=excluded.vote_average, vote_count=excluded.vote_count,
 				popularity=excluded.popularity, revenue=excluded.revenue, country=excluded.country,
 				tagline=excluded.tagline, certification=excluded.certification`,
 			m.TMDBID, m.Title, m.Year, m.Overview, m.Runtime, m.OriginalLang,
-			collectionID, m.PosterPath, m.BackdropPath, m.LogoPath, fileIDOrNil(m.File),
+			collectionID, m.PosterPath, m.BackdropPath, m.HeroBackdropPath, m.LogoPath, fileIDOrNil(m.File),
 			m.Rating, m.Votes, m.Popularity, m.Revenue, m.Country,
 			m.Tagline, m.Certification); err != nil {
 			return err
@@ -109,13 +110,13 @@ func (d *DB) ListMovies(ctx context.Context, limit, offset int) ([]model.Movie, 
 func (d *DB) GetMovie(ctx context.Context, id int64) (*model.Movie, error) {
 	row := d.QueryRowContext(ctx, `
 		SELECT id, tmdb_id, title, year, overview, runtime, original_lang,
-			COALESCE(collection_id,0), poster_path, backdrop_path, logo_path, COALESCE(file_id,0), added_at,
+			COALESCE(collection_id,0), poster_path, backdrop_path, hero_backdrop_path, logo_path, COALESCE(file_id,0), added_at,
 			vote_average, vote_count, popularity, revenue, country, tagline, certification
 		FROM movies WHERE id = ?`, id)
 	var m model.Movie
 	var fileID int64
 	err := row.Scan(&m.ID, &m.TMDBID, &m.Title, &m.Year, &m.Overview, &m.Runtime,
-		&m.OriginalLang, &m.CollectionID, &m.PosterPath, &m.BackdropPath, &m.LogoPath, &fileID, &m.AddedAt,
+		&m.OriginalLang, &m.CollectionID, &m.PosterPath, &m.BackdropPath, &m.HeroBackdropPath, &m.LogoPath, &fileID, &m.AddedAt,
 		&m.Rating, &m.Votes, &m.Popularity, &m.Revenue, &m.Country, &m.Tagline, &m.Certification)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound

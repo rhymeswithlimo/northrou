@@ -111,17 +111,67 @@ type Genre struct {
 	Name string `json:"name"`
 }
 
-// Image is one entry in a TMDB images response. We only consume logos, but the
-// shape is shared across poster/backdrop/logo arrays.
+// Image is one entry in a TMDB images response. The shape is shared across the
+// poster/backdrop/logo arrays; we consume logos and backdrops.
 type Image struct {
 	FilePath    string  `json:"file_path"`
 	ISO6391     string  `json:"iso_639_1"` // language, "" for language-neutral
 	VoteAverage float64 `json:"vote_average"`
+	Width       int     `json:"width"`
+	Height      int     `json:"height"`
 }
 
-// Images is the append_to_response=images payload; only logos are read.
+// Images is the append_to_response=images payload; logos and backdrops are read.
 type Images struct {
-	Logos []Image `json:"logos"`
+	Logos     []Image `json:"logos"`
+	Backdrops []Image `json:"backdrops"`
+}
+
+// heroMinWidth/heroMinHeight is the resolution floor the hero backdrop aims for.
+// We prefer a backdrop at least this large; when none qualifies we fall back to
+// the largest available, so a title with only smaller art still gets its best.
+const (
+	heroMinWidth  = 2560
+	heroMinHeight = 1440
+)
+
+// bestBackdrop picks the backdrop to cache for the hero: the highest-resolution
+// image that meets the hero floor, or - when nothing does - the largest one
+// available (the closest to the floor). `fallback` is the details payload's
+// primary backdrop_path, used when the images array is empty (e.g. a title with
+// no extra art). Among equal-area candidates a language-neutral (textless)
+// backdrop wins, since the hero overlays its own title text.
+func bestBackdrop(imgs Images, fallback string) string {
+	area := func(i Image) int { return i.Width * i.Height }
+	better := func(a, b Image) bool {
+		aQual := a.Width >= heroMinWidth && a.Height >= heroMinHeight
+		bQual := b.Width >= heroMinWidth && b.Height >= heroMinHeight
+		if aQual != bQual {
+			return aQual // a qualifying image always beats a non-qualifying one
+		}
+		if area(a) != area(b) {
+			return area(a) > area(b) // otherwise the larger image wins
+		}
+		// Same size: prefer textless (language-neutral), then higher-voted.
+		if (a.ISO6391 == "") != (b.ISO6391 == "") {
+			return a.ISO6391 == ""
+		}
+		return a.VoteAverage > b.VoteAverage
+	}
+
+	best := Image{}
+	for _, b := range imgs.Backdrops {
+		if b.FilePath == "" {
+			continue
+		}
+		if best.FilePath == "" || better(b, best) {
+			best = b
+		}
+	}
+	if best.FilePath != "" {
+		return best.FilePath
+	}
+	return fallback
 }
 
 // bestLogo picks the title logo to cache: the highest-voted raster logo,
@@ -350,6 +400,10 @@ type MovieDetails struct {
 // LogoPath returns the TMDB path of the best title logo, or "".
 func (m *MovieDetails) LogoPath() string { return bestLogo(m.Images) }
 
+// BestBackdrop returns the TMDB path of the highest-resolution backdrop suitable
+// for the hero (see bestBackdrop), falling back to the primary backdrop_path.
+func (m *MovieDetails) BestBackdrop() string { return bestBackdrop(m.Images, m.BackdropPath) }
+
 // PrimaryCountry returns the first production country code, or "".
 func (m *MovieDetails) PrimaryCountry() string {
 	if len(m.ProductionCountries) > 0 {
@@ -387,6 +441,10 @@ type TVDetails struct {
 
 // LogoPath returns the TMDB path of the best title logo, or "".
 func (t *TVDetails) LogoPath() string { return bestLogo(t.Images) }
+
+// BestBackdrop returns the TMDB path of the highest-resolution backdrop suitable
+// for the hero (see bestBackdrop), falling back to the primary backdrop_path.
+func (t *TVDetails) BestBackdrop() string { return bestBackdrop(t.Images, t.BackdropPath) }
 
 // CompanyNames returns the show's production company names.
 func (t *TVDetails) CompanyNames() []string { return companyNames(t.ProductionCompanies) }

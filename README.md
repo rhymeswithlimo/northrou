@@ -87,6 +87,7 @@ COMMANDS:
    logs                     show or follow the server's recent log output
    admin                    open the live admin dashboard (TUI)
    scan [path...]           scan a folder or drive now (no path scans the configured dirs)
+   rescan [path...]         re-scan and refetch metadata for every file, even unchanged ones
    match <file>             force a file to a specific TMDB title
    backfill-metadata        fetch keywords/studios/creators for existing titles (improves recommendations)
    cc                       print this server's connection code (for pairing apps)
@@ -109,7 +110,7 @@ LOGS:
 ADMIN:
    --addr string            server base URL (default from config, e.g. http://localhost:8674)
 
-SCAN:
+SCAN / RESCAN:
    --tv                     treat the given paths as TV episodes (default: detect by filename)
 
 MATCH:

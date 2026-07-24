@@ -24,42 +24,44 @@ type creditDTO struct {
 }
 
 type movieDTO struct {
-	ID            int64         `json:"id"`
-	TMDBID        int64         `json:"tmdb_id"`
-	Title         string        `json:"title"`
-	Year          int           `json:"year"`
-	Overview      string        `json:"overview,omitempty"`
-	Tagline       string        `json:"tagline,omitempty"`
-	Certification string        `json:"certification,omitempty"`
-	Runtime       int           `json:"runtime,omitempty"`
-	Rating        float64       `json:"rating,omitempty"`
-	Genres        []string      `json:"genres,omitempty"`
-	CollectionID  int64         `json:"collection_id,omitempty"`
-	PosterURL     string        `json:"poster_url,omitempty"`
-	BackdropURL   string        `json:"backdrop_url,omitempty"`
-	LogoURL       string        `json:"logo_url,omitempty"`
-	StreamURL     string        `json:"stream_url,omitempty"`
-	Cast          []creditDTO   `json:"cast,omitempty"`
-	Crew          []creditDTO   `json:"crew,omitempty"`
-	MediaInfo     *mediaInfoDTO `json:"media_info,omitempty"`
+	ID              int64         `json:"id"`
+	TMDBID          int64         `json:"tmdb_id"`
+	Title           string        `json:"title"`
+	Year            int           `json:"year"`
+	Overview        string        `json:"overview,omitempty"`
+	Tagline         string        `json:"tagline,omitempty"`
+	Certification   string        `json:"certification,omitempty"`
+	Runtime         int           `json:"runtime,omitempty"`
+	Rating          float64       `json:"rating,omitempty"`
+	Genres          []string      `json:"genres,omitempty"`
+	CollectionID    int64         `json:"collection_id,omitempty"`
+	PosterURL       string        `json:"poster_url,omitempty"`
+	BackdropURL     string        `json:"backdrop_url,omitempty"`
+	HeroBackdropURL string        `json:"hero_backdrop_url,omitempty"`
+	LogoURL         string        `json:"logo_url,omitempty"`
+	StreamURL       string        `json:"stream_url,omitempty"`
+	Cast            []creditDTO   `json:"cast,omitempty"`
+	Crew            []creditDTO   `json:"crew,omitempty"`
+	MediaInfo       *mediaInfoDTO `json:"media_info,omitempty"`
 }
 
 type showDTO struct {
-	ID            int64       `json:"id"`
-	TMDBID        int64       `json:"tmdb_id"`
-	Title         string      `json:"title"`
-	Year          int         `json:"year"`
-	Overview      string      `json:"overview,omitempty"`
-	Tagline       string      `json:"tagline,omitempty"`
-	Certification string      `json:"certification,omitempty"`
-	Rating        float64     `json:"rating,omitempty"`
-	Genres        []string    `json:"genres,omitempty"`
-	PosterURL     string      `json:"poster_url,omitempty"`
-	BackdropURL   string      `json:"backdrop_url,omitempty"`
-	LogoURL       string      `json:"logo_url,omitempty"`
-	Cast          []creditDTO `json:"cast,omitempty"`
-	Crew          []creditDTO `json:"crew,omitempty"`
-	Seasons       []seasonDTO `json:"seasons,omitempty"`
+	ID              int64       `json:"id"`
+	TMDBID          int64       `json:"tmdb_id"`
+	Title           string      `json:"title"`
+	Year            int         `json:"year"`
+	Overview        string      `json:"overview,omitempty"`
+	Tagline         string      `json:"tagline,omitempty"`
+	Certification   string      `json:"certification,omitempty"`
+	Rating          float64     `json:"rating,omitempty"`
+	Genres          []string    `json:"genres,omitempty"`
+	PosterURL       string      `json:"poster_url,omitempty"`
+	BackdropURL     string      `json:"backdrop_url,omitempty"`
+	HeroBackdropURL string      `json:"hero_backdrop_url,omitempty"`
+	LogoURL         string      `json:"logo_url,omitempty"`
+	Cast            []creditDTO `json:"cast,omitempty"`
+	Crew            []creditDTO `json:"crew,omitempty"`
+	Seasons         []seasonDTO `json:"seasons,omitempty"`
 }
 
 type seasonDTO struct {
@@ -156,6 +158,7 @@ func (a *API) movieToDTO(m *model.Movie, detail bool) movieDTO {
 		dto.Tagline = m.Tagline
 		dto.Certification = m.Certification
 		dto.CollectionID = m.CollectionID
+		dto.HeroBackdropURL = a.imageURL(m.HeroBackdropPath)
 		dto.LogoURL = a.imageURL(m.LogoPath)
 		dto.Cast = a.creditsToDTO(m.Cast)
 		dto.Crew = a.creditsToDTO(m.Crew)
@@ -221,6 +224,7 @@ func (a *API) showToDTO(s *model.Show, detail bool) showDTO {
 		dto.Overview = s.Overview
 		dto.Tagline = s.Tagline
 		dto.Certification = s.Certification
+		dto.HeroBackdropURL = a.imageURL(s.HeroBackdropPath)
 		dto.LogoURL = a.imageURL(s.LogoPath)
 		dto.Cast = a.creditsToDTO(s.Cast)
 		dto.Crew = a.creditsToDTO(s.Crew)

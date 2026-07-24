@@ -59,6 +59,20 @@ func Decide(mf *model.MediaFile, caps ClientCapabilities, opt Options) Decision 
 	audioOK := !hasAudio || supports(caps.AudioCodecs, audio.Codec)
 	containerOK := supports(caps.Containers, container)
 
+	// A remote client reaches the box through the peer-to-peer tunnel, which
+	// carries HTTP-over-datachannel: it can move small, individually-fetchable
+	// pieces but not a whole-file progressive stream (the copy/remux/audio paths
+	// are forward-only, and the tunnel buffers each response whole). Segmented
+	// HLS is the only delivery it can carry, so a tunnel client is always served
+	// the full-transcode path - which the client also wants remotely, since a raw
+	// 4K stream is far too large to push over the wire. Forcing videoOK false
+	// routes the cascade into its HLS branch (audio + container are handled there
+	// too).
+	if caps.Remote {
+		videoOK = false
+		videoReason = "remote (tunnel) client; segmented HLS delivery"
+	}
+
 	d := Decision{
 		VideoCodec:    mf.Video.Codec,
 		AudioCodec:    audio.Codec,

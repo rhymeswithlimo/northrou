@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/rhymeswithlimo/northrou/backend/internal/db"
@@ -54,6 +55,12 @@ type Scanner struct {
 	progress Progress
 	showLock sync.Mutex   // serializes show resolution to dedupe TMDB searches
 	playback func() int   // reports active stream count; nil until wired
+
+	// force, when set for a run, re-processes every file even if its size/mtime
+	// is unchanged, so stored metadata (e.g. new artwork fields) is refetched
+	// from TMDB. Set only while a Rescan is in flight; a scan holds the single-
+	// run lock, so no concurrent read/write races the parallel workers.
+	force atomic.Bool
 
 	dedupMu sync.Mutex          // guards dedup; reset each scan
 	dedup   map[string]dupBest  // identity -> best copy seen so far
@@ -140,8 +147,21 @@ func (s *Scanner) Progress() Progress {
 	return s.progress
 }
 
+// Rescan is Scan with the "already scanned, unchanged" skip disabled: every file
+// is re-probed and re-matched against TMDB, so metadata that a plain scan would
+// leave untouched (new artwork fields, refreshed logos/backdrops, corrected
+// credits) is refetched. Use it after an upgrade that adds metadata the existing
+// library predates. Heavier than Scan - it does a full TMDB pass - but otherwise
+// identical, including duplicate resolution and deleted-title cleanup.
+func (s *Scanner) Rescan(ctx context.Context, movieDirs, showDirs []string) error {
+	s.force.Store(true)
+	defer s.force.Store(false)
+	return s.Scan(ctx, movieDirs, showDirs)
+}
+
 // Scan walks the given movie and show directories and processes every media
-// file. It is safe to call again; already-scanned unchanged files are skipped.
+// file. It is safe to call again; already-scanned unchanged files are skipped
+// (unless the run is a Rescan, which reprocesses everything).
 func (s *Scanner) Scan(ctx context.Context, movieDirs, showDirs []string) error {
 	s.mu.Lock()
 	if s.progress.Running {
@@ -231,14 +251,19 @@ func (s *Scanner) processFile(ctx context.Context, path string, kind model.Media
 	if err != nil {
 		return
 	}
-	need, _ := s.db.NeedsScan(ctx, path, info.Size(), info.ModTime())
-	if !need {
-		// The video is unchanged, but sidecar subtitles are not covered by its
-		// size/mtime, so a subtitle dropped in after the first scan would never
-		// be found if we returned here. Reconcile externals for the already
-		// linked file (cheap: discovery is skipped for subs already converted).
-		s.reconcileSidecars(ctx, path)
-		return
+	// A forced rescan reprocesses everything; otherwise skip files whose
+	// size/mtime is unchanged since they were last scanned.
+	if !s.force.Load() {
+		need, _ := s.db.NeedsScan(ctx, path, info.Size(), info.ModTime())
+		if !need {
+			// The video is unchanged, but sidecar subtitles are not covered by
+			// its size/mtime, so a subtitle dropped in after the first scan would
+			// never be found if we returned here. Reconcile externals for the
+			// already linked file (cheap: discovery is skipped for subs already
+			// converted).
+			s.reconcileSidecars(ctx, path)
+			return
+		}
 	}
 
 	mf := &model.MediaFile{Path: path, SizeBytes: info.Size(), ModTime: info.ModTime()}

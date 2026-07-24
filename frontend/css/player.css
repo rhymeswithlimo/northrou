@@ -1,17 +1,16 @@
 /* The full-screen video player overlay. Sits above the detail modal (z 1000)
- * and the nav. Native <video controls> does the transport UI; this file only
- * frames it and lays a thin chrome (back button + title) over the top. */
+ * and the nav. The <video> carries no native `controls`; everything here is the
+ * hand-built transport UI, so it is identical on the web, the desktop shell, and
+ * mobile. Chrome fades in/out with `.is-active` (driven by player.js). */
 
 .player {
     position: fixed;
     inset: 0;
     z-index: 3000;
 
-    display: flex;
-    align-items: center;
-    justify-content: center;
-
     background-color: #000;
+    color: #fff;
+    font-family: 'Geist', sans-serif;
 
     opacity: 0;
     visibility: hidden;
@@ -23,7 +22,12 @@
     visibility: visible;
 }
 
+/* Idle (controls hidden while playing): hide the cursor over the picture. */
+.player:not(.is-active) { cursor: none; }
+
 .player__video {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
     /* Letterbox rather than crop: never lose picture to fill the frame. */
@@ -31,13 +35,90 @@
     background-color: #000;
 }
 
-/* Chrome fades with the native controls so a title bar isn't stuck on screen
- * over a movie. The gradient keeps white text legible over a bright frame. */
-.player__chrome {
+/* Full-bleed invisible hit area: a tap on the picture toggles play. It sits
+ * below the chrome (which has its own pointer-events) so buttons win. */
+.player__stage {
     position: absolute;
-    top: 0;
+    inset: 0;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    cursor: inherit;
+}
+
+/* ==================== SUBTITLES ==================== */
+
+.player__subs {
+    position: absolute;
     left: 0;
     right: 0;
+    /* Ride above the control bar when it's up, drop toward the bottom when it
+     * hides, so subtitles are never covered. */
+    bottom: 12%;
+    z-index: 2;
+
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+
+    padding: 0 8%;
+    text-align: center;
+    pointer-events: none;
+
+    transition: bottom .25s ease;
+}
+.player.is-active .player__subs { bottom: 16%; }
+
+.player__sub-line {
+    display: inline-block;
+    max-width: 100%;
+
+    background-color: rgb(0 0 0 / 0.55);
+    padding: 0.1em 0.4em;
+    border-radius: 4px;
+
+    color: #fff;
+    font-weight: 500;
+    line-height: 1.35;
+    text-wrap: balance;
+    /* A shadow keeps text legible even with the background turned off. */
+    text-shadow: 0 1px 3px rgb(0 0 0 / 0.9), 0 0 2px rgb(0 0 0 / 0.9);
+
+    /* Sized by the settings menu (data-subsize on .player). */
+    font-size: var(--sub-size, 2.6vw);
+}
+.player.sub-nobg .player__sub-line { background-color: transparent; }
+
+.player[data-subsize="sm"] { --sub-size: clamp(14px, 1.8vw, 22px); }
+.player[data-subsize="md"] { --sub-size: clamp(18px, 2.6vw, 30px); }
+.player[data-subsize="lg"] { --sub-size: clamp(22px, 3.4vw, 40px); }
+.player[data-subsize="xl"] { --sub-size: clamp(26px, 4.2vw, 52px); }
+
+/* ==================== CHROME (top + bottom) ==================== */
+
+.player__top,
+.player__controls {
+    position: absolute;
+    left: 0;
+    right: 0;
+    z-index: 3;
+
+    opacity: 0;
+    transform: translateY(var(--slide, 0));
+    transition: opacity .2s ease, transform .2s ease;
+    pointer-events: none;
+}
+.player.is-active .player__top,
+.player.is-active .player__controls {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+}
+
+.player__top {
+    top: 0;
+    --slide: -8px;
 
     display: flex;
     align-items: center;
@@ -46,13 +127,92 @@
     padding: 16px var(--sidepadding);
     padding-top: calc(16px + env(safe-area-inset-top, 0px));
 
-    background: linear-gradient(to bottom, rgb(0 0 0 / 0.6), transparent);
-    color: #fff;
-
-    pointer-events: none; /* let clicks fall through to the video, except the button */
+    background: linear-gradient(to bottom, rgb(0 0 0 / 0.65), transparent);
 }
 
-.player__close {
+.player__title {
+    font-size: 15px;
+    font-weight: 600;
+    text-shadow: 0 1px 3px rgb(0 0 0 / 0.6);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.player__controls {
+    bottom: 0;
+    --slide: 8px;
+
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+
+    padding: 8px var(--sidepadding) calc(14px + env(safe-area-inset-bottom, 0px));
+    background: linear-gradient(to top, rgb(0 0 0 / 0.72) 0, rgb(0 0 0 / 0.35) 55%, transparent);
+}
+
+/* ==================== SEEK BAR ==================== */
+
+.player__seek {
+    position: relative;
+    height: 26px;             /* generous hit area; the visible track is thin */
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    touch-action: none;
+    outline: none;
+}
+.player__seek-track {
+    position: relative;
+    width: 100%;
+    height: 4px;
+    border-radius: 999px;
+    background-color: rgb(255 255 255 / 0.28);
+    transition: height .12s ease;
+}
+.player__seek:hover .player__seek-track,
+.player__seek:focus-visible .player__seek-track { height: 6px; }
+
+.player__seek-buffered,
+.player__seek-played {
+    position: absolute;
+    inset: 0 auto 0 0;
+    height: 100%;
+    border-radius: 999px;
+}
+.player__seek-buffered { background-color: rgb(255 255 255 / 0.32); width: 0; }
+.player__seek-played { background-color: var(--red); width: 0; }
+
+/* Knob left% is set by JS to match the played fill; the knob is centered on it. */
+.player__seek-knob {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 13px;
+    height: 13px;
+    border-radius: 999px;
+    background-color: var(--red);
+    box-shadow: 0 1px 4px rgb(0 0 0 / 0.5);
+
+    transform: translate(-50%, -50%) scale(0);
+    transition: transform .12s ease;
+}
+.player__seek:hover .player__seek-knob,
+.player__seek:focus-visible .player__seek-knob,
+.player.is-scrubbing .player__seek-knob { transform: translate(-50%, -50%) scale(1); }
+
+.player__seek:focus-visible { outline: none; }
+.player__seek:focus-visible .player__seek-track { box-shadow: 0 0 0 2px rgb(255 255 255 / 0.5); }
+
+/* ==================== BUTTON ROW ==================== */
+
+.player__bar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.player__btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -62,67 +222,253 @@
     flex: 0 0 auto;
 
     border: none;
-    border-radius: 999px;
-    background-color: rgb(0 0 0 / 0.5);
+    border-radius: 8px;
+    background: transparent;
     color: #fff;
-
-    font-size: 22px;
-    line-height: 1;
     cursor: pointer;
 
-    pointer-events: auto;
+    -webkit-tap-highlight-color: transparent;
+    transition: background-color .12s ease, opacity .12s ease;
 }
+.player__btn svg { width: 24px; height: 24px; display: block; }
 
 @media (hover: hover) {
-    .player__close:hover {
-        background-color: rgb(0 0 0 / 0.75);
-    }
+    .player__btn:hover { background-color: rgb(255 255 255 / 0.16); }
+}
+.player__btn:active { background-color: rgb(255 255 255 / 0.24); }
+.player__btn:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+
+/* Icon toggles: default state shows the "pause / volume / enter-fullscreen"
+ * glyph; the state class swaps to its counterpart. */
+.player__btn .i-play,
+.player.is-paused .player__btn .i-pause { display: none; }
+.player.is-paused .player__btn .i-play { display: block; }
+
+.player__btn .i-mute { display: none; }
+.player.is-muted .player__btn .i-vol { display: none; }
+.player.is-muted .player__btn .i-mute { display: block; }
+
+.player__btn .i-fs-exit { display: none; }
+.player.is-fullscreen .player__btn .i-fs { display: none; }
+.player.is-fullscreen .player__btn .i-fs-exit { display: block; }
+
+.player__cc.is-on { color: var(--red); }
+
+/* Back button: keep the round, tappable pill the old player had. */
+.player__close {
+    width: 40px;
+    height: 40px;
+    flex: 0 0 auto;
+    border: none;
+    border-radius: 999px;
+    background-color: rgb(0 0 0 / 0.4);
+    color: #fff;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: auto;
+}
+.player__close svg { width: 24px; height: 24px; }
+@media (hover: hover) {
+    .player__close:hover { background-color: rgb(0 0 0 / 0.7); }
+}
+.player__close:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+
+/* ==================== VOLUME ==================== */
+
+.player__volume {
+    display: flex;
+    align-items: center;
+}
+.player__vol {
+    width: 0;
+    opacity: 0;
+    margin: 0;
+    accent-color: var(--red);
+    cursor: pointer;
+    transition: width .16s ease, opacity .16s ease, margin .16s ease;
+}
+.player__volume:hover .player__vol,
+.player__volume:focus-within .player__vol {
+    width: 76px;
+    opacity: 1;
+    margin: 0 6px 0 2px;
+}
+/* Touch has no hover, so keep a compact slider always visible there. */
+@media (hover: none) {
+    .player__vol { width: 60px; opacity: 1; margin: 0 4px; }
 }
 
-.player__title {
-    font-size: 15px;
-    font-weight: 600;
-    color: #fff;
-    text-shadow: 0 1px 3px rgb(0 0 0 / 0.6);
+.player__time {
+    display: flex;
+    gap: 5px;
+    align-items: baseline;
+    margin-left: 6px;
 
-    overflow: hidden;
-    text-overflow: ellipsis;
+    font-family: 'Geist Mono', monospace;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
     white-space: nowrap;
 }
+.player__dur, .player__sep { color: rgb(255 255 255 / 0.7); }
+
+.player__spacer { flex: 1 1 auto; }
+
+/* ==================== MENUS (captions + settings) ==================== */
+
+.player__menu {
+    position: absolute;
+    right: var(--sidepadding);
+    bottom: calc(70px + env(safe-area-inset-bottom, 0px));
+    z-index: 4;
+
+    min-width: 200px;
+    max-height: 60vh;
+    overflow-y: auto;
+
+    padding: 8px;
+    border-radius: 12px;
+    background-color: rgb(20 20 20 / 0.96);
+    box-shadow: 0 12px 40px rgb(0 0 0 / 0.5);
+    backdrop-filter: blur(12px);
+
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.player__menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    width: 100%;
+    padding: 10px 12px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: #fff;
+    font: inherit;
+    font-size: 14px;
+    text-align: left;
+    cursor: pointer;
+}
+@media (hover: hover) {
+    .player__menu-item:hover { background-color: rgb(255 255 255 / 0.12); }
+}
+.player__menu-item.is-on { color: var(--red); font-weight: 600; }
+.player__menu-item.is-on::before { content: "✓"; margin-right: 2px; }
+.player__menu-item:not(.is-on)::before { content: ""; width: 1em; }
+
+.player__menu-group { padding: 8px 8px 6px; }
+.player__menu-label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+.player__seg {
+    display: flex;
+    gap: 4px;
+    background-color: rgb(255 255 255 / 0.08);
+    border-radius: 8px;
+    padding: 3px;
+}
+.player__seg button {
+    flex: 1 1 0;
+    padding: 7px 6px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: #fff;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+}
+@media (hover: hover) {
+    .player__seg button:hover { background-color: rgb(255 255 255 / 0.1); }
+}
+.player__seg button.is-on { background-color: var(--red); color: #fff; font-weight: 600; }
+
+/* ==================== SPINNER + ERROR ==================== */
 
 .player__spinner {
     position: absolute;
-    width: 44px;
-    height: 44px;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 2;
+
+    width: 46px;
+    height: 46px;
     border-radius: 999px;
     border: 3px solid rgb(255 255 255 / 0.25);
     border-top-color: #fff;
     animation: player-spin .8s linear infinite;
+    pointer-events: none;
 }
-
-@keyframes player-spin {
-    to { transform: rotate(360deg); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .player__spinner { animation: none; }
-}
+@keyframes player-spin { to { transform: translate(-50%, -50%) rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .player__spinner { animation: none; } }
 
 .player__error {
     position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 5;
+
     max-width: 32ch;
     margin: 0;
     padding: 16px 20px;
 
-    background-color: hsl(from var(--strong) h s l / 0.85);
+    background-color: hsl(from var(--strong) h s l / 0.9);
     border-radius: 8px;
     color: var(--contrast);
-
     font-size: 15px;
     text-align: center;
 }
 
-/* The body doesn't scroll behind an open player. */
-body.is-player-open {
-    overflow: hidden;
+/* ==================== SHORTCUTS SHEET ==================== */
+
+.player__shortcuts {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 5;
+
+    min-width: min(420px, 88vw);
+    padding: 24px 28px;
+    border-radius: 16px;
+    background-color: rgb(20 20 20 / 0.97);
+    box-shadow: 0 20px 60px rgb(0 0 0 / 0.6);
+    backdrop-filter: blur(12px);
 }
+.player__shortcuts h2 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 16px;
+}
+.player__shortcuts dl {
+    display: grid;
+    gap: 10px 20px;
+}
+.player__shortcuts dl > div {
+    display: flex;
+    justify-content: space-between;
+    gap: 20px;
+    font-size: 14px;
+}
+.player__shortcuts dt {
+    font-family: 'Geist Mono', monospace;
+    color: #fff;
+}
+.player__shortcuts dd { color: var(--muted); text-align: right; }
+
+/* Unhidden by JS; u-hidden (from base.css) hides them by default. */
+
+/* The body doesn't scroll behind an open player. */
+body.is-player-open { overflow: hidden; }

@@ -67,7 +67,9 @@ northrou <command> [flags]
    logs                     显示或跟踪服务器最近的日志输出
    admin                    打开实时管理面板（TUI）
    scan [path...]           立即扫描指定文件夹或磁盘（不指定路径则扫描已配置的目录）
+   rescan [path...]         重新扫描并重新获取每个文件的元数据（包括未更改的文件）
    match <file>             将文件强制匹配到指定的 TMDB 条目
+   backfill-metadata        为现有条目获取关键词/制片厂/主创（改进推荐）
    cc                       打印当前服务器的连接码（用于配对应用）
    cc rotate                更换连接码，并使所有设备下线
    devices                  列出已配对的设备
@@ -88,7 +90,7 @@ northrou <command> [flags]
 管理面板参数：
    --addr string            服务器的基础 URL（默认取自配置，例如 http://localhost:8674）
 
-扫描参数：
+扫描 / 重新扫描参数：
    --tv                     将指定路径视为剧集（默认：根据文件名自动判断）
 
 匹配参数：

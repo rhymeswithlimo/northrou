@@ -13,6 +13,12 @@ import (
 const (
 	posterSize   = "w500"
 	backdropSize = "w1280"
+	// The title backdrop doubles as the home-screen hero, which wants a sharp,
+	// high-resolution image (the hero aims for >=2560x1440). TMDB's sized
+	// backdrops top out at w1280, so the hero backdrop is cached at "original"
+	// to keep the full resolution of the picked image. Collection backdrops,
+	// which are never shown as a hero, stay at the smaller backdropSize.
+	heroBackdropSize = "original"
 	// Headshots render as ~150px circles and stills as ~160px thumbs, so the
 	// small sizes are plenty and keep the image cache from ballooning across a
 	// large cast list.
@@ -109,9 +115,10 @@ func (s *Scanner) storeMovieByID(ctx context.Context, tmdbID int64, mf *model.Me
 		Genres:        genreNames(details.Genres),
 		Keywords:      details.KeywordNames(),
 		Companies:     details.CompanyNames(),
-		PosterPath:    s.cacheImage(ctx, details.PosterPath, posterSize),
-		BackdropPath:  s.cacheImage(ctx, details.BackdropPath, backdropSize),
-		LogoPath:      s.cacheImage(ctx, details.LogoPath(), logoSize),
+		PosterPath:       s.cacheImage(ctx, details.PosterPath, posterSize),
+		BackdropPath:     s.cacheImage(ctx, details.BackdropPath, backdropSize),
+		HeroBackdropPath: s.cacheImage(ctx, details.BestBackdrop(), heroBackdropSize),
+		LogoPath:         s.cacheImage(ctx, details.LogoPath(), logoSize),
 		Tagline:       details.Tagline,
 		Certification: details.ReleaseDates.Certification(),
 		Cast:          s.topCast(ctx, details.Credits.Cast),
@@ -248,9 +255,10 @@ func (s *Scanner) resolveShowByTMDB(ctx context.Context, tmdbID int64) (int64, e
 		Keywords:      details.KeywordNames(),
 		Companies:     details.CompanyNames(),
 		Creators:      details.CreatorNames(),
-		PosterPath:    s.cacheImage(ctx, details.PosterPath, posterSize),
-		BackdropPath:  s.cacheImage(ctx, details.BackdropPath, backdropSize),
-		LogoPath:      s.cacheImage(ctx, details.LogoPath(), logoSize),
+		PosterPath:       s.cacheImage(ctx, details.PosterPath, posterSize),
+		BackdropPath:     s.cacheImage(ctx, details.BackdropPath, backdropSize),
+		HeroBackdropPath: s.cacheImage(ctx, details.BestBackdrop(), heroBackdropSize),
+		LogoPath:         s.cacheImage(ctx, details.LogoPath(), logoSize),
 		Tagline:       details.Tagline,
 		Certification: details.ContentRatings.Certification(),
 		Cast:          s.topCast(ctx, details.Credits.Cast),

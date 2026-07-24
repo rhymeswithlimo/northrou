@@ -13,7 +13,49 @@ and uses it as the GitHub release body, so an entry needs to exist here
 *before* publishing a version — the release fails otherwise. Write it as you
 land the change, not after the fact.
 
-## v0.1.10 - Unreleased
+## v0.1.11 - Unreleased
+
+### Added
+
+- **`northrou rescan`.** A companion to `scan` that reprocesses every file even
+  when it is unchanged, refetching metadata from TMDB (artwork, logos,
+  backdrops, credits). A plain `scan` skips titles it has already seen, so it
+  can't pull in metadata added by a new version; `rescan` does. Run it once
+  after upgrading to pick up the new high-resolution hero backdrops and any
+  title logos your library predates.
+- **A full player, built from scratch.** The video player now has its own
+  controls instead of the browser's: a scrubber with buffered progress,
+  play/pause, skip back/forward 10s, a volume slider with mute, a subtitle
+  picker, playback speed, and fullscreen - plus the back button it already had.
+  Subtitles get real settings (size S/M/L/XL and a background on/off toggle) and
+  are drawn by the player itself so they look the same everywhere. Full keyboard
+  control too: space/K play-pause, arrows and J/L to seek, up/down for volume, M
+  mute, F fullscreen, C subtitles, 0-9 to jump through the film, and ? for the
+  shortcut list. Your volume and subtitle choices are remembered for next time.
+
+### Fixed
+
+- **Playback now works in the desktop and mobile apps.** The apps reach your
+  server over the peer-to-peer tunnel, but the video itself was never routed
+  through it - the player asked for the file at an address that pointed back at
+  the app, so it just spun on the loading indicator forever. The apps now stream
+  over the tunnel as adaptive HLS, so Play works away from the browser. (A
+  transcoded stream is what a remote connection needs anyway; it does mean the
+  server transcodes for app playback, which is smoothest with hardware
+  acceleration on the server.) A stalled stream now shows an error instead of
+  loading forever.
+- **Cast & Crew showed only one person.** The detail screen collapsed the whole
+  cast and crew down to a single name (usually the director). It now lists up to
+  ten - directors and creators first, then the top-billed cast.
+
+### Improved
+
+- **The featured hero is sharper and calmer.** It now uses the
+  highest-resolution artwork available for each title (aiming for at least
+  2560x1440, falling back to the largest there is), holds each title longer
+  before moving on (45 seconds), and cross-fades more gently (1.5 seconds).
+
+## v0.1.10 - 2026-07-24
 
 ### Fixed
 

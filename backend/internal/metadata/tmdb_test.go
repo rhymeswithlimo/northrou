@@ -124,3 +124,57 @@ func TestSetAPIKey_TogglesEnabledAndKey(t *testing.T) {
 		t.Fatal("expected disabled after clearing the key")
 	}
 }
+
+func TestBestBackdrop(t *testing.T) {
+	const fallback = "/primary.jpg"
+	tests := []struct {
+		name string
+		imgs Images
+		want string
+	}{
+		{
+			name: "empty falls back to primary backdrop_path",
+			imgs: Images{},
+			want: fallback,
+		},
+		{
+			name: "prefers a backdrop meeting the hero floor over a larger-area sub-floor one",
+			imgs: Images{Backdrops: []Image{
+				{FilePath: "/wide.jpg", Width: 3000, Height: 1200}, // bigger area, but under 1440 tall
+				{FilePath: "/hd.jpg", Width: 2560, Height: 1440},   // qualifies
+			}},
+			want: "/hd.jpg",
+		},
+		{
+			name: "among qualifying, the largest wins",
+			imgs: Images{Backdrops: []Image{
+				{FilePath: "/hd.jpg", Width: 2560, Height: 1440},
+				{FilePath: "/uhd.jpg", Width: 3840, Height: 2160},
+			}},
+			want: "/uhd.jpg",
+		},
+		{
+			name: "none qualify: closest (largest) is chosen",
+			imgs: Images{Backdrops: []Image{
+				{FilePath: "/small.jpg", Width: 1280, Height: 720},
+				{FilePath: "/fhd.jpg", Width: 1920, Height: 1080},
+			}},
+			want: "/fhd.jpg",
+		},
+		{
+			name: "same size: textless (language-neutral) wins",
+			imgs: Images{Backdrops: []Image{
+				{FilePath: "/text.jpg", Width: 2560, Height: 1440, ISO6391: "en"},
+				{FilePath: "/clean.jpg", Width: 2560, Height: 1440, ISO6391: ""},
+			}},
+			want: "/clean.jpg",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := bestBackdrop(tt.imgs, fallback); got != tt.want {
+				t.Errorf("bestBackdrop() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

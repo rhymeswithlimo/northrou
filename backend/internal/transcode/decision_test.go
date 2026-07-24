@@ -95,6 +95,28 @@ func TestDecide_FullVideoTranscode(t *testing.T) {
 	}
 }
 
+func TestDecide_RemoteForcesHLS(t *testing.T) {
+	// A file the client could otherwise direct-play must still transcode to
+	// segmented HLS for a remote (tunnel) client, since the tunnel can't carry a
+	// progressive whole-file stream.
+	mf := file("hevc", 2160, model.HDR10, truehdAtmos, "matroska,webm")
+	caps := everything
+	caps.Remote = true
+	d := Decide(mf, caps, Options{HWBackend: "nvenc"})
+	if d.Mode != ModeVideoTranscode || d.Container != "hls" {
+		t.Fatalf("expected remote client to get HLS video transcode, got %s/%s (%s)", d.Mode, d.Container, d.Reason)
+	}
+	if !d.TranscodeVideo {
+		t.Error("remote delivery should transcode video into segments")
+	}
+
+	// The non-remote decision for the same inputs is direct play; the flag is
+	// what changes it (guards against the force leaking into local clients).
+	if local := Decide(mf, everything, Options{HWBackend: "nvenc"}); local.Mode != ModeDirectPlay {
+		t.Fatalf("non-remote client should direct-play, got %s", local.Mode)
+	}
+}
+
 func TestDecide_Software4KNotRealtime(t *testing.T) {
 	// 4K HEVC to H.264 client with no hardware accel and software 4K disallowed.
 	mf := file("hevc", 2160, model.HDRNone, aac51, "matroska,webm")
